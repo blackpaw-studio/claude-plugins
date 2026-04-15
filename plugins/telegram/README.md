@@ -77,9 +77,16 @@ Quick reference: IDs are **numeric user IDs** (get yours from [@userinfobot](htt
 
 | Tool | Purpose |
 | --- | --- |
-| `reply` | Send to a chat. Takes `chat_id` + `text`, optionally `reply_to` (message ID) for native threading and `files` (absolute paths) for attachments. Images (`.jpg`/`.png`/`.gif`/`.webp`) send as photos with inline preview; other types send as documents. Max 50MB each. Auto-chunks text; files send as separate messages after the text. Returns the sent message ID(s). |
+| `reply` | Send to a chat. Takes `chat_id` + `text`, optionally `reply_to` (message ID) for native threading, `message_thread_id` for Forum Topics, and `files` (absolute paths) for attachments. Images (`.jpg`/`.png`/`.gif`/`.webp`) send as photos with inline preview; other types send as documents. Max 50MB each. Auto-chunks text; files send as separate messages after the text. Returns the sent message ID(s). |
 | `react` | Add an emoji reaction to a message by ID. **Only Telegram's fixed whitelist** is accepted (👍 👎 ❤ 🔥 👀 etc). |
 | `edit_message` | Edit a message the bot previously sent. Useful for "working…" → result progress updates. Only works on the bot's own messages. |
+| `download_attachment` | Fetch a file by `attachment_file_id` (from inbound meta) into the inbox. Returns the local path, capped at Telegram's 20 MB bot-download limit. |
+| `ask_user` | Post a question with up to 12 inline-keyboard choices and block until the user taps one (or the `timeout_s` elapses, default 5 min). Returns `{value, label, timed_out, asked_message_id}`. |
+| `get_history` | Fetch recent messages for a chat from the local SQLite store (inbound + outbound). `before_ts` paginates. Oldest first. |
+| `search_messages` | Case-insensitive substring search over the local store. |
+| `schedule` | Create a reminder (`once` or `recurring`). At fire time the plugin sends a Telegram message and emits a `<channel>` event so Claude can follow up. Reminders fire only while Claude Code is running — missed ones fire late on next launch. |
+| `list_schedules` / `cancel_schedule` | Inspect and cancel pending reminders. |
+| `voice_reply` | Reply with an ElevenLabs-synthesized voice message (audio bubble). **Only registered when `ELEVENLABS_API_KEY` is set.** |
 
 Inbound messages trigger a typing indicator automatically — Telegram shows
 "botname is typing…" while the assistant works on a response.
@@ -91,12 +98,84 @@ local path is included in the `<channel>` notification so the assistant can
 `Read` it. Telegram compresses photos — if you need the original file, send it
 as a document instead (long-press → Send as File).
 
-## No history or search
+## Voice transcription
 
-Telegram's Bot API exposes **neither** message history nor search. The bot
-only sees messages as they arrive — no `fetch_messages` tool exists. If the
-assistant needs earlier context, it will ask you to paste or summarize.
+Voice notes and audio files are transcribed and delivered as regular text
+events — the `<channel>` content becomes the transcription, with the audio
+file path and provider preserved in meta. Providers try in env-configurable
+order (default `groq,deepgram,openai,local` — hosted first for latency;
+`local` means `whisper-cli`). A provider is skipped when its API key / binary
+is absent, so the chain gracefully handles partial configuration.
 
-This also means there's no `download_attachment` tool for historical messages
-— photos are downloaded eagerly on arrival since there's no way to fetch them
-later.
+| Env var | Purpose |
+| --- | --- |
+| `GROQ_API_KEY` | Groq Whisper (≈800 ms). |
+| `DEEPGRAM_API_KEY` | Deepgram Nova-3 (≈1 s). |
+| `OPENAI_API_KEY` | OpenAI Whisper-1 (≈2 s). |
+| `TELEGRAM_WHISPER_CLI_PATH` / `TELEGRAM_WHISPER_MODEL` / `TELEGRAM_WHISPER_LANG` | Local `whisper-cli` (offline, slow). |
+| `TELEGRAM_TRANSCRIBE_ORDER` | Override provider order, e.g. `groq,local`. |
+
+## Document ingest
+
+Documents ≤ `TELEGRAM_DOC_MAX_BYTES` (default 10 MB) have their text extracted
+and appended to the inbound event content. Supported formats:
+
+| Format | Extractor |
+| --- | --- |
+| PDF | `pdf-parse` |
+| DOCX | `mammoth` |
+| CSV / TXT / JSON / LOG / MD | direct |
+
+Extracted text is clamped at 20 000 chars to protect the session token budget.
+
+## History
+
+The plugin writes inbound and outbound messages to
+`~/.claude/channels/telegram/history.sqlite` (`bun:sqlite`, single file).
+Retention is env-tunable:
+
+| Env var | Default |
+| --- | --- |
+| `TELEGRAM_HISTORY_MAX_PER_CHAT` | 500 |
+| `TELEGRAM_HISTORY_TTL_DAYS` | 14 |
+| `TELEGRAM_HISTORY_MAX_BYTES` | 50 MB |
+
+The pruner runs at boot and every 6 hours.
+
+## Reminders (`schedule`)
+
+Claude can schedule reminders that fire later in the same chat. Rows live in
+`~/.claude/channels/telegram/schedule.sqlite`. Because there is no daemon,
+the runner only fires while Claude Code is running — reminders whose
+`fire_at` passed while the plugin was offline fire on next launch with
+`fired_late: true`.
+
+## Reply-chain threading
+
+When an inbound message replies to an earlier one, the plugin walks up the
+chain in the history store (up to `TELEGRAM_THREAD_DEPTH`, default 3) and
+prepends a `[reply chain]` block so Claude sees the context of the thread.
+
+## Forward-burst batching
+
+Dumping a stack of forwards (articles, receipts, screenshots) no longer
+floods the session. The plugin buffers forwards per chat and emits a single
+summary event once the burst hits `TELEGRAM_FORWARD_MIN` (default 20) inside
+`TELEGRAM_FORWARD_WINDOW_MS` (default 2 s).
+
+## Router hint
+
+Set `TELEGRAM_ROUTER_MODEL` to `sonnet` (default), `haiku`, or `opus`. The
+plugin surfaces a routing hint in the MCP instructions so Claude stays on
+the right model by default and knows when to escalate via `Agent(model:"opus")`.
+
+## What's not here
+
+- **Daemon/supervisor** — this fork deliberately excludes the
+  auto-restart, context-watchdog, and 2-hour-uptime features from
+  [claude-telegram-supercharged](https://github.com/k1p1l0/claude-telegram-supercharged).
+- **Telegraph long-content publishing** — messages over 4096 chars chunk
+  locally; no Instant View integration.
+- **Sticker / GIF collages and video frame extraction** — stickers and
+  videos still deliver as `attachment_file_id` meta; the plugin does not
+  render them into image collages.
