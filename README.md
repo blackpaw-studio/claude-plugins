@@ -18,7 +18,9 @@ The repository slug is `blackpaw-studio/claude-plugins`; the marketplace identif
 
 ## Plugins
 
-No plugins published yet.
+| Plugin | Description |
+| --- | --- |
+| [`telegram`](plugins/telegram) | Telegram channel — pairing, allowlists, groups with mention-triggers, photo inbox. Fork of the official Anthropic plugin; supercharged features (voice transcription, document ingest, inline `ask_user`, scheduled reminders, permission relay) land in upcoming releases. |
 
 ## Channel plugins and the research preview
 

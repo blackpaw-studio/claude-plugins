@@ -6,7 +6,17 @@
   },
   "metadata": {
     "description": "Claude Code plugins maintained by Blackpaw Studio.",
-    "version": "0.0.1"
+    "version": "0.1.0"
   },
-  "plugins": []
+  "plugins": [
+    {
+      "name": "telegram",
+      "source": "./plugins/telegram",
+      "description": "Telegram channel for Claude Code — pairing, allowlists, groups with mention-triggers, photo inbox; voice transcription, document ingest, inline keyboards, and scheduled reminders land in upcoming releases.",
+      "version": "0.1.0",
+      "category": "channel",
+      "keywords": ["channel", "telegram", "mcp", "voice", "transcription"],
+      "strict": false
+    }
+  ]
 }
