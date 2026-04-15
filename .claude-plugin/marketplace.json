@@ -1,0 +1,12 @@
+{
+  "name": "blackpaw-plugins",
+  "owner": {
+    "name": "Blackpaw Studio",
+    "email": "evan@blackpaw.studio"
+  },
+  "metadata": {
+    "description": "Claude Code plugins maintained by Blackpaw Studio.",
+    "version": "0.0.1"
+  },
+  "plugins": []
+}
