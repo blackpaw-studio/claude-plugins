@@ -14,7 +14,7 @@
     "noEmit": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": false,
-    "allowImportingTsExtensions": false
+    "allowImportingTsExtensions": true
   },
   "include": ["server.ts", "src/**/*.ts"]
 }

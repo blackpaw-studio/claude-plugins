@@ -22,6 +22,8 @@ import { randomBytes } from 'crypto'
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync, statSync, renameSync, realpathSync, chmodSync } from 'fs'
 import { homedir } from 'os'
 import { join, extname, sep } from 'path'
+import { transcribe, isTranscriptionAvailable } from './src/transcription/chain.ts'
+import { extractDocument, clampExtracted } from './src/documents/extract.ts'
 
 const STATE_DIR = process.env.TELEGRAM_STATE_DIR ?? join(homedir(), '.claude', 'channels', 'telegram')
 const ACCESS_FILE = join(STATE_DIR, 'access.json')
@@ -384,7 +386,7 @@ const mcp = new Server(
     instructions: [
       'The sender reads Telegram, not this session. Anything you want them to see must go through the reply tool — your transcript output never reaches their chat.',
       '',
-      'Messages from Telegram arrive as <channel source="telegram" chat_id="..." message_id="..." user="..." ts="...">. If the tag has an image_path attribute, Read that file — it is a photo the sender attached. If the tag has attachment_file_id, call download_attachment with that file_id to fetch the file, then Read the returned path. Reply with the reply tool — pass chat_id back. Use reply_to (set to a message_id) only when replying to an earlier message; the latest message doesn\'t need a quote-reply, omit reply_to for normal responses.',
+      'Messages from Telegram arrive as <channel source="telegram" chat_id="..." message_id="..." user="..." ts="...">. If the tag has an image_path attribute, Read that file — it is a photo the sender attached. If the tag has attachment_file_id, call download_attachment with that file_id to fetch the file, then Read the returned path. If the tag has message_thread_id, the message came from a Forum Topic — pass that same value back in every reply so the response lands in the right topic. Reply with the reply tool — pass chat_id back. Use reply_to (set to a message_id) only when replying to an earlier message; the latest message doesn\'t need a quote-reply, omit reply_to for normal responses.',
       '',
       'reply accepts file paths (files: ["/abs/path.png"]) for attachments. Use react to add emoji reactions, and edit_message for interim progress updates. Edits don\'t trigger push notifications — when a long task completes, send a new reply so the user\'s device pings.',
       '',
@@ -434,7 +436,7 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: 'reply',
       description:
-        'Reply on Telegram. Pass chat_id from the inbound message. Optionally pass reply_to (message_id) for threading, and files (absolute paths) to attach images or documents.',
+        'Reply on Telegram. Pass chat_id from the inbound message. Optionally pass reply_to (message_id) for threading, message_thread_id for Forum Topic routing, and files (absolute paths) to attach images or documents.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -443,6 +445,10 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
           reply_to: {
             type: 'string',
             description: 'Message ID to thread under. Use message_id from the inbound <channel> block.',
+          },
+          message_thread_id: {
+            type: 'string',
+            description: 'Forum topic ID. Pass the value from the inbound <channel> message_thread_id attribute so the reply lands in the same topic. Omit for non-Forum chats.',
           },
           files: {
             type: 'array',
@@ -511,6 +517,8 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
         const chat_id = args.chat_id as string
         const text = args.text as string
         const reply_to = args.reply_to != null ? Number(args.reply_to) : undefined
+        const message_thread_id =
+          args.message_thread_id != null ? Number(args.message_thread_id) : undefined
         const files = (args.files as string[] | undefined) ?? []
         const format = (args.format as string | undefined) ?? 'text'
         const parseMode = format === 'markdownv2' ? 'MarkdownV2' as const : undefined
@@ -540,6 +548,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
               (replyMode === 'all' || i === 0)
             const sent = await bot.api.sendMessage(chat_id, chunks[i], {
               ...(shouldReplyTo ? { reply_parameters: { message_id: reply_to } } : {}),
+              ...(message_thread_id != null ? { message_thread_id } : {}),
               ...(parseMode ? { parse_mode: parseMode } : {}),
             })
             sentIds.push(sent.message_id)
@@ -556,9 +565,12 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
         for (const f of files) {
           const ext = extname(f).toLowerCase()
           const input = new InputFile(f)
-          const opts = reply_to != null && replyMode !== 'off'
-            ? { reply_parameters: { message_id: reply_to } }
-            : undefined
+          const opts = {
+            ...(reply_to != null && replyMode !== 'off'
+              ? { reply_parameters: { message_id: reply_to } }
+              : {}),
+            ...(message_thread_id != null ? { message_thread_id } : {}),
+          }
           if (PHOTO_EXTS.has(ext)) {
             const sent = await bot.api.sendPhoto(chat_id, input, opts)
             sentIds.push(sent.message_id)
@@ -811,38 +823,131 @@ bot.on('message:photo', async ctx => {
 bot.on('message:document', async ctx => {
   const doc = ctx.message.document
   const name = safeName(doc.file_name)
-  const text = ctx.message.caption ?? `(document: ${name ?? 'file'})`
-  await handleInbound(ctx, text, undefined, {
-    kind: 'document',
-    file_id: doc.file_id,
-    size: doc.file_size,
-    mime: doc.mime_type,
-    name,
-  })
+  const caption = ctx.message.caption ?? `(document: ${name ?? 'file'})`
+  await handleInbound(
+    ctx,
+    caption,
+    undefined,
+    {
+      kind: 'document',
+      file_id: doc.file_id,
+      size: doc.file_size,
+      mime: doc.mime_type,
+      name,
+    },
+    async () => {
+      if ((doc.file_size ?? 0) > MAX_BOT_DOWNLOAD_BYTES) return undefined
+      const dl = await downloadToInbox(doc.file_id, doc.file_unique_id, 'bin')
+      if (!dl) return undefined
+      const extracted = await extractDocument({
+        path: dl.path,
+        name: doc.file_name,
+        mime: doc.mime_type,
+      })
+      if (!extracted) return { meta: { document_path: dl.path } }
+      return {
+        appendContent: `[document text (${extracted.format}, ${extracted.bytes} bytes)]\n${clampExtracted(extracted.text)}`,
+        meta: {
+          document_path: dl.path,
+          document_format: extracted.format,
+        },
+      }
+    },
+  )
 })
+
+// Telegram bots can download files up to 20MB. Anything bigger fails at getFile().
+const MAX_BOT_DOWNLOAD_BYTES = 20 * 1024 * 1024
+
+async function downloadToInbox(
+  file_id: string,
+  file_unique_id: string,
+  defaultExt: string,
+): Promise<{ path: string; ext: string } | undefined> {
+  try {
+    const file = await bot.api.getFile(file_id)
+    if (!file.file_path) return undefined
+    const url = `https://api.telegram.org/file/bot${TOKEN}/${file.file_path}`
+    const res = await fetch(url)
+    if (!res.ok) return undefined
+    const buf = Buffer.from(await res.arrayBuffer())
+    const rawExt = file.file_path.includes('.') ? file.file_path.split('.').pop()! : defaultExt
+    const ext = rawExt.replace(/[^a-zA-Z0-9]/g, '') || defaultExt
+    const safeUnique = file_unique_id.replace(/[^a-zA-Z0-9_-]/g, '') || 'dl'
+    const path = join(INBOX_DIR, `${Date.now()}-${safeUnique}.${ext}`)
+    mkdirSync(INBOX_DIR, { recursive: true })
+    writeFileSync(path, buf)
+    return { path, ext }
+  } catch (err) {
+    process.stderr.write(`telegram channel: download ${file_id} failed: ${err}\n`)
+    return undefined
+  }
+}
 
 bot.on('message:voice', async ctx => {
   const voice = ctx.message.voice
-  const text = ctx.message.caption ?? '(voice message)'
-  await handleInbound(ctx, text, undefined, {
-    kind: 'voice',
-    file_id: voice.file_id,
-    size: voice.file_size,
-    mime: voice.mime_type,
-  })
+  const caption = ctx.message.caption ?? '(voice message)'
+  await handleInbound(
+    ctx,
+    caption,
+    undefined,
+    {
+      kind: 'voice',
+      file_id: voice.file_id,
+      size: voice.file_size,
+      mime: voice.mime_type,
+    },
+    async () => {
+      if ((voice.file_size ?? 0) > MAX_BOT_DOWNLOAD_BYTES) return undefined
+      if (!isTranscriptionAvailable()) return undefined
+      const dl = await downloadToInbox(voice.file_id, voice.file_unique_id, 'ogg')
+      if (!dl) return undefined
+      const result = await transcribe({ path: dl.path, mime: voice.mime_type })
+      if (!result) return { meta: { audio_path: dl.path } }
+      return {
+        text: result.text,
+        meta: {
+          audio_path: dl.path,
+          transcription_provider: result.provider,
+          transcription_ms: String(result.latencyMs),
+        },
+      }
+    },
+  )
 })
 
 bot.on('message:audio', async ctx => {
   const audio = ctx.message.audio
   const name = safeName(audio.file_name)
-  const text = ctx.message.caption ?? `(audio: ${safeName(audio.title) ?? name ?? 'audio'})`
-  await handleInbound(ctx, text, undefined, {
-    kind: 'audio',
-    file_id: audio.file_id,
-    size: audio.file_size,
-    mime: audio.mime_type,
-    name,
-  })
+  const caption = ctx.message.caption ?? `(audio: ${safeName(audio.title) ?? name ?? 'audio'})`
+  await handleInbound(
+    ctx,
+    caption,
+    undefined,
+    {
+      kind: 'audio',
+      file_id: audio.file_id,
+      size: audio.file_size,
+      mime: audio.mime_type,
+      name,
+    },
+    async () => {
+      if ((audio.file_size ?? 0) > MAX_BOT_DOWNLOAD_BYTES) return undefined
+      if (!isTranscriptionAvailable()) return undefined
+      const dl = await downloadToInbox(audio.file_id, audio.file_unique_id, 'mp3')
+      if (!dl) return undefined
+      const result = await transcribe({ path: dl.path, mime: audio.mime_type })
+      if (!result) return { meta: { audio_path: dl.path } }
+      return {
+        appendContent: `[audio transcription (${result.provider})]\n${result.text}`,
+        meta: {
+          audio_path: dl.path,
+          transcription_provider: result.provider,
+          transcription_ms: String(result.latencyMs),
+        },
+      }
+    },
+  )
 })
 
 bot.on('message:video', async ctx => {
@@ -891,11 +996,23 @@ function safeName(s: string | undefined): string | undefined {
   return s?.replace(/[<>\[\]\r\n;]/g, '_')
 }
 
+type EnrichResult = {
+  /** If set, fully replaces the inbound content (e.g. transcription of a voice note). */
+  text?: string
+  /** If set, appended to the content separated by a blank line (e.g. extracted document text). */
+  appendContent?: string
+  /** Merged into the event meta (keys become tag attributes). Undefined values are dropped. */
+  meta?: Record<string, string | undefined>
+}
+
+type InboundEnricher = () => Promise<EnrichResult | undefined>
+
 async function handleInbound(
   ctx: Context,
   text: string,
   downloadImage: (() => Promise<string | undefined>) | undefined,
   attachment?: AttachmentMeta,
+  enrich?: InboundEnricher,
 ): Promise<void> {
   const result = gate(ctx)
 
@@ -937,7 +1054,11 @@ async function handleInbound(
   }
 
   // Typing indicator — signals "processing" until we reply (or ~5s elapses).
-  void bot.api.sendChatAction(chat_id, 'typing').catch(() => {})
+  // Pass message_thread_id so the indicator shows in the correct Forum Topic.
+  const message_thread_id = ctx.message?.is_topic_message ? ctx.message.message_thread_id : undefined
+  void bot.api
+    .sendChatAction(chat_id, 'typing', message_thread_id != null ? { message_thread_id } : undefined)
+    .catch(() => {})
 
   // Ack reaction — lets the user know we're processing. Fire-and-forget.
   // Telegram only accepts a fixed emoji whitelist — if the user configures
@@ -951,16 +1072,23 @@ async function handleInbound(
   }
 
   const imagePath = downloadImage ? await downloadImage() : undefined
+  const enrichment = enrich ? await enrich() : undefined
+
+  const finalText = enrichment?.text ?? text
+  const contentWithAppend = enrichment?.appendContent
+    ? `${finalText}\n\n${enrichment.appendContent}`
+    : finalText
 
   // image_path goes in meta only — an in-content "[image attached — read: PATH]"
   // annotation is forgeable by any allowlisted sender typing that string.
   mcp.notification({
     method: 'notifications/claude/channel',
     params: {
-      content: text,
+      content: contentWithAppend,
       meta: {
         chat_id,
         ...(msgId != null ? { message_id: String(msgId) } : {}),
+        ...(message_thread_id != null ? { message_thread_id: String(message_thread_id) } : {}),
         user: from.username ?? String(from.id),
         user_id: String(from.id),
         ts: new Date((ctx.message?.date ?? 0) * 1000).toISOString(),
@@ -972,6 +1100,11 @@ async function handleInbound(
           ...(attachment.mime ? { attachment_mime: attachment.mime } : {}),
           ...(attachment.name ? { attachment_name: attachment.name } : {}),
         } : {}),
+        ...(enrichment?.meta
+          ? Object.fromEntries(
+              Object.entries(enrichment.meta).filter((e): e is [string, string] => e[1] != null),
+            )
+          : {}),
       },
     },
   }).catch(err => {
