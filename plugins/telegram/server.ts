@@ -36,6 +36,18 @@ import {
   summarizeBatch,
   type BatchedForward,
 } from './src/threading/forwardBatch.ts'
+import { startAskUser, askUser } from './src/tools/askUser.ts'
+import {
+  openSchedule,
+  insertSchedule,
+  listAll as listSchedules,
+  cancelSchedule,
+} from './src/schedule/store.ts'
+import {
+  startScheduler,
+  armNewSchedule,
+  type FireCallback,
+} from './src/schedule/runner.ts'
 
 const STATE_DIR = process.env.TELEGRAM_STATE_DIR ?? join(homedir(), '.claude', 'channels', 'telegram')
 const ACCESS_FILE = join(STATE_DIR, 'access.json')
@@ -67,6 +79,7 @@ if (!TOKEN) {
 const INBOX_DIR = join(STATE_DIR, 'inbox')
 const PID_FILE = join(STATE_DIR, 'bot.pid')
 const HISTORY_DB = join(STATE_DIR, 'history.sqlite')
+const SCHEDULE_DB = join(STATE_DIR, 'schedule.sqlite')
 
 // Telegram allows exactly one getUpdates consumer per token. If a previous
 // session crashed (SIGKILL, terminal closed) its server.ts grandchild can
@@ -331,6 +344,10 @@ function isMentioned(ctx: Context, extraPatterns?: string[]): boolean {
 // honored inside the store module.
 openHistory(HISTORY_DB)
 
+// Schedule store: separate DB so its pruning pattern (fire-then-delete for
+// once, fire-then-reinsert for recurring) doesn't interfere with history.
+openSchedule(SCHEDULE_DB)
+
 // Forward-burst batcher. When a user dumps ≥TELEGRAM_FORWARD_MIN forwards in
 // a short window, emit a single summary <channel> event instead of flooding.
 // The flush handler fires asynchronously so MCP must already be connected.
@@ -580,6 +597,81 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ['chat_id', 'query'],
       },
     },
+    {
+      name: 'ask_user',
+      description: 'Post a question with inline-button choices and await the user\'s tap. Blocks until the user taps a button or the timeout elapses. Returns {value, label, timed_out, asked_message_id}. Use when you need an explicit human decision before proceeding.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          chat_id: { type: 'string' },
+          question: { type: 'string' },
+          choices: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Up to 12 button labels. Each label becomes both the display text and the returned value.',
+          },
+          message_thread_id: {
+            type: 'string',
+            description: 'Forum topic ID — pass through from the inbound event so the prompt lands in the right topic.',
+          },
+          timeout_s: {
+            type: 'number',
+            description: 'Seconds to wait for a tap before returning timed_out:true. Default 300, max 3600.',
+          },
+        },
+        required: ['chat_id', 'question', 'choices'],
+      },
+    },
+    {
+      name: 'schedule',
+      description: 'Create a reminder. At fire time the plugin sends a Telegram message to chat_id and emits a <channel> event (kind=scheduled_reminder) so you can follow up. Reminders fire only while Claude Code is running; missed ones fire late on next launch. Persists to STATE_DIR/schedule.sqlite.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          chat_id: { type: 'string' },
+          text: { type: 'string' },
+          fire_at: {
+            type: 'number',
+            description: 'Unix ms timestamp when the reminder should fire. Use Date.now() + offset.',
+          },
+          kind: {
+            type: 'string',
+            enum: ['once', 'recurring'],
+            description: "'once' (default) fires a single time; 'recurring' re-inserts itself after each fire using interval_s.",
+          },
+          interval_s: {
+            type: 'number',
+            description: 'Required when kind=recurring: seconds between fires.',
+          },
+          message_thread_id: {
+            type: 'string',
+            description: 'Forum topic ID — pass through from the inbound event.',
+          },
+        },
+        required: ['chat_id', 'text', 'fire_at'],
+      },
+    },
+    {
+      name: 'list_schedules',
+      description: 'List reminders. Pass chat_id to scope to one chat, omit for all. Returns id, chat_id, text, fire_at, kind, status.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          chat_id: { type: 'string' },
+        },
+      },
+    },
+    {
+      name: 'cancel_schedule',
+      description: 'Cancel a pending reminder by id. Returns true if a pending row was cancelled, false if nothing matched (already fired, cancelled, or unknown id).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          id: { type: 'number' },
+        },
+        required: ['id'],
+      },
+    },
   ],
 }))
 
@@ -729,6 +821,71 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
         const rows = searchMessages(chat_id, query, limit)
         return { content: [{ type: 'text', text: JSON.stringify(rows, null, 2) }] }
       }
+      case 'ask_user': {
+        const chat_id = args.chat_id as string
+        assertAllowedChat(chat_id)
+        const choices = (args.choices as string[]) ?? []
+        const out = await askUser(bot, {
+          chat_id,
+          question: args.question as string,
+          choices,
+          ...(args.message_thread_id != null
+            ? { message_thread_id: Number(args.message_thread_id) }
+            : {}),
+          ...(typeof args.timeout_s === 'number' ? { timeout_s: args.timeout_s } : {}),
+        })
+        return { content: [{ type: 'text', text: JSON.stringify(out, null, 2) }] }
+      }
+      case 'schedule': {
+        const chat_id = args.chat_id as string
+        assertAllowedChat(chat_id)
+        const kind = ((args.kind as string) ?? 'once') as 'once' | 'recurring'
+        const fire_at = Number(args.fire_at)
+        if (!Number.isFinite(fire_at)) throw new Error('schedule: fire_at must be a finite number (Unix ms)')
+        const interval_s =
+          typeof args.interval_s === 'number' && args.interval_s > 0 ? args.interval_s : null
+        if (kind === 'recurring' && !interval_s) {
+          throw new Error('schedule: kind=recurring requires interval_s > 0')
+        }
+        const message_thread_id =
+          args.message_thread_id != null ? String(args.message_thread_id) : null
+        const id = insertSchedule({
+          chat_id,
+          message_thread_id,
+          text: args.text as string,
+          fire_at,
+          kind,
+          interval_s,
+        })
+        armNewSchedule({
+          id,
+          chat_id,
+          message_thread_id,
+          text: args.text as string,
+          fire_at,
+          kind,
+          interval_s,
+          status: 'pending',
+          created_at: Date.now(),
+        })
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify({ id, fire_at, kind, interval_s }, null, 2) },
+          ],
+        }
+      }
+      case 'list_schedules': {
+        const chat_id = args.chat_id as string | undefined
+        if (chat_id) assertAllowedChat(chat_id)
+        const rows = listSchedules(chat_id)
+        return { content: [{ type: 'text', text: JSON.stringify(rows, null, 2) }] }
+      }
+      case 'cancel_schedule': {
+        const id = Number(args.id)
+        if (!Number.isFinite(id)) throw new Error('cancel_schedule: id must be a number')
+        const ok = cancelSchedule(id)
+        return { content: [{ type: 'text', text: JSON.stringify({ cancelled: ok }, null, 2) }] }
+      }
       default:
         return {
           content: [{ type: 'text', text: `unknown tool: ${req.params.name}` }],
@@ -743,6 +900,38 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
     }
   }
 })
+
+// ask_user callback handler — registers a grammy callback_query listener
+// that resolves pending askUser promises when the user taps a button.
+startAskUser(bot)
+
+// Scheduler — fires due reminders. Sends a Telegram message to the
+// original chat AND emits a <channel> event so Claude can follow up.
+const fireReminder: FireCallback = (row, late) => {
+  const prefix = late ? '⏰ (reminder, fired late)' : '⏰ (reminder)'
+  void bot.api
+    .sendMessage(row.chat_id, `${prefix} ${row.text}`, {
+      ...(row.message_thread_id != null ? { message_thread_id: Number(row.message_thread_id) } : {}),
+    })
+    .catch(err => process.stderr.write(`telegram channel: reminder send failed: ${err}\n`))
+
+  mcp.notification({
+    method: 'notifications/claude/channel',
+    params: {
+      content: row.text,
+      meta: {
+        chat_id: row.chat_id,
+        ...(row.message_thread_id ? { message_thread_id: row.message_thread_id } : {}),
+        kind: 'scheduled_reminder',
+        schedule_id: String(row.id),
+        scheduled_for: new Date(row.fire_at).toISOString(),
+        fired_late: late ? 'true' : 'false',
+        ts: new Date().toISOString(),
+      },
+    },
+  }).catch(err => process.stderr.write(`telegram channel: reminder notify failed: ${err}\n`))
+}
+startScheduler(fireReminder)
 
 await mcp.connect(new StdioServerTransport())
 
