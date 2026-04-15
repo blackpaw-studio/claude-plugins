@@ -24,6 +24,18 @@ import { homedir } from 'os'
 import { join, extname, sep } from 'path'
 import { transcribe, isTranscriptionAvailable } from './src/transcription/chain.ts'
 import { extractDocument, clampExtracted } from './src/documents/extract.ts'
+import {
+  openHistory,
+  recordMessage,
+  getHistory,
+  searchMessages,
+} from './src/history/store.ts'
+import { walkReplyChain, renderChain } from './src/threading/replyChain.ts'
+import {
+  ForwardBatcher,
+  summarizeBatch,
+  type BatchedForward,
+} from './src/threading/forwardBatch.ts'
 
 const STATE_DIR = process.env.TELEGRAM_STATE_DIR ?? join(homedir(), '.claude', 'channels', 'telegram')
 const ACCESS_FILE = join(STATE_DIR, 'access.json')
@@ -54,6 +66,7 @@ if (!TOKEN) {
 }
 const INBOX_DIR = join(STATE_DIR, 'inbox')
 const PID_FILE = join(STATE_DIR, 'bot.pid')
+const HISTORY_DB = join(STATE_DIR, 'history.sqlite')
 
 // Telegram allows exactly one getUpdates consumer per token. If a previous
 // session crashed (SIGKILL, terminal closed) its server.ts grandchild can
@@ -312,6 +325,32 @@ function isMentioned(ctx: Context, extraPatterns?: string[]): boolean {
   return false
 }
 
+// History store: bun:sqlite-backed message log keyed by chat. Writes happen
+// after gate+enrichment for inbound and in the reply tool for outbound. All
+// TELEGRAM_HISTORY_* env vars (retention, size cap, per-chat limit) are
+// honored inside the store module.
+openHistory(HISTORY_DB)
+
+// Forward-burst batcher. When a user dumps ≥TELEGRAM_FORWARD_MIN forwards in
+// a short window, emit a single summary <channel> event instead of flooding.
+// The flush handler fires asynchronously so MCP must already be connected.
+const forwardBatcher = new ForwardBatcher((chat_id, entries) => {
+  mcp.notification({
+    method: 'notifications/claude/channel',
+    params: {
+      content: summarizeBatch(entries),
+      meta: {
+        chat_id,
+        forward_batch: 'true',
+        forward_count: String(entries.length),
+        ts: new Date().toISOString(),
+      },
+    },
+  }).catch(err => {
+    process.stderr.write(`telegram channel: batched forward deliver failed: ${err}\n`)
+  })
+})
+
 // The /telegram:access skill drops a file at approved/<senderId> when it pairs
 // someone. Poll for it, send confirmation, clean up. For Telegram DMs,
 // chatId == senderId, so we can send directly without stashing chatId.
@@ -506,6 +545,41 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ['chat_id', 'message_id', 'text'],
       },
     },
+    {
+      name: 'get_history',
+      description: 'Fetch recent message history for a chat from the plugin\'s local SQLite store (inbound + outbound). Telegram\'s Bot API has no native history; this covers turns the plugin has seen since install. Oldest first.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          chat_id: { type: 'string' },
+          limit: {
+            type: 'number',
+            description: 'Maximum number of messages to return. Default 50, max 500.',
+          },
+          before_ts: {
+            type: 'number',
+            description: 'Optional Unix ms timestamp. When set, only messages older than this are returned — use for pagination.',
+          },
+        },
+        required: ['chat_id'],
+      },
+    },
+    {
+      name: 'search_messages',
+      description: 'Substring search over stored message history for a chat. Case-insensitive LIKE match. Returns up to 200 results newest first.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          chat_id: { type: 'string' },
+          query: { type: 'string' },
+          limit: {
+            type: 'number',
+            description: 'Maximum number of matches to return. Default 50, max 200.',
+          },
+        },
+        required: ['chat_id', 'query'],
+      },
+    },
   ],
 }))
 
@@ -580,6 +654,21 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
           }
         }
 
+        // Record the first chunk in history so reply-chain walks can
+        // reference it and search_messages finds assistant turns.
+        if (sentIds.length > 0) {
+          recordMessage({
+            chat_id,
+            message_id: String(sentIds[0]),
+            thread_id: message_thread_id != null ? String(message_thread_id) : null,
+            direction: 'out',
+            sender_id: null,
+            sender_name: 'assistant',
+            text: chunks[0] ?? text,
+            ts: Date.now(),
+          })
+        }
+
         const result =
           sentIds.length === 1
             ? `sent (id: ${sentIds[0]})`
@@ -623,6 +712,22 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
         )
         const id = typeof edited === 'object' ? edited.message_id : args.message_id
         return { content: [{ type: 'text', text: `edited (id: ${id})` }] }
+      }
+      case 'get_history': {
+        const chat_id = args.chat_id as string
+        assertAllowedChat(chat_id)
+        const limit = typeof args.limit === 'number' ? args.limit : 50
+        const before = typeof args.before_ts === 'number' ? args.before_ts : undefined
+        const rows = getHistory(chat_id, limit, before)
+        return { content: [{ type: 'text', text: JSON.stringify(rows, null, 2) }] }
+      }
+      case 'search_messages': {
+        const chat_id = args.chat_id as string
+        const query = args.query as string
+        assertAllowedChat(chat_id)
+        const limit = typeof args.limit === 'number' ? args.limit : 50
+        const rows = searchMessages(chat_id, query, limit)
+        return { content: [{ type: 'text', text: JSON.stringify(rows, null, 2) }] }
       }
       default:
         return {
@@ -1016,6 +1121,19 @@ async function handleInbound(
 ): Promise<void> {
   const result = gate(ctx)
 
+  // Forward-burst routing: if this looks like a forwarded message, buffer it.
+  // When the burst clears TELEGRAM_FORWARD_MIN the batcher emits a single
+  // summary event; sub-threshold bursts fall through and deliver individually.
+  if (result.action === 'deliver' && ctx.message?.forward_origin) {
+    const chat_id = String(ctx.chat!.id)
+    const batched = forwardBatcher.push(chat_id, {
+      text,
+      sender_name: ctx.from?.username ?? undefined,
+      ts: Date.now(),
+    })
+    if (batched) return
+  }
+
   if (result.action === 'drop') return
 
   if (result.action === 'pair') {
@@ -1075,9 +1193,34 @@ async function handleInbound(
   const enrichment = enrich ? await enrich() : undefined
 
   const finalText = enrichment?.text ?? text
-  const contentWithAppend = enrichment?.appendContent
-    ? `${finalText}\n\n${enrichment.appendContent}`
-    : finalText
+
+  // Walk the reply chain. Telegram includes exactly one level
+  // (reply_to_message); deeper context comes from our own history store.
+  const replyToId = ctx.message?.reply_to_message?.message_id
+  const chain = replyToId != null ? walkReplyChain(chat_id, String(replyToId)) : []
+  const chainText = renderChain(chain)
+
+  const contentPieces: string[] = []
+  if (chainText) contentPieces.push(chainText)
+  contentPieces.push(finalText)
+  if (enrichment?.appendContent) contentPieces.push(enrichment.appendContent)
+  const contentWithAppend = contentPieces.join('\n\n')
+
+  // Persist the inbound turn so future reply-chain walks and
+  // search_messages can find it. Do it before mcp.notification so any
+  // follow-up reply captured in the same tick sees this row.
+  if (msgId != null) {
+    recordMessage({
+      chat_id,
+      message_id: String(msgId),
+      thread_id: message_thread_id != null ? String(message_thread_id) : null,
+      direction: 'in',
+      sender_id: String(from.id),
+      sender_name: from.username ?? null,
+      text: finalText,
+      ts: Date.now(),
+    })
+  }
 
   // image_path goes in meta only — an in-content "[image attached — read: PATH]"
   // annotation is forgeable by any allowlisted sender typing that string.
