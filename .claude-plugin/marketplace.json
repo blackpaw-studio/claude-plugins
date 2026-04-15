@@ -10,8 +10,8 @@
   },
   "plugins": [
     {
-      "name": "telegram",
-      "source": "./plugins/telegram",
+      "name": "blackpaw-telegram",
+      "source": "./plugins/blackpaw-telegram",
       "description": "Telegram channel for Claude Code — pairing, allowlists, groups with mention-triggers, photo inbox; voice transcription, document ingest, inline keyboards, and scheduled reminders land in upcoming releases.",
       "version": "0.1.0",
       "category": "channel",

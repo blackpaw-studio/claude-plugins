@@ -29,17 +29,17 @@ These are Claude Code commands — run `claude` to start a session first.
 Install the plugin:
 ```
 /plugin marketplace add blackpaw-studio/claude-plugins
-/plugin install telegram@blackpaw-plugins
+/plugin install blackpaw-telegram@blackpaw-plugins
 /reload-plugins
 ```
 
 **3. Give the server the token.**
 
 ```
-/telegram:configure 123456789:AAHfiqksKZ8...
+/blackpaw-telegram:configure 123456789:AAHfiqksKZ8...
 ```
 
-Writes `TELEGRAM_BOT_TOKEN=...` to `~/.claude/channels/telegram/.env`. You can also write that file by hand, or set the variable in your shell environment — shell takes precedence.
+Writes `TELEGRAM_BOT_TOKEN=...` to `~/.claude/channels/blackpaw-telegram/.env`. You can also write that file by hand, or set the variable in your shell environment — shell takes precedence.
 
 > To run multiple bots on one machine (different tokens, separate allowlists), point `TELEGRAM_STATE_DIR` at a different directory per instance.
 
@@ -48,7 +48,7 @@ Writes `TELEGRAM_BOT_TOKEN=...` to `~/.claude/channels/telegram/.env`. You can a
 The server won't connect without this — exit your session and start a new one:
 
 ```sh
-claude --dangerously-load-development-channels plugin:telegram@blackpaw-plugins
+claude --dangerously-load-development-channels plugin:blackpaw-telegram@blackpaw-plugins
 ```
 
 **5. Pair.**
@@ -56,7 +56,7 @@ claude --dangerously-load-development-channels plugin:telegram@blackpaw-plugins
 With Claude Code running from the previous step, DM your bot on Telegram — it replies with a 6-character pairing code. If the bot doesn't respond, make sure your session is running with `--channels`. In your Claude Code session:
 
 ```
-/telegram:access pair <code>
+/blackpaw-telegram:access pair <code>
 ```
 
 Your next DM reaches the assistant.
@@ -65,7 +65,7 @@ Your next DM reaches the assistant.
 
 **6. Lock it down.**
 
-Pairing is for capturing IDs. Once you're in, switch to `allowlist` so strangers don't get pairing-code replies. Ask Claude to do it, or `/telegram:access policy allowlist` directly.
+Pairing is for capturing IDs. Once you're in, switch to `allowlist` so strangers don't get pairing-code replies. Ask Claude to do it, or `/blackpaw-telegram:access policy allowlist` directly.
 
 ## Access control
 
@@ -93,7 +93,7 @@ Inbound messages trigger a typing indicator automatically — Telegram shows
 
 ## Photos
 
-Inbound photos are downloaded to `~/.claude/channels/telegram/inbox/` and the
+Inbound photos are downloaded to `~/.claude/channels/blackpaw-telegram/inbox/` and the
 local path is included in the `<channel>` notification so the assistant can
 `Read` it. Telegram compresses photos — if you need the original file, send it
 as a document instead (long-press → Send as File).
@@ -131,7 +131,7 @@ Extracted text is clamped at 20 000 chars to protect the session token budget.
 ## History
 
 The plugin writes inbound and outbound messages to
-`~/.claude/channels/telegram/history.sqlite` (`bun:sqlite`, single file).
+`~/.claude/channels/blackpaw-telegram/history.sqlite` (`bun:sqlite`, single file).
 Retention is env-tunable:
 
 | Env var | Default |
@@ -145,7 +145,7 @@ The pruner runs at boot and every 6 hours.
 ## Reminders (`schedule`)
 
 Claude can schedule reminders that fire later in the same chat. Rows live in
-`~/.claude/channels/telegram/schedule.sqlite`. Because there is no daemon,
+`~/.claude/channels/blackpaw-telegram/schedule.sqlite`. Because there is no daemon,
 the runner only fires while Claude Code is running — reminders whose
 `fire_at` passed while the plugin was offline fire on next launch with
 `fired_late: true`.
