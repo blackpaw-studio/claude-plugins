@@ -4,7 +4,25 @@ Connect a Telegram bot to your Claude Code with an MCP server.
 
 The MCP server logs into Telegram as a bot and provides tools to Claude to reply, react, or edit messages. When you message the bot, the server forwards the message to your Claude Code session.
 
-> This is the Blackpaw Studio fork of Anthropic's official Telegram channel plugin. It ships feature-for-feature with the official plugin today; upcoming releases layer in voice transcription, document ingest, inline-keyboard `ask_user`, scheduled reminders, and permission relay (based on the non-daemon portions of [claude-telegram-supercharged](https://github.com/k1p1l0/claude-telegram-supercharged)). See [NOTICE](./NOTICE) for attribution.
+> This is the Blackpaw Studio fork of Anthropic's official Telegram channel plugin. It is a superset of the upstream plugin — every upstream feature still works the same way, plus the additions listed below. Inspired by the non-daemon portions of [claude-telegram-supercharged](https://github.com/k1p1l0/claude-telegram-supercharged); see [NOTICE](./NOTICE) for attribution.
+
+## What this fork adds
+
+Beyond the upstream `reply` / `react` / `edit_message` / `download_attachment` toolset and basic DM pairing, this fork ships:
+
+- **Voice transcription** — voice notes and audio files arrive as text. Provider chain (Groq → Deepgram → OpenAI → local `whisper-cli`) auto-skips providers without credentials.
+- **Document ingest** — PDF, DOCX, CSV, TXT, JSON, LOG, MD attachments have their text extracted and inlined into the `<channel>` event.
+- **`ask_user` tool** — inline-keyboard prompts (up to 12 choices) that block until the user taps one or `timeout_s` elapses.
+- **`schedule` / `list_schedules` / `cancel_schedule` tools** — one-shot or recurring reminders persisted in SQLite. Missed reminders fire late on next launch.
+- **`voice_reply` tool** — ElevenLabs-synthesized voice replies (registered only when `ELEVENLABS_API_KEY` is set).
+- **SQLite history store** — every inbound and outbound message is persisted to `history.sqlite` with TTL/size pruning, exposed via `get_history` and `search_messages`.
+- **Reply-chain threading** — when a user replies to an earlier message, the plugin walks the chain (default depth 3) and prepends a `[reply chain]` block so Claude has the thread context.
+- **Forward-burst batching** — dumping 20+ forwards in 2 s collapses into a single summary event instead of flooding the session.
+- **Router hint** — `TELEGRAM_ROUTER_MODEL` env surfaces routing guidance in the MCP instructions so Claude stays on the right model and knows when to escalate.
+- **Forum Topics support** — inbound `message_thread_id` is preserved and `reply` accepts it, so the bot can participate in topic-organized supergroups without cross-topic leaks.
+- **Typing indicator** — Telegram shows "botname is typing…" automatically while the assistant works on a response (forum-topic-aware).
+
+Each is detailed below.
 
 ## Prerequisites
 
@@ -75,18 +93,20 @@ Quick reference: IDs are **numeric user IDs** (get yours from [@userinfobot](htt
 
 ## Tools exposed to the assistant
 
+Tools marked ★ are added by this fork; the rest mirror the upstream plugin.
+
 | Tool | Purpose |
 | --- | --- |
 | `reply` | Send to a chat. Takes `chat_id` + `text`, optionally `reply_to` (message ID) for native threading, `message_thread_id` for Forum Topics, and `files` (absolute paths) for attachments. Images (`.jpg`/`.png`/`.gif`/`.webp`) send as photos with inline preview; other types send as documents. Max 50MB each. Auto-chunks text; files send as separate messages after the text. Returns the sent message ID(s). |
 | `react` | Add an emoji reaction to a message by ID. **Only Telegram's fixed whitelist** is accepted (👍 👎 ❤ 🔥 👀 etc). |
 | `edit_message` | Edit a message the bot previously sent. Useful for "working…" → result progress updates. Only works on the bot's own messages. |
 | `download_attachment` | Fetch a file by `attachment_file_id` (from inbound meta) into the inbox. Returns the local path, capped at Telegram's 20 MB bot-download limit. |
-| `ask_user` | Post a question with up to 12 inline-keyboard choices and block until the user taps one (or the `timeout_s` elapses, default 5 min). Returns `{value, label, timed_out, asked_message_id}`. |
-| `get_history` | Fetch recent messages for a chat from the local SQLite store (inbound + outbound). `before_ts` paginates. Oldest first. |
-| `search_messages` | Case-insensitive substring search over the local store. |
-| `schedule` | Create a reminder (`once` or `recurring`). At fire time the plugin sends a Telegram message and emits a `<channel>` event so Claude can follow up. Reminders fire only while Claude Code is running — missed ones fire late on next launch. |
-| `list_schedules` / `cancel_schedule` | Inspect and cancel pending reminders. |
-| `voice_reply` | Reply with an ElevenLabs-synthesized voice message (audio bubble). **Only registered when `ELEVENLABS_API_KEY` is set.** |
+| `ask_user` ★ | Post a question with up to 12 inline-keyboard choices and block until the user taps one (or the `timeout_s` elapses, default 5 min). Returns `{value, label, timed_out, asked_message_id}`. |
+| `get_history` ★ | Fetch recent messages for a chat from the local SQLite store (inbound + outbound). `before_ts` paginates. Oldest first. |
+| `search_messages` ★ | Case-insensitive substring search over the local store. |
+| `schedule` ★ | Create a reminder (`once` or `recurring`). At fire time the plugin sends a Telegram message and emits a `<channel>` event so Claude can follow up. Reminders fire only while Claude Code is running — missed ones fire late on next launch. |
+| `list_schedules` / `cancel_schedule` ★ | Inspect and cancel pending reminders. |
+| `voice_reply` ★ | Reply with an ElevenLabs-synthesized voice message (audio bubble). **Only registered when `ELEVENLABS_API_KEY` is set.** |
 
 Inbound messages trigger a typing indicator automatically — Telegram shows
 "botname is typing…" while the assistant works on a response.
