@@ -19,7 +19,7 @@ import { z } from 'zod'
 import { Bot, GrammyError, InlineKeyboard, InputFile, type Context } from 'grammy'
 import type { ReactionTypeEmoji } from 'grammy/types'
 import { randomBytes } from 'crypto'
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync, statSync, renameSync, realpathSync, chmodSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync, statSync, renameSync, realpathSync, chmodSync, appendFileSync } from 'fs'
 import { homedir } from 'os'
 import { join, extname, sep } from 'path'
 import { transcribe, isTranscriptionAvailable } from './src/transcription/chain.ts'
@@ -54,6 +54,15 @@ const STATE_DIR = process.env.TELEGRAM_STATE_DIR ?? join(homedir(), '.claude', '
 const ACCESS_FILE = join(STATE_DIR, 'access.json')
 const APPROVED_DIR = join(STATE_DIR, 'approved')
 const ENV_FILE = join(STATE_DIR, '.env')
+const SERVER_LOG = join(STATE_DIR, 'server.log')
+
+// Durable cross-session log so the user can see what killed the process even
+// when the parent Claude session — and its stderr buffer — is gone.
+function logServer(line: string): void {
+  try {
+    appendFileSync(SERVER_LOG, `[${new Date().toISOString()}] ${line}\n`)
+  } catch {}
+}
 
 // Load ~/.claude/channels/blackpaw-telegram/.env into process.env. Real env wins.
 // Plugin-spawned servers don't get an env block — this is where the token lives.
@@ -100,10 +109,13 @@ writeFileSync(PID_FILE, String(process.pid))
 // Last-resort safety net — without these the process dies silently on any
 // unhandled promise rejection. With them it logs and keeps serving tools.
 process.on('unhandledRejection', err => {
+  const detail = err instanceof Error ? (err.stack ?? err.message) : String(err)
   process.stderr.write(`telegram channel: unhandled rejection: ${err}\n`)
+  logServer(`unhandledRejection: ${detail}`)
 })
 process.on('uncaughtException', err => {
   process.stderr.write(`telegram channel: uncaught exception: ${err}\n`)
+  logServer(`uncaughtException: ${err?.stack ?? err}`)
 })
 
 // Permission-reply spec from anthropics/claude-cli-internal
@@ -1016,10 +1028,11 @@ await mcp.connect(new StdioServerTransport())
 // the bot keeps polling forever as a zombie, holding the token and blocking
 // the next session with 409 Conflict.
 let shuttingDown = false
-function shutdown(): void {
+function shutdown(reason: string = 'unknown'): void {
   if (shuttingDown) return
   shuttingDown = true
-  process.stderr.write('telegram channel: shutting down\n')
+  process.stderr.write(`telegram channel: shutting down (${reason})\n`)
+  logServer(`shutdown: ${reason}`)
   try {
     if (parseInt(readFileSync(PID_FILE, 'utf8'), 10) === process.pid) rmSync(PID_FILE)
   } catch {}
@@ -1028,22 +1041,29 @@ function shutdown(): void {
   setTimeout(() => process.exit(0), 2000)
   void Promise.resolve(bot.stop()).finally(() => process.exit(0))
 }
-process.stdin.on('end', shutdown)
-process.stdin.on('close', shutdown)
-process.on('SIGTERM', shutdown)
-process.on('SIGINT', shutdown)
-process.on('SIGHUP', shutdown)
+process.stdin.on('end', () => shutdown('stdin ended'))
+process.stdin.on('close', () => shutdown('stdin closed'))
+process.on('SIGTERM', () => shutdown('signal: SIGTERM'))
+process.on('SIGINT', () => shutdown('signal: SIGINT'))
+process.on('SIGHUP', () => shutdown('signal: SIGHUP'))
 
 // Orphan watchdog: stdin events above don't reliably fire when the parent
-// chain (`bun run` wrapper → shell → us) is severed by a crash. Poll for
-// reparenting (POSIX) or a dead stdin pipe and self-terminate.
-const bootPpid = process.ppid
+// chain (`bun run` wrapper → shell → us) is severed by a crash. Only fire on
+// true orphan-to-init (ppid===1) — checking ppid !== bootPpid was too strict
+// and could trip on benign intermediate-shell exits during the boot chain.
 setInterval(() => {
   const orphaned =
-    (process.platform !== 'win32' && process.ppid !== bootPpid) ||
+    (process.platform !== 'win32' && process.ppid === 1) ||
     process.stdin.destroyed ||
     process.stdin.readableEnded
-  if (orphaned) shutdown()
+  if (orphaned) {
+    const cause = process.ppid === 1
+      ? 'orphaned: ppid=1'
+      : process.stdin.destroyed
+      ? 'stdin destroyed'
+      : 'stdin readableEnded'
+    shutdown(cause)
+  }
 }, 5000).unref()
 
 // Commands are DM-only. Responding in groups would: (1) leak pairing codes via
@@ -1556,18 +1576,17 @@ void (async () => {
       // bot.stop() mid-setup rejects with grammy's "Aborted delay" — expected, not an error.
       if (err instanceof Error && err.message === 'Aborted delay') return
       const is409 = err instanceof GrammyError && err.error_code === 409
-      if (is409 && attempt >= 8) {
-        process.stderr.write(
-          `telegram channel: 409 Conflict persists after ${attempt} attempts — ` +
-          `another poller is holding the bot token (stray 'bun server.ts' process or a second session). Exiting.\n`,
-        )
-        return
-      }
-      const delay = Math.min(1000 * attempt, 15000)
+      // Retry indefinitely. Giving up here leaves the MCP process alive but the
+      // bot silent — a worse failure mode than persistent retry. The startup
+      // stale-PID killer (above) clears any real lock on next plugin restart.
+      const delay = is409
+        ? Math.min(5000 * attempt, 30000) // 409: back off harder, 5s → 30s cap
+        : Math.min(1000 * attempt, 15000) // other errors: existing behavior
       const detail = is409
         ? `409 Conflict${attempt === 1 ? ' — another instance is polling (zombie session, or a second Claude Code running?)' : ''}`
         : `polling error: ${err}`
       process.stderr.write(`telegram channel: ${detail}, retrying in ${delay / 1000}s\n`)
+      if (is409 && attempt === 8) logServer(`409 Conflict persists past attempt ${attempt} — continuing to retry`)
       await new Promise(r => setTimeout(r, delay))
     }
   }
