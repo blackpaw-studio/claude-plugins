@@ -38,6 +38,7 @@ import {
   type BatchedForward,
 } from './src/threading/forwardBatch.ts'
 import { startAskUser, askUser } from './src/tools/askUser.ts'
+import { startPermissionApproval } from './src/tools/permissionApproval.ts'
 import {
   openSchedule,
   insertSchedule,
@@ -1035,6 +1036,13 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
 // ask_user callback handler — registers a grammy callback_query listener
 // that resolves pending askUser promises when the user taps a button.
 startAskUser(bot)
+
+// PermissionRequest approval bridge. Watches STATE_DIR/run/ for request files
+// dropped by bin/permission-bridge (the Claude Code hook), DMs the first
+// paired approver with an inline keyboard, and writes a response file the
+// hook returns to Claude. Approver pool reuses access.allowFrom — the set
+// of users the bot already trusts for DM inbound traffic.
+startPermissionApproval(bot, join(STATE_DIR, 'run'), () => loadAccess().allowFrom)
 
 // Scheduler — fires due reminders. Sends a Telegram message to the
 // original chat AND emits a <channel> event so Claude can follow up.
