@@ -54,7 +54,10 @@ type HookOutput = {
         behavior: 'allow'
         destination: 'localSettings'
       }>
-      reason?: string
+      // Deny-only, shown to Claude as the reason. Claude Code rejects the
+      // decision payload if this is misnamed (e.g. "reason") and falls back
+      // to the interactive permission dialog.
+      message?: string
     }
   }
 }
@@ -80,11 +83,11 @@ function writeAtomic(path: string, data: string): void {
   renameSync(tmp, path)
 }
 
-function emitDeny(reason: string): never {
+function emitDeny(message: string): never {
   const out: HookOutput = {
     hookSpecificOutput: {
       hookEventName: 'PermissionRequest',
-      decision: { behavior: 'deny', reason },
+      decision: { behavior: 'deny', message },
     },
   }
   process.stdout.write(JSON.stringify(out))
@@ -118,22 +121,37 @@ function emitAllow(
   process.exit(0)
 }
 
+function logBridge(runDir: string, line: string): void {
+  try {
+    mkdirSync(runDir, { recursive: true, mode: 0o700 })
+    writeFileSync(
+      join(runDir, 'bridge.log'),
+      `[${new Date().toISOString()}] ${line}\n`,
+      { flag: 'a', mode: 0o600 },
+    )
+  } catch { /* best-effort */ }
+}
+
 async function main(): Promise<void> {
+  const SD = stateDir()
+  const RUN_DIR = join(SD, 'run')
+  logBridge(RUN_DIR, `hook fired pid=${process.pid}`)
+
   const raw = readStdinSync()
   let input: HookInput = {}
   try {
     input = raw ? JSON.parse(raw) : {}
   } catch {
     // Malformed hook payload — fail open so we don't block the user's flow with no way out.
+    logBridge(RUN_DIR, `malformed stdin: ${raw.slice(0, 200)}`)
     emitDeny('permission-bridge: malformed hook input')
   }
 
   const toolName = typeof input.tool_name === 'string' ? input.tool_name : 'unknown'
   const cwd = typeof input.cwd === 'string' ? input.cwd : process.cwd()
   const sessionId = typeof input.session_id === 'string' ? input.session_id : ''
+  logBridge(RUN_DIR, `tool=${toolName} cwd=${cwd} session=${sessionId}`)
 
-  const SD = stateDir()
-  const RUN_DIR = join(SD, 'run')
   mkdirSync(RUN_DIR, { recursive: true, mode: 0o700 })
 
   const id = randomUUID()
@@ -177,8 +195,12 @@ async function main(): Promise<void> {
     try { rmSync(p, { force: true }) } catch { /* ignore */ }
   }
 
-  if (!resp) emitDeny('approval timeout')
+  if (!resp) {
+    logBridge(RUN_DIR, `id=${id} timeout`)
+    emitDeny('approval timeout')
+  }
 
+  logBridge(RUN_DIR, `id=${id} decision=${resp.decision}`)
   if (resp.decision === 'allow') emitAllow()
   if (resp.decision === 'always') {
     emitAllow({ persist: { toolName, ruleContent: buildRuleContent(toolName, input.tool_input) } })
