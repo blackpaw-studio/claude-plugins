@@ -1041,30 +1041,33 @@ function shutdown(reason: string = 'unknown'): void {
   setTimeout(() => process.exit(0), 2000)
   void Promise.resolve(bot.stop()).finally(() => process.exit(0))
 }
-process.stdin.on('end', () => shutdown('stdin ended'))
-process.stdin.on('close', () => shutdown('stdin closed'))
+// stdin EOF is NOT a reliable "parent is gone" signal. The MCP SDK's stdio
+// transport reads from stdin on its own schedule, and Bun can flip
+// stdin.destroyed / readableEnded during normal operation. Historically we
+// shutdown() on these events, which caused the bot to go silent every 30-60min
+// with no recovery (Claude Code does not auto-respawn dead MCP children).
+// Stay alive; let SIGTERM or a true ppid=1 reparent be the only exit paths.
+process.stdin.on('end', () => logServer('stdin ended (ignored; staying alive)'))
+process.stdin.on('close', () => logServer('stdin closed (ignored; staying alive)'))
 process.on('SIGTERM', () => shutdown('signal: SIGTERM'))
 process.on('SIGINT', () => shutdown('signal: SIGINT'))
 process.on('SIGHUP', () => shutdown('signal: SIGHUP'))
 
-// Orphan watchdog: stdin events above don't reliably fire when the parent
-// chain (`bun run` wrapper → shell → us) is severed by a crash. Only fire on
-// true orphan-to-init (ppid===1) — checking ppid !== bootPpid was too strict
-// and could trip on benign intermediate-shell exits during the boot chain.
+// Orphan watchdog: only fire on true orphan-to-init reparent. ppid===1 on
+// non-Windows means our parent exited without signaling us, which is the one
+// case where we genuinely need to self-terminate to avoid a stuck poller.
 setInterval(() => {
-  const orphaned =
-    (process.platform !== 'win32' && process.ppid === 1) ||
-    process.stdin.destroyed ||
-    process.stdin.readableEnded
-  if (orphaned) {
-    const cause = process.ppid === 1
-      ? 'orphaned: ppid=1'
-      : process.stdin.destroyed
-      ? 'stdin destroyed'
-      : 'stdin readableEnded'
-    shutdown(cause)
+  if (process.platform !== 'win32' && process.ppid === 1) {
+    shutdown('orphaned: ppid=1')
   }
 }, 5000).unref()
+
+// Liveness heartbeat: every 5 minutes, write a line to server.log so that if
+// the bot ever appears to "go dark" again, we can tell from the log whether
+// the process is actually dead or just unresponsive.
+setInterval(() => {
+  logServer(`heartbeat: pid=${process.pid} ppid=${process.ppid}`)
+}, 5 * 60_000).unref()
 
 // Commands are DM-only. Responding in groups would: (1) leak pairing codes via
 // /status to other group members, (2) confirm bot presence in non-allowlisted
