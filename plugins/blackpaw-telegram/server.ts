@@ -19,6 +19,7 @@ import { z } from 'zod'
 import { Bot, GrammyError, InlineKeyboard, InputFile, type Context } from 'grammy'
 import type { ReactionTypeEmoji } from 'grammy/types'
 import { randomBytes } from 'crypto'
+import { execSync } from 'child_process'
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync, statSync, renameSync, realpathSync, chmodSync, appendFileSync } from 'fs'
 import { homedir } from 'os'
 import { join, extname, sep } from 'path'
@@ -64,6 +65,16 @@ function logServer(line: string): void {
   } catch {}
 }
 
+// When Claude Code closes the stderr pipe, Bun emits EPIPE as an async
+// 'error' event on the Writable stream. With no listener, it becomes an
+// uncaughtException → the handler writes to stderr → another EPIPE → loop.
+// v0.3.0 hit this after the stdin-EOF fix removed the exit path that used to
+// mask it; the loop burned 1.1 GB of disk in under a minute. Installing
+// no-op error listeners on both standard streams prevents pipe errors from
+// ever reaching the uncaughtException handler.
+process.stderr.on('error', () => {})
+process.stdout.on('error', () => {})
+
 // Load ~/.claude/channels/blackpaw-telegram/.env into process.env. Real env wins.
 // Plugin-spawned servers don't get an env block — this is where the token lives.
 try {
@@ -94,16 +105,47 @@ const SCHEDULE_DB = join(STATE_DIR, 'schedule.sqlite')
 // Telegram allows exactly one getUpdates consumer per token. If a previous
 // session crashed (SIGKILL, terminal closed) its server.ts grandchild can
 // survive as an orphan and hold the slot forever, so every new session sees
-// 409 Conflict. Kill any stale holder before we start polling.
+// 409 Conflict. The pidfile alone is not enough — we observed a case where
+// TWO orphan pollers existed and the pidfile only remembered one, so the
+// other kept 409-conflicting forever. Now we scan for ALL sibling bun
+// server.ts processes whose cwd matches ours and kill them.
 mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
-try {
-  const stale = parseInt(readFileSync(PID_FILE, 'utf8'), 10)
-  if (stale > 1 && stale !== process.pid) {
-    process.kill(stale, 0)
-    process.stderr.write(`telegram channel: replacing stale poller pid=${stale}\n`)
-    process.kill(stale, 'SIGTERM')
+
+function killSiblingPollers(): void {
+  const ourCwd = process.cwd()
+  let pgrepOut = ''
+  try {
+    pgrepOut = execSync('pgrep -f "bun.*server\\.ts" 2>/dev/null || true', {
+      encoding: 'utf8',
+    })
+  } catch { return }
+  const candidates = pgrepOut
+    .split('\n')
+    .map(s => parseInt(s, 10))
+    .filter(p => p > 1 && p !== process.pid && !Number.isNaN(p))
+  for (const pid of candidates) {
+    let cwd = ''
+    try {
+      const out = execSync(`lsof -a -d cwd -p ${pid} -F n 2>/dev/null || true`, {
+        encoding: 'utf8',
+      })
+      const line = out.split('\n').find(l => l.startsWith('n'))
+      if (line) cwd = line.slice(1)
+    } catch {}
+    if (cwd !== ourCwd) continue
+    process.stderr.write(`telegram channel: killing sibling poller pid=${pid}\n`)
+    logServer(`killing sibling poller pid=${pid}`)
+    try { process.kill(pid, 'SIGTERM') } catch {}
+    // Busy-wait up to 1.5s for graceful exit, then SIGKILL.
+    const deadline = Date.now() + 1500
+    while (Date.now() < deadline) {
+      try { process.kill(pid, 0) } catch { break }
+    }
+    try { process.kill(pid, 0); process.kill(pid, 'SIGKILL') } catch {}
   }
-} catch {}
+}
+
+killSiblingPollers()
 writeFileSync(PID_FILE, String(process.pid))
 
 // Last-resort safety net — without these the process dies silently on any
