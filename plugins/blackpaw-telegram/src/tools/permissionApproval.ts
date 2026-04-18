@@ -125,6 +125,13 @@ function logDecision(runDir: string, entry: Record<string, unknown>): void {
   } catch { /* decisions log is best-effort */ }
 }
 
+function logWatcher(runDir: string, kind: string, detail?: string): void {
+  try {
+    const line = `[${new Date().toISOString()}] ${kind}${detail ? ' ' + detail : ''}\n`
+    writeFileSync(join(runDir, 'watcher.log'), line, { flag: 'a', mode: 0o600 })
+  } catch { /* best-effort */ }
+}
+
 function resolveResponse(
   prompt: PendingPrompt,
   body: BridgeResponse,
@@ -170,25 +177,57 @@ function sweepStale(runDir: string): void {
   }
 }
 
+/**
+ * On MCP startup, any unpaired .req.json that predates the current process
+ * corresponds to a hook that already timed out (the bridge polls for 5 min,
+ * then Claude Code reaps it). The bridge can't observe a new response once
+ * it's dead, so processing these would just spam Telegram with orphaned
+ * approval messages. Delete them.
+ */
+function dropPreStartupRequests(runDir: string): void {
+  let files: string[] = []
+  try { files = readdirSync(runDir) } catch { return }
+  let dropped = 0
+  for (const f of files) {
+    if (!f.endsWith('.req.json')) continue
+    try {
+      rmSync(join(runDir, f), { force: true })
+      dropped++
+    } catch { /* ignore */ }
+  }
+  if (dropped > 0) logWatcher(runDir, 'dropped-pre-startup', `count=${dropped}`)
+}
+
 async function processRequest(
   bot: Bot,
   runDir: string,
   req: RequestFile,
   approverPool: ApproverPool,
 ): Promise<void> {
+  logWatcher(runDir, 'process', `id=${req.id} tool=${req.tool_name}`)
   const respPath = join(runDir, `${req.id}.resp.json`)
-  const approvers = approverPool()
+  let approvers: string[]
+  try {
+    approvers = approverPool()
+  } catch (err) {
+    logWatcher(runDir, 'approver-pool-error', (err as Error).message)
+    writeResponse(respPath, { decision: 'deny', reason: 'approver pool unavailable' })
+    return
+  }
   const approverChatId = approvers[0]
   if (!approverChatId) {
+    logWatcher(runDir, 'no-approver', `id=${req.id}`)
     writeResponse(respPath, { decision: 'deny', reason: 'no approver configured (blackpaw-telegram: pair a user first)' })
     return
   }
 
   try {
+    logWatcher(runDir, 'sendMessage-start', `id=${req.id} chat=${approverChatId}`)
     const sent = await bot.api.sendMessage(approverChatId, formatPromptMessage(req), {
       parse_mode: 'HTML',
       reply_markup: buildKeyboard(req.id),
     })
+    logWatcher(runDir, 'sendMessage-ok', `id=${req.id} msg=${sent.message_id}`)
     pending.set(req.id, {
       id: req.id,
       req,
@@ -197,6 +236,7 @@ async function processRequest(
       sentMessageId: sent.message_id,
     })
   } catch (err) {
+    logWatcher(runDir, 'sendMessage-fail', `id=${req.id} err=${(err as Error).message}`)
     writeResponse(respPath, {
       decision: 'deny',
       reason: `blackpaw-telegram: failed to send approval message (${(err as Error).message})`,
@@ -210,7 +250,9 @@ export function startPermissionApproval(
   approverPool: ApproverPool,
 ): void {
   mkdirSync(runDir, { recursive: true, mode: 0o700 })
+  logWatcher(runDir, 'startup', `pid=${process.pid}`)
   sweepStale(runDir)
+  dropPreStartupRequests(runDir)
 
   // Callback tap: perm:<id>:<choice>
   bot.on('callback_query:data', async ctx => {
@@ -218,8 +260,10 @@ export function startPermissionApproval(
     const m = /^perm:([a-f0-9\-]{8,}):(allow|deny|always|reason)$/.exec(data)
     if (!m) return
     const [, id, choice] = m
+    logWatcher(runDir, 'callback', `id=${id} choice=${choice} from=${ctx.from?.id}`)
     const prompt = pending.get(id)
     if (!prompt) {
+      logWatcher(runDir, 'callback-unknown-id', `id=${id}`)
       await ctx.answerCallbackQuery({ text: 'Already decided or expired.' }).catch(() => {})
       return
     }
