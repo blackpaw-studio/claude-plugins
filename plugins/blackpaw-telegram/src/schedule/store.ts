@@ -37,7 +37,7 @@ let db: Database | null = null
 export function openSchedule(path: string): void {
   mkdirSync(dirname(path), { recursive: true })
   db = new Database(path, { create: true })
-  db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;')
+  db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;')
   db.exec(`
     CREATE TABLE IF NOT EXISTS schedules (
       id                INTEGER PRIMARY KEY AUTOINCREMENT,

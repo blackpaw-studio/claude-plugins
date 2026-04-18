@@ -19,7 +19,6 @@ import { z } from 'zod'
 import { Bot, GrammyError, InlineKeyboard, InputFile, type Context } from 'grammy'
 import type { ReactionTypeEmoji } from 'grammy/types'
 import { randomBytes } from 'crypto'
-import { execSync } from 'child_process'
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, rmSync, statSync, renameSync, realpathSync, chmodSync, appendFileSync } from 'fs'
 import { homedir } from 'os'
 import { join, extname, sep } from 'path'
@@ -51,6 +50,7 @@ import {
   type FireCallback,
 } from './src/schedule/runner.ts'
 import { synthesize as synthesizeTts, isTtsAvailable } from './src/tts/elevenlabs.ts'
+import { tryAcquirePollerLock } from './src/lock.ts'
 
 const STATE_DIR = process.env.TELEGRAM_STATE_DIR ?? join(homedir(), '.claude', 'channels', 'blackpaw-telegram')
 const ACCESS_FILE = join(STATE_DIR, 'access.json')
@@ -103,62 +103,48 @@ const PID_FILE = join(STATE_DIR, 'bot.pid')
 const HISTORY_DB = join(STATE_DIR, 'history.sqlite')
 const SCHEDULE_DB = join(STATE_DIR, 'schedule.sqlite')
 
-// Telegram allows exactly one getUpdates consumer per token. If a previous
-// session crashed (SIGKILL, terminal closed) its server.ts grandchild can
-// survive as an orphan and hold the slot forever, so every new session sees
-// 409 Conflict. The pidfile alone is not enough — we observed a case where
-// TWO orphan pollers existed and the pidfile only remembered one, so the
-// other kept 409-conflicting forever. Now we scan for ALL sibling bun
-// server.ts processes whose cwd matches ours and kill them.
+// Two startup modes share this file:
+//   - send-only (default): registers MCP tools, never calls getUpdates. Safe
+//     to run N instances in parallel; each uses bot.api.* REST for outbound.
+//   - poller (opt-in via `--poller` CLI arg or CLAUDE_DEV_CHANNEL_MODE=poller):
+//     everything in send-only + bot.start() long-poll + inbound handlers +
+//     scheduler firing + permission-approval watcher + dev-channel injection.
+// Telegram allows exactly one getUpdates consumer per token, so the poller
+// is a cooperative singleton: we flock(2) bot.pid non-blocking, and any
+// second process that asked for --poller but lost the race silently
+// degrades to send-only rather than killing the incumbent.
 mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
 
-function killSiblingPollers(): void {
-  const ourCwd = process.cwd()
-  let pgrepOut = ''
-  try {
-    pgrepOut = execSync('pgrep -f "bun.*server\\.ts" 2>/dev/null || true', {
-      encoding: 'utf8',
-    })
-  } catch { return }
-  const candidates = pgrepOut
-    .split('\n')
-    .map(s => parseInt(s, 10))
-    .filter(p => p > 1 && p !== process.pid && !Number.isNaN(p))
-  for (const pid of candidates) {
-    let cwd = ''
-    try {
-      const out = execSync(`lsof -a -d cwd -p ${pid} -F n 2>/dev/null || true`, {
-        encoding: 'utf8',
-      })
-      const line = out.split('\n').find(l => l.startsWith('n'))
-      if (line) cwd = line.slice(1)
-    } catch {}
-    if (cwd !== ourCwd) continue
-    process.stderr.write(`telegram channel: killing sibling poller pid=${pid}\n`)
-    logServer(`killing sibling poller pid=${pid}`)
-    try { process.kill(pid, 'SIGTERM') } catch {}
-    // Busy-wait up to 1.5s for graceful exit, then SIGKILL.
-    const deadline = Date.now() + 1500
-    while (Date.now() < deadline) {
-      try { process.kill(pid, 0) } catch { break }
-    }
-    try { process.kill(pid, 0); process.kill(pid, 'SIGKILL') } catch {}
+type Mode = 'poller' | 'send-only'
+const wantPoller =
+  process.argv.includes('--poller') ||
+  process.env.CLAUDE_DEV_CHANNEL_MODE === 'poller'
+
+let mode: Mode = wantPoller ? 'poller' : 'send-only'
+let releasePollerLock: (() => void) | null = null
+
+if (mode === 'poller') {
+  const res = tryAcquirePollerLock(PID_FILE)
+  if (res.held) {
+    releasePollerLock = res.release
+    logServer(`[poller] lock acquired pid=${process.pid}`)
+  } else {
+    mode = 'send-only'
+    logServer(`[send-only] poller lock held by pid=${res.existingPid ?? '?'} — starting in send-only mode`)
   }
 }
-
-killSiblingPollers()
-writeFileSync(PID_FILE, String(process.pid))
+logServer(`[${mode}] starting pid=${process.pid}`)
 
 // Last-resort safety net — without these the process dies silently on any
 // unhandled promise rejection. With them it logs and keeps serving tools.
 process.on('unhandledRejection', err => {
   const detail = err instanceof Error ? (err.stack ?? err.message) : String(err)
   process.stderr.write(`telegram channel: unhandled rejection: ${err}\n`)
-  logServer(`unhandledRejection: ${detail}`)
+  logServer(`[${mode}] unhandledRejection: ${detail}`)
 })
 process.on('uncaughtException', err => {
   process.stderr.write(`telegram channel: uncaught exception: ${err}\n`)
-  logServer(`uncaughtException: ${err?.stack ?? err}`)
+  logServer(`[${mode}] uncaughtException: ${err?.stack ?? err}`)
 })
 
 const bot = new Bot(TOKEN)
@@ -877,6 +863,8 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
         return { content: [{ type: 'text', text: JSON.stringify(rows, null, 2) }] }
       }
       case 'ask_user': {
+        // In send-only mode this sends the inline keyboard but never resolves —
+        // callback_query routing only runs in the poller process.
         const chat_id = args.chat_id as string
         assertAllowedChat(chat_id)
         const choices = (args.choices as string[]) ?? []
@@ -987,6 +975,14 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
   }
 })
 
+// Poller-only background work. In send-only mode these would either do nothing
+// useful (callback_query / inbound handlers can't fire without getUpdates) or
+// duplicate side effects (scheduler firing must be singleton to avoid sending
+// the same reminder twice).
+// ask_user invoked from a send-only process will send its inline keyboard via
+// bot.api but the resulting callback_query is routed only to the poller — so
+// the send-only caller's promise never resolves.
+if (mode === 'poller') {
 // ask_user callback handler — registers a grammy callback_query listener
 // that resolves pending askUser promises when the user taps a button.
 startAskUser(bot)
@@ -996,10 +992,13 @@ startAskUser(bot)
 // paired approver with an inline keyboard, and writes a response file the
 // hook returns to Claude. Approver pool reuses access.allowFrom — the set
 // of users the bot already trusts for DM inbound traffic.
+// Requires callback_query — poller-only.
 startPermissionApproval(bot, join(STATE_DIR, 'run'), () => loadAccess().allowFrom)
 
 // Scheduler — fires due reminders. Sends a Telegram message to the
 // original chat AND emits a <channel> event so Claude can follow up.
+// Singleton = poller-only; send-only processes can still CRUD schedules via
+// the MCP tools, but can't fire them.
 const fireReminder: FireCallback = (row, late) => {
   const prefix = late ? '⏰ (reminder, fired late)' : '⏰ (reminder)'
   void bot.api
@@ -1025,6 +1024,7 @@ const fireReminder: FireCallback = (row, late) => {
   }).catch(err => process.stderr.write(`telegram channel: reminder notify failed: ${err}\n`))
 }
 startScheduler(fireReminder)
+}
 
 await mcp.connect(new StdioServerTransport())
 
@@ -1035,14 +1035,16 @@ let shuttingDown = false
 function shutdown(reason: string = 'unknown'): void {
   if (shuttingDown) return
   shuttingDown = true
-  process.stderr.write(`telegram channel: shutting down (${reason})\n`)
-  logServer(`shutdown: ${reason}`)
-  try {
-    if (parseInt(readFileSync(PID_FILE, 'utf8'), 10) === process.pid) rmSync(PID_FILE)
-  } catch {}
+  process.stderr.write(`telegram channel [${mode}]: shutting down (${reason})\n`)
+  logServer(`[${mode}] shutdown: ${reason}`)
+  if (mode === 'poller' && releasePollerLock) {
+    releasePollerLock()
+    try { rmSync(PID_FILE, { force: true }) } catch {}
+  }
   // bot.stop() signals the poll loop to end; the current getUpdates request
   // may take up to its long-poll timeout to return. Force-exit after 2s.
   setTimeout(() => process.exit(0), 2000)
+  // In send-only mode bot was never started, so bot.stop() resolves immediately.
   void Promise.resolve(bot.stop()).finally(() => process.exit(0))
 }
 // stdin EOF is NOT a reliable "parent is gone" signal. The MCP SDK's stdio
@@ -1051,8 +1053,8 @@ function shutdown(reason: string = 'unknown'): void {
 // shutdown() on these events, which caused the bot to go silent every 30-60min
 // with no recovery (Claude Code does not auto-respawn dead MCP children).
 // Stay alive; let SIGTERM or a true ppid=1 reparent be the only exit paths.
-process.stdin.on('end', () => logServer('stdin ended (ignored; staying alive)'))
-process.stdin.on('close', () => logServer('stdin closed (ignored; staying alive)'))
+process.stdin.on('end', () => logServer(`[${mode}] stdin ended (ignored; staying alive)`))
+process.stdin.on('close', () => logServer(`[${mode}] stdin closed (ignored; staying alive)`))
 process.on('SIGTERM', () => shutdown('signal: SIGTERM'))
 process.on('SIGINT', () => shutdown('signal: SIGINT'))
 process.on('SIGHUP', () => shutdown('signal: SIGHUP'))
@@ -1070,7 +1072,7 @@ setInterval(() => {
 // the bot ever appears to "go dark" again, we can tell from the log whether
 // the process is actually dead or just unresponsive.
 setInterval(() => {
-  logServer(`heartbeat: pid=${process.pid} ppid=${process.ppid}`)
+  logServer(`[${mode}] heartbeat: pid=${process.pid} ppid=${process.ppid}`)
 }, 5 * 60_000).unref()
 
 // Commands are DM-only. Responding in groups would: (1) leak pairing codes via
@@ -1470,15 +1472,14 @@ async function handleInbound(
 // Without this, any throw in a message handler stops polling permanently
 // (grammy's default error handler calls bot.stop() and rethrows).
 bot.catch(err => {
-  process.stderr.write(`telegram channel: handler error (polling continues): ${err.error}\n`)
+  process.stderr.write(`telegram channel [${mode}]: handler error (polling continues): ${err.error}\n`)
 })
 
-// Retry polling with backoff on any error. Previously only 409 was retried —
-// a single ETIMEDOUT/ECONNRESET/DNS failure rejected bot.start(), the catch
-// returned, and polling stopped permanently while the process stayed alive
-// (MCP stdin keeps it running). Outbound tools kept working but the bot was
-// deaf to inbound messages until a full restart.
-void (async () => {
+// Long-poll retry loop. Poller-only — send-only processes never open a
+// getUpdates consumer, which is the whole point of the mode split. Inbound
+// message handlers, bot commands, and the bot.catch above are pure
+// registrations; without bot.start() they remain inert.
+if (mode === 'poller') void (async () => {
   for (let attempt = 1; ; attempt++) {
     try {
       await bot.start({
@@ -1512,7 +1513,7 @@ void (async () => {
         ? `409 Conflict${attempt === 1 ? ' — another instance is polling (zombie session, or a second Claude Code running?)' : ''}`
         : `polling error: ${err}`
       process.stderr.write(`telegram channel: ${detail}, retrying in ${delay / 1000}s\n`)
-      if (is409 && attempt === 8) logServer(`409 Conflict persists past attempt ${attempt} — continuing to retry`)
+      if (is409 && attempt === 8) logServer(`[poller] 409 Conflict persists past attempt ${attempt} — continuing to retry`)
       await new Promise(r => setTimeout(r, delay))
     }
   }
