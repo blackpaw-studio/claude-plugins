@@ -105,28 +105,27 @@ const SCHEDULE_DB = join(STATE_DIR, 'schedule.sqlite')
 
 // Telegram permits exactly one getUpdates consumer per bot token. flock(2)
 // on STATE_DIR/bot.pid enforces the singleton; the kernel auto-releases on
-// process death so orphaned pollers don't hold the slot forever. If another
-// live process somehow holds the lock we exit loudly — better for MCP to
-// surface the error than for the plugin to silently stop working.
+// process death so orphaned pollers don't hold the slot forever. Multiple
+// claude processes load this plugin simultaneously (subagents, reconnects,
+// parallel sessions), so losers of the lock race silently degrade to
+// send-only: MCP tools still work via bot.api REST, they just don't poll.
+// Exactly one process polls; everyone else uses its outbound tools.
 mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
 
-let releasePollerLock: () => void
+let isPoller = false
+let releasePollerLock: (() => void) | null = null
 try {
   const res = tryAcquirePollerLock(PID_FILE)
-  if (!res.held) {
-    const msg = `telegram channel: poller lock held by pid=${res.existingPid ?? '?'} — another instance is already running; exiting.`
-    process.stderr.write(`${msg}\n`)
-    logServer(msg)
-    process.exit(1)
+  if (res.held) {
+    isPoller = true
+    releasePollerLock = res.release
+    logServer(`startup pid=${process.pid} (poller)`)
+  } else {
+    logServer(`startup pid=${process.pid} (send-only; poller=${res.existingPid ?? '?'})`)
   }
-  releasePollerLock = res.release
-  logServer(`startup pid=${process.pid}`)
 } catch (err) {
   const detail = err instanceof Error ? err.message : String(err)
-  const msg = `telegram channel: failed to acquire poller lock (${detail}); exiting.`
-  process.stderr.write(`${msg}\n`)
-  logServer(msg)
-  process.exit(1)
+  logServer(`startup pid=${process.pid} (send-only; flock unavailable: ${detail})`)
 }
 
 // Last-resort safety net — without these the process dies silently on any
@@ -967,6 +966,11 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
   }
 })
 
+// Poller-only background work. In send-only mode these wouldn't do anything
+// useful (callback_query / inbound handlers can't fire without getUpdates)
+// and would duplicate side effects (scheduler firing must be singleton or
+// the same reminder sends twice).
+if (isPoller) {
 // ask_user callback handler — registers a grammy callback_query listener
 // that resolves pending askUser promises when the user taps a button.
 startAskUser(bot)
@@ -1004,6 +1008,7 @@ const fireReminder: FireCallback = (row, late) => {
   }).catch(err => process.stderr.write(`telegram channel: reminder notify failed: ${err}\n`))
 }
 startScheduler(fireReminder)
+}
 
 await mcp.connect(new StdioServerTransport())
 
@@ -1016,8 +1021,10 @@ function shutdown(reason: string = 'unknown'): void {
   shuttingDown = true
   process.stderr.write(`telegram channel: shutting down (${reason})\n`)
   logServer(`shutdown: ${reason}`)
-  releasePollerLock()
-  try { rmSync(PID_FILE, { force: true }) } catch {}
+  if (isPoller && releasePollerLock) {
+    releasePollerLock()
+    try { rmSync(PID_FILE, { force: true }) } catch {}
+  }
   // bot.stop() signals the poll loop to end; the current getUpdates request
   // may take up to its long-poll timeout to return. Force-exit after 2s.
   setTimeout(() => process.exit(0), 2000).unref()
@@ -1451,8 +1458,10 @@ bot.catch(err => {
   process.stderr.write(`telegram channel: handler error (polling continues): ${err.error}\n`)
 })
 
-// Long-poll retry loop.
-void (async () => {
+// Long-poll retry loop. Poller-only — send-only processes never open a
+// getUpdates consumer. bot.on/bot.command/bot.catch handlers above are
+// pure registrations and remain inert without bot.start().
+if (isPoller) void (async () => {
   for (let attempt = 1; ; attempt++) {
     try {
       await bot.start({
