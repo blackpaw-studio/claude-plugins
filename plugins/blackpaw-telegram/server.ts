@@ -124,13 +124,21 @@ let mode: Mode = wantPoller ? 'poller' : 'send-only'
 let releasePollerLock: (() => void) | null = null
 
 if (mode === 'poller') {
-  const res = tryAcquirePollerLock(PID_FILE)
-  if (res.held) {
-    releasePollerLock = res.release
-    logServer(`[poller] lock acquired pid=${process.pid}`)
-  } else {
+  // FFI load or flock syscall failure must not take down the send-only path,
+  // since send-only is the safe default every Claude process can always use.
+  try {
+    const res = tryAcquirePollerLock(PID_FILE)
+    if (res.held) {
+      releasePollerLock = res.release
+      logServer(`[poller] lock acquired pid=${process.pid}`)
+    } else {
+      mode = 'send-only'
+      logServer(`[send-only] poller lock held by pid=${res.existingPid ?? '?'} — starting in send-only mode`)
+    }
+  } catch (err) {
     mode = 'send-only'
-    logServer(`[send-only] poller lock held by pid=${res.existingPid ?? '?'} — starting in send-only mode`)
+    const detail = err instanceof Error ? err.message : String(err)
+    logServer(`[send-only] poller lock unavailable (${detail}) — starting in send-only mode`)
   }
 }
 logServer(`[${mode}] starting pid=${process.pid}`)
@@ -863,8 +871,12 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
         return { content: [{ type: 'text', text: JSON.stringify(rows, null, 2) }] }
       }
       case 'ask_user': {
-        // In send-only mode this sends the inline keyboard but never resolves —
-        // callback_query routing only runs in the poller process.
+        // callback_query routing only runs in the poller process. Fail fast
+        // in send-only mode rather than sending a keyboard whose taps will
+        // be routed to a different (or no) process, leaving the caller hung.
+        if (mode !== 'poller') {
+          throw new Error('ask_user requires poller mode — this blackpaw-telegram instance is running send-only (another instance holds the poller lock).')
+        }
         const chat_id = args.chat_id as string
         assertAllowedChat(chat_id)
         const choices = (args.choices as string[]) ?? []
@@ -1043,7 +1055,7 @@ function shutdown(reason: string = 'unknown'): void {
   }
   // bot.stop() signals the poll loop to end; the current getUpdates request
   // may take up to its long-poll timeout to return. Force-exit after 2s.
-  setTimeout(() => process.exit(0), 2000)
+  setTimeout(() => process.exit(0), 2000).unref()
   // In send-only mode bot was never started, so bot.stop() resolves immediately.
   void Promise.resolve(bot.stop()).finally(() => process.exit(0))
 }
