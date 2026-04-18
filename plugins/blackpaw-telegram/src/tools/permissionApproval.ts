@@ -17,6 +17,7 @@
 import { readdirSync, readFileSync, writeFileSync, renameSync, rmSync, mkdirSync, statSync, existsSync } from 'fs'
 import { join } from 'path'
 import { InlineKeyboard } from 'grammy'
+import { sweepStaleSessionMarkers } from '../sessionMarker.ts'
 import type { Bot } from 'grammy'
 
 const POLL_MS = 300
@@ -354,7 +355,10 @@ export function startPermissionApproval(
   let sweepTick = 0
   setInterval(() => {
     sweepTick++
-    if (sweepTick % 60 === 0) sweepStale(runDir) // ~every 18s
+    if (sweepTick % 60 === 0) {
+      sweepStale(runDir) // ~every 18s
+      sweepStaleSessionMarkers(runDir)
+    }
 
     let files: string[]
     try { files = readdirSync(runDir) } catch { return }

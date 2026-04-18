@@ -38,6 +38,7 @@ import {
 } from './src/threading/forwardBatch.ts'
 import { startAskUser, askUser } from './src/tools/askUser.ts'
 import { startPermissionApproval } from './src/tools/permissionApproval.ts'
+import { writeSessionMarkers, sweepStaleSessionMarkers } from './src/sessionMarker.ts'
 import {
   openSchedule,
   insertSchedule,
@@ -127,6 +128,22 @@ try {
   const detail = err instanceof Error ? err.message : String(err)
   logServer(`startup pid=${process.pid} (send-only; flock unavailable: ${detail})`)
 }
+
+// Session marker — the hook (bin/permission-bridge) uses these to tell
+// whether a PermissionRequest fired inside a plugin-loaded Claude session
+// or in some other session that happens to have the plugin installed.
+// See src/sessionMarker.ts for the full rationale.
+const RUN_DIR = join(STATE_DIR, 'run')
+const sessionMarkerPaths: string[] = writeSessionMarkers(RUN_DIR, {
+  mcp_pid: process.pid,
+  role: isPoller ? 'poller' : 'send-only',
+})
+if (sessionMarkerPaths.length > 0) {
+  logServer(`session markers: ${sessionMarkerPaths.length} (${sessionMarkerPaths.join(', ')})`)
+} else {
+  logServer(`session markers: none written (ppid=${process.ppid})`)
+}
+if (isPoller) sweepStaleSessionMarkers(RUN_DIR)
 
 // Last-resort safety net — without these the process dies silently on any
 // unhandled promise rejection. With them it logs and keeps serving tools.
@@ -1021,6 +1038,9 @@ function shutdown(reason: string = 'unknown'): void {
   shuttingDown = true
   process.stderr.write(`telegram channel: shutting down (${reason})\n`)
   logServer(`shutdown: ${reason}`)
+  for (const p of sessionMarkerPaths) {
+    try { rmSync(p, { force: true }) } catch { /* ignore */ }
+  }
   if (isPoller && releasePollerLock) {
     releasePollerLock()
     try { rmSync(PID_FILE, { force: true }) } catch {}

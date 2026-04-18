@@ -29,6 +29,7 @@ import {
 import { join } from 'path'
 import { homedir } from 'os'
 import { randomUUID } from 'crypto'
+import { hookIsInPluginSession } from '../src/sessionMarker.ts'
 
 type HookInput = {
   tool_name?: string
@@ -151,6 +152,18 @@ async function main(): Promise<void> {
   const cwd = typeof input.cwd === 'string' ? input.cwd : process.cwd()
   const sessionId = typeof input.session_id === 'string' ? input.session_id : ''
   logBridge(RUN_DIR, `tool=${toolName} cwd=${cwd} session=${sessionId}`)
+
+  // Scope: only forward if the plugin's MCP server is running in this Claude
+  // session. Any other session has the hook installed (plugins are global)
+  // but no MCP server → no approver → forwarding would broadcast prompts
+  // from unrelated sessions to Telegram. Abstain with no stdout so Claude
+  // falls back to its default CLI permission prompt.
+  const session = hookIsInPluginSession(RUN_DIR)
+  if (!session.matched) {
+    logBridge(RUN_DIR, `skip: no plugin session for ppid=${process.ppid} session=${sessionId}`)
+    process.exit(0)
+  }
+  logBridge(RUN_DIR, `matched plugin session claudePid=${session.claudePid}`)
 
   mkdirSync(RUN_DIR, { recursive: true, mode: 0o700 })
 
