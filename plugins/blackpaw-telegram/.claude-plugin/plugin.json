@@ -1,7 +1,7 @@
 {
   "name": "blackpaw-telegram",
   "description": "Telegram channel for Claude Code — messaging bridge with pairing, allowlists, mention-triggered groups, and (roadmap) voice transcription, document ingest, inline keyboards, and scheduled reminders. Forked from Anthropic's official Telegram channel; extended with non-daemon features from claude-telegram-supercharged.",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "author": {
     "name": "Blackpaw Studio",
     "email": "evan@blackpaw.studio"

@@ -255,10 +255,12 @@ export function startPermissionApproval(
   dropPreStartupRequests(runDir)
 
   // Callback tap: perm:<id>:<choice>
-  bot.on('callback_query:data', async ctx => {
+  // Call next() on non-matches so other callback_query handlers (askUser)
+  // stay reachable.
+  bot.on('callback_query:data', async (ctx, next) => {
     const data = ctx.callbackQuery.data
     const m = /^perm:([a-f0-9\-]{8,}):(allow|deny|always|reason)$/.exec(data)
-    if (!m) return
+    if (!m) { await next(); return }
     const [, id, choice] = m
     logWatcher(runDir, 'callback', `id=${id} choice=${choice} from=${ctx.from?.id}`)
     const prompt = pending.get(id)

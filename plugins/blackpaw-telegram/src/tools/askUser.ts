@@ -33,10 +33,13 @@ const pending = new Map<string, PendingAsk>()
 
 export function startAskUser(bot: Bot): void {
   // Callback payload: ask:<id>:<index>. Index points into labels/values.
-  bot.on('callback_query:data', async ctx => {
+  // We must call next() on non-matches so sibling callback_query handlers
+  // (e.g. permissionApproval's `perm:` router) still get a shot. Returning
+  // without next() halts grammY's middleware chain for this update.
+  bot.on('callback_query:data', async (ctx, next) => {
     const data = ctx.callbackQuery.data
     const m = /^ask:([a-z0-9]{6}):(\d+)$/.exec(data)
-    if (!m) return // Not our callback — grammy dispatches to other handlers.
+    if (!m) { await next(); return }
     const [, id, idxStr] = m
     const entry = pending.get(id)
     if (!entry) {
