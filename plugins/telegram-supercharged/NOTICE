@@ -1,0 +1,8 @@
+This directory is a mirror of https://github.com/k1p1l0/claude-telegram-supercharged
+(Apache-2.0), republished in this marketplace for easier installation.
+
+Contents are synced from upstream `master` daily by
+`.github/workflows/sync-telegram-supercharged.yml`. The only file owned by this
+marketplace is `.claude-plugin/plugin.json`, which is regenerated on each sync.
+
+Issues, feature requests, and contributions belong upstream, not here.

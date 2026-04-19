@@ -1,0 +1,20 @@
+{
+  "name": "telegram-supercharged",
+  "description": "Supercharged Claude Code Telegram plugin — threading, voice messages 2 ways, stickers, GIFs, reactions, MarkdownV2 & more. Drop-in upgrade to the official Telegram plugin.",
+  "version": "0.0.1",
+  "author": {
+    "name": "k1p1l0",
+    "url": "https://github.com/k1p1l0"
+  },
+  "homepage": "https://github.com/k1p1l0/claude-telegram-supercharged",
+  "repository": "https://github.com/k1p1l0/claude-telegram-supercharged",
+  "license": "Apache-2.0",
+  "keywords": [
+    "telegram",
+    "messaging",
+    "channel",
+    "mcp",
+    "voice",
+    "transcription"
+  ]
+}
