@@ -6,7 +6,7 @@
  * by the Telegram MCP server when the user requests a full context reset,
  * then kills and restarts the claude process for a fresh session.
  *
- * Signal file: ~/.claude/channels/telegram/data/restart.signal
+ * Signal file: ~/.claude/channels/telegram-supercharged/data/restart.signal
  *
  * Usage:
  *   bun supervisor.ts [extra claude flags...]
@@ -40,7 +40,7 @@ const CLAUDE_CMD = "claude";
 const ROUTER_MODEL = process.env.TELEGRAM_ROUTER_MODEL || "sonnet";
 const BASE_ARGS = [
 	"--channels",
-	"plugin:telegram@claude-plugins-official",
+	"plugin:telegram-supercharged@blackpaw-plugins",
 	"--dangerously-skip-permissions",
 	"--model",
 	ROUTER_MODEL,

@@ -14,7 +14,7 @@ allowed-tools:
   - Read
 ---
 
-# /telegram:monitor — Telegram Daemon Monitor
+# /telegram-supercharged:monitor — Telegram Daemon Monitor
 
 Shows the health and status of the Telegram daemon at a glance.
 
@@ -48,7 +48,7 @@ Report loaded/not loaded.
 ### 3. Recent supervisor logs
 
 ```bash
-tail -10 ~/.claude/channels/telegram/data/supervisor-stderr.log
+tail -10 ~/.claude/channels/telegram-supercharged/data/supervisor-stderr.log
 ```
 
 Show the last few log entries — look for crashes, restarts, orphan cleanup, or errors.
@@ -56,7 +56,7 @@ Show the last few log entries — look for crashes, restarts, orphan cleanup, or
 ### 4. MCP server health
 
 ```bash
-cat ~/.claude/channels/telegram/data/supervisor-stdout.log | strings | grep -i "MCP server" | tail -5
+cat ~/.claude/channels/telegram-supercharged/data/supervisor-stdout.log | strings | grep -i "MCP server" | tail -5
 ```
 
 Report any "MCP server needs a..." or "MCP servers fail" messages.
@@ -64,7 +64,7 @@ Report any "MCP server needs a..." or "MCP servers fail" messages.
 ### 5. Remote control URL
 
 ```bash
-cat ~/.claude/channels/telegram/data/supervisor-stdout.log | strings | grep "session_" | tail -1
+cat ~/.claude/channels/telegram-supercharged/data/supervisor-stdout.log | strings | grep "session_" | tail -1
 ```
 
 Extract and show the `https://claude.ai/code/session_XXX` URL so the user can watch the daemon live in the browser.
@@ -72,7 +72,7 @@ Extract and show the `https://claude.ai/code/session_XXX` URL so the user can wa
 ### 6. Lock file
 
 ```bash
-cat ~/.claude/channels/telegram/data/telegram.lock 2>/dev/null
+cat ~/.claude/channels/telegram-supercharged/data/telegram.lock 2>/dev/null
 ```
 
 Show the PID in the lock file and whether that process is still alive.

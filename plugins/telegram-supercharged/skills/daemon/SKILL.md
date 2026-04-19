@@ -13,7 +13,7 @@ allowed-tools:
   - Read
 ---
 
-# /telegram:daemon — Telegram Daemon Lifecycle Manager
+# /telegram-supercharged:daemon — Telegram Daemon Lifecycle Manager
 
 Full lifecycle management for the Telegram bot daemon (launchd + supervisor + Claude).
 
@@ -60,7 +60,7 @@ Wait 10 seconds, then run full status check.
 
 ### `status` (default if no args and daemon IS running)
 
-Run the full monitor check — same as /telegram:monitor:
+Run the full monitor check — same as /telegram-supercharged:monitor:
 
 1. Process status (supervisor, expect, claude, MCP server, caffeinate)
 2. Launchd loaded/not
@@ -73,7 +73,7 @@ Run the full monitor check — same as /telegram:monitor:
 Tail the last 30 lines of supervisor stderr:
 
 ```bash
-tail -30 ~/.claude/channels/telegram/data/supervisor-stderr.log
+tail -30 ~/.claude/channels/telegram-supercharged/data/supervisor-stderr.log
 ```
 
 ### `stdout`
@@ -81,7 +81,7 @@ tail -30 ~/.claude/channels/telegram/data/supervisor-stderr.log
 Tail the last 30 lines of daemon's Claude output:
 
 ```bash
-tail -30 ~/.claude/channels/telegram/data/supervisor-stdout.log
+tail -30 ~/.claude/channels/telegram-supercharged/data/supervisor-stdout.log
 ```
 
 ### `url`
@@ -89,7 +89,7 @@ tail -30 ~/.claude/channels/telegram/data/supervisor-stdout.log
 Just show the remote control URL:
 
 ```bash
-cat ~/.claude/channels/telegram/data/supervisor-stdout.log | strings | grep "session_" | tail -1
+cat ~/.claude/channels/telegram-supercharged/data/supervisor-stdout.log | strings | grep "session_" | tail -1
 ```
 
 ### No args
