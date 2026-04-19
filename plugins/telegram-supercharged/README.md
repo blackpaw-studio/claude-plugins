@@ -71,7 +71,7 @@ Drop-in upgrade for the [official Claude Code Telegram plugin](https://github.co
 | **🔄 Daemon Mode** | Supervisor auto-restarts Claude on crash or context reset. Memory preserved, zero downtime. |
 | **🛡 Context Watchdog** | Auto-restarts when context exceeds 70% to prevent unresponsive sessions. SQLite history and memory survive restarts. |
 | **🔒 Single-Instance Lock** | PID-based lock file prevents duplicate bot instances competing for Telegram updates. |
-| **🖥 Daemon Management** | `/telegram:daemon start\|stop\|restart\|status\|logs` -- full lifecycle. `/telegram:monitor` for health dashboard with remote control URL. |
+| **🖥 Daemon Management** | `/telegram-supercharged:daemon start\|stop\|restart\|status\|logs` -- full lifecycle. `/telegram-supercharged:monitor` for health dashboard with remote control URL. |
 | **⏰ Scheduled Messages** | `schedule` tool for reminders and recurring tasks. "at" (one-shot) and "every" (interval) types. Persists across restarts. |
 | **📅 Google Calendar** | Check schedule, create events, daily briefings from Telegram. Multi-account support. Proactive — Claude uses calendar context when answering. |
 | **📸 Headless Screenshots** | Playwright-based page capture -- works in daemon mode where Chrome isn't available. |
@@ -118,17 +118,17 @@ cp claude-telegram-supercharged/supervisor.ts ~/.claude/scripts/telegram-supervi
 ### 4. Give the server the token
 
 ```
-/telegram:configure 123456789:AAHfiqksKZ8...
+/telegram-supercharged:configure 123456789:AAHfiqksKZ8...
 ```
 
-Writes `TELEGRAM_BOT_TOKEN=...` to `~/.claude/channels/telegram/.env`. You can also write that file by hand, or set the variable in your shell environment -- shell takes precedence.
+Writes `TELEGRAM_BOT_TOKEN=...` to `~/.claude/channels/telegram-supercharged/.env`. You can also write that file by hand, or set the variable in your shell environment -- shell takes precedence.
 
 ### 5. Relaunch with the channel flag
 
 The server won't connect without this -- exit your session and start a new one:
 
 ```sh
-claude --channels plugin:telegram@claude-plugins-official
+claude --channels plugin:telegram-supercharged@blackpaw-plugins
 ```
 
 Or use the **daemon supervisor** for always-on operation with auto-restart and context reset from Telegram (see [Daemon Mode](#daemon-mode)):
@@ -142,7 +142,7 @@ bun ~/.claude/scripts/telegram-supervisor.ts
 With Claude Code running from the previous step, DM your bot on Telegram -- it replies with a 6-character pairing code. If the bot doesn't respond, make sure your session is running with `--channels`. In your Claude Code session:
 
 ```
-/telegram:access pair <code>
+/telegram-supercharged:access pair <code>
 ```
 
 Your next DM reaches the assistant.
@@ -151,7 +151,7 @@ Your next DM reaches the assistant.
 
 ### 7. Lock it down
 
-Pairing is for capturing IDs. Once you're in, switch to `allowlist` so strangers don't get pairing-code replies. Ask Claude to do it, or `/telegram:access policy allowlist` directly.
+Pairing is for capturing IDs. Once you're in, switch to `allowlist` so strangers don't get pairing-code replies. Ask Claude to do it, or `/telegram-supercharged:access policy allowlist` directly.
 
 ### Updating
 
@@ -205,7 +205,7 @@ Inbound messages trigger a typing indicator automatically -- Telegram shows "bot
 
 ## Voice & Audio Messages
 
-Voice messages and audio files are downloaded to `~/.claude/channels/telegram/inbox/` and automatically transcribed by the server. The transcription text replaces "(voice message)" in the notification, so Claude receives the spoken text directly.
+Voice messages and audio files are downloaded to `~/.claude/channels/telegram-supercharged/inbox/` and automatically transcribed by the server. The transcription text replaces "(voice message)" in the notification, so Claude receives the spoken text directly.
 
 Think of it as **Wispr Flow for Claude Code**. Open Telegram, hold the mic button, say "refactor the auth middleware to use JWT" -- Claude gets that as text and starts working. No typing, no desktop app needed, works from your phone.
 
@@ -213,7 +213,7 @@ Think of it as **Wispr Flow for Claude Code**. Open Telegram, hold the mic butto
 
 The server tries transcription methods in this order:
 
-1. **OpenAI Whisper API** (recommended) -- fastest, highest quality, non-blocking. Set your API key in `~/.claude/channels/telegram/.env`:
+1. **OpenAI Whisper API** (recommended) -- fastest, highest quality, non-blocking. Set your API key in `~/.claude/channels/telegram-supercharged/.env`:
    ```
    OPENAI_API_KEY=sk-proj-...
    ```
@@ -242,20 +242,20 @@ When `autoTranscribe` is enabled (the default), the server transcribes **all** v
 To disable (e.g. to save CPU on busy groups):
 
 ```sh
-/telegram:access set autoTranscribe false
+/telegram-supercharged:access set autoTranscribe false
 ```
 
 To re-enable:
 
 ```sh
-/telegram:access set autoTranscribe true
+/telegram-supercharged:access set autoTranscribe true
 ```
 
 ## Telegraph (Instant View Articles)
 
 Claude can publish long-form content to [Telegraph](https://telegra.ph) and send it as Instant View links in Telegram -- a native full-screen article reader. Telegraph is **disabled by default** because posts are publicly accessible by URL.
 
-To enable, add to `~/.claude/channels/telegram/.env`:
+To enable, add to `~/.claude/channels/telegram-supercharged/.env`:
 
 ```
 TELEGRAPH_ENABLED=true
@@ -272,7 +272,7 @@ Requires MCP server restart to take effect.
 
 ## Conversation Memory
 
-When you clear chat history, Claude first saves a short summary to `~/.claude/channels/telegram/data/memory.md`. This file is loaded into Claude's instructions on every startup -- so context from previous sessions is never fully lost.
+When you clear chat history, Claude first saves a short summary to `~/.claude/channels/telegram-supercharged/data/memory.md`. This file is loaded into Claude's instructions on every startup -- so context from previous sessions is never fully lost.
 
 - Summaries are dated and tagged with the chat ID
 - File auto-compresses when it exceeds 10,000 characters (older half gets trimmed)
@@ -284,7 +284,7 @@ The plugin ships with a **supervisor script** (`supervisor.ts`) that runs Claude
 
 - **Auto-restart on crash** -- exponential backoff (1s, 2s, 4s... up to 30s), resets after 60s of stable uptime
 - **Context reset from Telegram** -- say "clear everything" in Telegram, Claude saves memory, clears history, and the supervisor restarts Claude with a fresh session. Zero downtime, memory preserved.
-- **Signal file protocol** -- the MCP server writes `~/.claude/channels/telegram/data/restart.signal`, the supervisor detects it within 500ms, waits 3 seconds for Claude to finish sending replies, then kills and respawns
+- **Signal file protocol** -- the MCP server writes `~/.claude/channels/telegram-supercharged/data/restart.signal`, the supervisor detects it within 500ms, waits 3 seconds for Claude to finish sending replies, then kills and respawns
 
 ### Usage
 
@@ -300,7 +300,7 @@ Extra flags are forwarded to Claude:
 bun supervisor.ts --effort high
 ```
 
-The supervisor spawns Claude with `--channels plugin:telegram@claude-plugins-official --dangerously-skip-permissions` by default.
+The supervisor spawns Claude with `--channels plugin:telegram-supercharged@blackpaw-plugins --dangerously-skip-permissions` by default.
 
 ### How context reset works
 
@@ -352,10 +352,10 @@ Create `~/Library/LaunchAgents/com.user.claude-telegram.plist`:
     <true/>
 
     <key>StandardOutPath</key>
-    <string>/Users/YOU/.claude/channels/telegram/data/supervisor-stdout.log</string>
+    <string>/Users/YOU/.claude/channels/telegram-supercharged/data/supervisor-stdout.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/YOU/.claude/channels/telegram/data/supervisor-stderr.log</string>
+    <string>/Users/YOU/.claude/channels/telegram-supercharged/data/supervisor-stderr.log</string>
 
     <key>EnvironmentVariables</key>
     <dict>
@@ -406,7 +406,7 @@ A running daemon shows its PID in the first column. A `0` in the status column m
 **View logs:**
 
 ```sh
-tail -f ~/.claude/channels/telegram/data/supervisor-stderr.log
+tail -f ~/.claude/channels/telegram-supercharged/data/supervisor-stderr.log
 ```
 
 **Restart (reload config after editing the plist):**
@@ -428,7 +428,7 @@ rm ~/Library/LaunchAgents/com.user.claude-telegram.plist
 Use the built-in monitor skill from any Claude Code session:
 
 ```
-/telegram:monitor
+/telegram-supercharged:monitor
 ```
 
 Shows a live dashboard: process status for all components, launchd state, recent logs, MCP health, remote control URL (watch the daemon live in your browser), and lock file status.
@@ -437,13 +437,13 @@ You can also monitor manually:
 
 ```sh
 # Live supervisor logs
-tail -f ~/.claude/channels/telegram/data/supervisor-stderr.log
+tail -f ~/.claude/channels/telegram-supercharged/data/supervisor-stderr.log
 
 # Quick alive check
 ps aux | grep "channels.*telegram" | grep -v grep && echo "ALIVE" || echo "DEAD"
 
 # Find the remote control URL (open in browser to watch the daemon live)
-strings ~/.claude/channels/telegram/data/supervisor-stdout.log | grep "session_" | tail -1
+strings ~/.claude/channels/telegram-supercharged/data/supervisor-stdout.log | grep "session_" | tail -1
 ```
 
 #### How the layers work together
@@ -487,7 +487,7 @@ Add your bot to any Telegram group like a normal member.
 Just send a message in the group mentioning your bot (e.g. `@your_bot hello`). The bot replies with a 6-character pairing code -- same flow as DM pairing:
 
 ```
-/telegram:access pair <code>
+/telegram-supercharged:access pair <code>
 ```
 
 That's it. The group is registered automatically with `requireMention: true` (bot only responds when mentioned or replied to).
@@ -495,15 +495,15 @@ That's it. The group is registered automatically with `requireMention: true` (bo
 To let it respond to all messages:
 
 ```
-/telegram:access group update -100XXXXXXXXXX requireMention false
+/telegram-supercharged:access group update -100XXXXXXXXXX requireMention false
 ```
 
-> **Manual alternative:** If you already know the group's numeric ID (starts with `-100...`), you can register directly with `/telegram:access group add -100XXXXXXXXXX`. Ways to find the ID: check the bot's stderr logs, open [web.telegram.org](https://web.telegram.org) (ID is in the URL), or forward a group message to [@RawDataBot](https://t.me/RawDataBot).
+> **Manual alternative:** If you already know the group's numeric ID (starts with `-100...`), you can register directly with `/telegram-supercharged:access group add -100XXXXXXXXXX`. Ways to find the ID: check the bot's stderr logs, open [web.telegram.org](https://web.telegram.org) (ID is in the URL), or forward a group message to [@RawDataBot](https://t.me/RawDataBot).
 
 **4. Restart Claude Code**
 
 ```sh
-claude --channels plugin:telegram@claude-plugins-official
+claude --channels plugin:telegram-supercharged@blackpaw-plugins
 ```
 
 ### How Threading Works
@@ -521,7 +521,7 @@ If your supergroup has **Topics** enabled, the plugin forwards `thread_id` (Tele
 
 Full access control docs in [ACCESS.md](./ACCESS.md) -- DM policies, groups, mention detection, delivery config, skill commands, and the `access.json` schema.
 
-Quick reference: Default policy is `pairing` -- DMs and groups both use the pairing flow. For DMs, message the bot to get a code. For groups, add the bot and mention it to get a code. Then `/telegram:access pair <code>` approves either. `ackReaction` only accepts Telegram's fixed emoji whitelist.
+Quick reference: Default policy is `pairing` -- DMs and groups both use the pairing flow. For DMs, message the bot to get a code. For groups, add the bot and mention it to get a code. Then `/telegram-supercharged:access pair <code>` approves either. `ackReaction` only accepts Telegram's fixed emoji whitelist.
 
 ### Acknowledgment Reactions
 
@@ -544,14 +544,14 @@ The bot can react to incoming messages with an emoji to signal it received and i
 
 Telegram only keeps **one bot reaction per message**, so each new reaction replaces the previous — creating a natural status progression.
 
-**Note:** `ackReaction` is **not set by default**. To enable it, add it to your `~/.claude/channels/telegram/access.json`. It only accepts emoji from [Telegram's fixed reaction whitelist](https://core.telegram.org/bots/api#reactiontypeemoji). Common choices: `👀`, `⚡`, `🔥`.
+**Note:** `ackReaction` is **not set by default**. To enable it, add it to your `~/.claude/channels/telegram-supercharged/access.json`. It only accepts emoji from [Telegram's fixed reaction whitelist](https://core.telegram.org/bots/api#reactiontypeemoji). Common choices: `👀`, `⚡`, `🔥`.
 
 ## Message History Buffer
 
 Every message flowing through the bot is captured in a local SQLite database and persisted across restarts. Claude gets context without asking users to repeat themselves.
 
 ```
-~/.claude/channels/telegram/data/messages.db
+~/.claude/channels/telegram-supercharged/data/messages.db
 ```
 
 **How it works:**

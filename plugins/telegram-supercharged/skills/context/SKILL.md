@@ -26,7 +26,7 @@ Keep it concise — under 2000 characters. The bot has limited context.
 Append the context to the bot's memory file so it persists across restarts:
 
 ```bash
-MEMORY_FILE="$HOME/.claude/channels/telegram/data/memory.md"
+MEMORY_FILE="$HOME/.claude/channels/telegram-supercharged/data/memory.md"
 ```
 
 Append a new section with timestamp:
@@ -43,7 +43,7 @@ Append a new section with timestamp:
 Send the context as a direct message to the user's Telegram chat so the bot sees it immediately in the current session:
 
 ```bash
-BOT_TOKEN=$(grep TELEGRAM_BOT_TOKEN "$HOME/.claude/channels/telegram/.env" 2>/dev/null | cut -d= -f2 | tr -d '"' | tr -d "'")
+BOT_TOKEN=$(grep TELEGRAM_BOT_TOKEN "$HOME/.claude/channels/telegram-supercharged/.env" 2>/dev/null | cut -d= -f2 | tr -d '"' | tr -d "'")
 
 # If not in .env, check environment
 if [ -z "$BOT_TOKEN" ]; then
@@ -97,7 +97,7 @@ Next steps: [what to do next, if any]
 - Always ask the user what specific context they want to transfer — don't dump everything
 - Keep it under 2000 chars (Telegram message limit considerations)
 - Escape special Markdown characters in the curl message
-- The bot token is in `~/.claude/channels/telegram/.env` as `TELEGRAM_BOT_TOKEN`
+- The bot token is in `~/.claude/channels/telegram-supercharged/.env` as `TELEGRAM_BOT_TOKEN`
 - The user's chat_id is `305120844`
 - If the user says "teleport everything" — summarize the full conversation
 - If the user says "teleport this" — only transfer the most recent topic
