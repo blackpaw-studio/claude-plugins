@@ -1,0 +1,42 @@
+#!/usr/bin/expect -f
+# Wrapper that auto-accepts all startup prompts (workspace trust, MCP approval,
+# etc.), then keeps Claude alive indefinitely for channel listening.
+#
+# Strategy: during the first 30 seconds, every time we see "Esc" or "cancel"
+# (interactive prompt endings), send Enter to accept the default. After the
+# startup window, switch to indefinite wait mode.
+
+set timeout 10
+
+# Forward all args to claude
+spawn claude {*}$argv
+
+# Auto-accept startup prompts for up to 30 seconds.
+# Each prompt ends with "Esc to cancel" or similar — send Enter to accept.
+set deadline [expr {[clock seconds] + 30}]
+while {[clock seconds] < $deadline} {
+    expect {
+        -re "Esc.*cancel" {
+            sleep 0.5
+            send "\r"
+        }
+        -re "confirm" {
+            sleep 0.5
+            send "\r"
+        }
+        "Listening for channel" {
+            # Claude is up and listening — done with startup
+            break
+        }
+        timeout {
+            # No prompt appeared in this window — continue waiting
+        }
+    }
+}
+
+# Wait for Claude to exit on its own (indefinitely).
+# Do NOT use `interact` — it exits immediately when there's no real stdin.
+expect {
+    eof { exit 0 }
+    timeout { exp_continue }
+}
