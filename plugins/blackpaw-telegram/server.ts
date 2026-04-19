@@ -51,7 +51,7 @@ import {
   type FireCallback,
 } from './src/schedule/runner.ts'
 import { synthesize as synthesizeTts, isTtsAvailable } from './src/tts/elevenlabs.ts'
-import { tryAcquirePollerLock } from './src/lock.ts'
+import { liveParentPid, tryAcquirePollerLock } from './src/lock.ts'
 
 const STATE_DIR = process.env.TELEGRAM_STATE_DIR ?? join(homedir(), '.claude', 'channels', 'blackpaw-telegram')
 const ACCESS_FILE = join(STATE_DIR, 'access.json')
@@ -134,7 +134,10 @@ try {
 // or in some other session that happens to have the plugin installed.
 // See src/sessionMarker.ts for the full rationale.
 const RUN_DIR = join(STATE_DIR, 'run')
-const sessionMarkerPaths: string[] = writeSessionMarkers(RUN_DIR, {
+// Mutable: on promotion from send-only to poller the markers get rewritten
+// with role='poller'. Shutdown iterates this list to clean up whichever
+// paths are current.
+let sessionMarkerPaths: string[] = writeSessionMarkers(RUN_DIR, {
   mcp_pid: process.pid,
   role: isPoller ? 'poller' : 'send-only',
 })
@@ -983,49 +986,60 @@ mcp.setRequestHandler(CallToolRequestSchema, async req => {
   }
 })
 
-// Poller-only background work. In send-only mode these wouldn't do anything
+// Poller-only background work, factored so it can run at startup (if we won
+// the lock race) OR later when a send-only instance promotes itself after
+// the previous poller dies. In send-only mode these wouldn't do anything
 // useful (callback_query / inbound handlers can't fire without getUpdates)
 // and would duplicate side effects (scheduler firing must be singleton or
 // the same reminder sends twice).
-if (isPoller) {
-// ask_user callback handler — registers a grammy callback_query listener
-// that resolves pending askUser promises when the user taps a button.
-startAskUser(bot)
+let pollerBackgroundStarted = false
+function startPollerBackground(): void {
+  if (pollerBackgroundStarted) return
+  pollerBackgroundStarted = true
 
-// PermissionRequest approval bridge. Watches STATE_DIR/run/ for request files
-// dropped by bin/permission-bridge (the Claude Code hook), DMs the first
-// paired approver with an inline keyboard, and writes a response file the
-// hook returns to Claude.
-startPermissionApproval(bot, join(STATE_DIR, 'run'), () => loadAccess().allowFrom)
+  // ask_user callback handler — registers a grammy callback_query listener
+  // that resolves pending askUser promises when the user taps a button.
+  startAskUser(bot)
 
-// Scheduler — fires due reminders. Sends a Telegram message to the
-// original chat AND emits a <channel> event so Claude can follow up.
-const fireReminder: FireCallback = (row, late) => {
-  const prefix = late ? '⏰ (reminder, fired late)' : '⏰ (reminder)'
-  void bot.api
-    .sendMessage(row.chat_id, `${prefix} ${row.text}`, {
-      ...(row.message_thread_id != null ? { message_thread_id: Number(row.message_thread_id) } : {}),
-    })
-    .catch(err => process.stderr.write(`telegram channel: reminder send failed: ${err}\n`))
+  // PermissionRequest approval bridge. Watches STATE_DIR/run/ for request files
+  // dropped by bin/permission-bridge (the Claude Code hook), DMs the first
+  // paired approver with an inline keyboard, and writes a response file the
+  // hook returns to Claude.
+  startPermissionApproval(bot, join(STATE_DIR, 'run'), () => loadAccess().allowFrom)
 
-  mcp.notification({
-    method: 'notifications/claude/channel',
-    params: {
-      content: row.text,
-      meta: {
-        chat_id: row.chat_id,
-        ...(row.message_thread_id ? { message_thread_id: row.message_thread_id } : {}),
-        kind: 'scheduled_reminder',
-        schedule_id: String(row.id),
-        scheduled_for: new Date(row.fire_at).toISOString(),
-        fired_late: late ? 'true' : 'false',
-        ts: new Date().toISOString(),
+  // Scheduler — fires due reminders. Sends a Telegram message to the
+  // original chat AND emits a <channel> event so Claude can follow up.
+  const fireReminder: FireCallback = (row, late) => {
+    const prefix = late ? '⏰ (reminder, fired late)' : '⏰ (reminder)'
+    void bot.api
+      .sendMessage(row.chat_id, `${prefix} ${row.text}`, {
+        ...(row.message_thread_id != null ? { message_thread_id: Number(row.message_thread_id) } : {}),
+      })
+      .catch(err => process.stderr.write(`telegram channel: reminder send failed: ${err}\n`))
+
+    mcp.notification({
+      method: 'notifications/claude/channel',
+      params: {
+        content: row.text,
+        meta: {
+          chat_id: row.chat_id,
+          ...(row.message_thread_id ? { message_thread_id: row.message_thread_id } : {}),
+          kind: 'scheduled_reminder',
+          schedule_id: String(row.id),
+          scheduled_for: new Date(row.fire_at).toISOString(),
+          fired_late: late ? 'true' : 'false',
+          ts: new Date().toISOString(),
+        },
       },
-    },
-  }).catch(err => process.stderr.write(`telegram channel: reminder notify failed: ${err}\n`))
+    }).catch(err => process.stderr.write(`telegram channel: reminder notify failed: ${err}\n`))
+  }
+  startScheduler(fireReminder)
+
+  // Long-poll retry loop — kicks off getUpdates. bot.on/bot.command/bot.catch
+  // handlers are registered at module load and inert until bot.start() runs.
+  void runLongPollLoop()
 }
-startScheduler(fireReminder)
-}
+if (isPoller) startPollerBackground()
 
 await mcp.connect(new StdioServerTransport())
 
@@ -1065,17 +1079,70 @@ process.on('SIGHUP', () => shutdown('signal: SIGHUP'))
 // Orphan watchdog: only fire on true orphan-to-init reparent. ppid===1 on
 // non-Windows means our parent exited without signaling us, which is the one
 // case where we genuinely need to self-terminate to avoid a stuck poller.
+//
+// Must use liveParentPid() — Node/Bun's process.ppid is cached at startup and
+// still reports the original parent even after reparenting, so using it here
+// silently defeats the whole watchdog. Without a live read the orphan poller
+// stays up with dead stdio pipes, holding the lock, and inbound Telegram
+// updates get written to history.sqlite but never dispatched to any session.
 setInterval(() => {
-  if (process.platform !== 'win32' && process.ppid === 1) {
+  if (process.platform === 'win32') return
+  const livePpid = liveParentPid()
+  if (livePpid === 1) {
+    logServer(`orphan watchdog: livePpid=1 (cached process.ppid=${process.ppid}) — shutting down`)
     shutdown('orphaned: ppid=1')
   }
 }, 5000).unref()
 
+// Send-only → poller promotion. When the current poller dies (orphan
+// watchdog fires, crash, SIGTERM) the kernel releases its flock. Without
+// this loop, every instance that lost the initial race stays send-only
+// forever: inbound Telegram updates still reach history.sqlite via the
+// next poller (if any) but never reach the live Claude session whose MCP
+// stdio is attached to a send-only plugin. Polling for the freed lock
+// makes "cooperative degrade" self-healing — the send-only attached to
+// a real Claude takes over when nobody else owns the slot.
+//
+// Runs on every instance unconditionally: a poller hitting the early
+// return is cheap, and the loop auto-exits once promoted. Send-only
+// instances whose Claude parent has died get killed by the orphan
+// watchdog, so this loop doesn't need its own liveness check.
+const PROMOTION_POLL_MS = 15_000
+const promotionTimer = setInterval(() => {
+  if (isPoller || shuttingDown) {
+    clearInterval(promotionTimer)
+    return
+  }
+  let res
+  try {
+    res = tryAcquirePollerLock(PID_FILE)
+  } catch (err) {
+    logServer(`promotion attempt error: ${err instanceof Error ? err.message : err}`)
+    return
+  }
+  if (!res.held) return
+  isPoller = true
+  releasePollerLock = res.release
+  logServer(`promoted pid=${process.pid} from send-only to poller`)
+  // Rewrite markers so permission-bridge and any introspection see the new
+  // role. writeSessionMarkers is keyed by ancestor PID, so this overwrites
+  // the existing files in place.
+  sessionMarkerPaths = writeSessionMarkers(RUN_DIR, {
+    mcp_pid: process.pid,
+    role: 'poller',
+  })
+  sweepStaleSessionMarkers(RUN_DIR)
+  clearInterval(promotionTimer)
+  startPollerBackground()
+}, PROMOTION_POLL_MS)
+promotionTimer.unref()
+
 // Liveness heartbeat: every 5 minutes, write a line to server.log so that if
 // the bot ever appears to "go dark" again, we can tell from the log whether
-// the process is actually dead or just unresponsive.
+// the process is actually dead or just unresponsive. Log both the live and
+// cached ppid so the next orphan regression is obvious at a glance.
 setInterval(() => {
-  logServer(`heartbeat: pid=${process.pid} ppid=${process.ppid}`)
+  logServer(`heartbeat: pid=${process.pid} ppid=${liveParentPid()} (cached=${process.ppid})`)
 }, 5 * 60_000).unref()
 
 // Commands are DM-only. Responding in groups would: (1) leak pairing codes via
@@ -1480,8 +1547,9 @@ bot.catch(err => {
 
 // Long-poll retry loop. Poller-only — send-only processes never open a
 // getUpdates consumer. bot.on/bot.command/bot.catch handlers above are
-// pure registrations and remain inert without bot.start().
-if (isPoller) void (async () => {
+// pure registrations and remain inert without bot.start(). Invoked by
+// startPollerBackground() at startup or on promotion from send-only.
+async function runLongPollLoop(): Promise<void> {
   for (let attempt = 1; ; attempt++) {
     try {
       await bot.start({
@@ -1519,4 +1587,4 @@ if (isPoller) void (async () => {
       await new Promise(r => setTimeout(r, delay))
     }
   }
-})()
+}

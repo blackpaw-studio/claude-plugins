@@ -11,7 +11,20 @@ const libPath = process.platform === 'darwin'
 
 const { symbols } = dlopen(libPath, {
   flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
+  getppid: { args: [], returns: FFIType.i32 },
 })
+
+/**
+ * Live parent PID via libc getppid(2). Node/Bun's `process.ppid` is cached at
+ * startup, so it still reports the original parent long after that parent has
+ * died and the kernel has reparented us to init (ppid=1). The orphan watchdog
+ * needs the real current value, not the snapshot — otherwise an orphaned
+ * poller with dead MCP stdio pipes stays alive forever and silently drops
+ * every inbound Telegram update.
+ */
+export function liveParentPid(): number {
+  return symbols.getppid() as number
+}
 
 export type LockResult =
   | { held: true; release: () => void }
