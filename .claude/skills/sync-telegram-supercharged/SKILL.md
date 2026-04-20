@@ -44,6 +44,8 @@ rsync -a --delete \
   --exclude='.git' \
   --exclude='.github' \
   --exclude='.claude-plugin/' \
+  --exclude='.mcp.json' \
+  --exclude='.npmrc' \
   --exclude='NOTICE' \
   "$work_dir/src/" "$PLUGIN_DIR/"
 
