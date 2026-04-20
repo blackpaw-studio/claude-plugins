@@ -56,6 +56,7 @@ rm -rf "$PLUGIN_DIR/skills/update"
 find "$PLUGIN_DIR" -type f \( -name "*.ts" -o -name "*.md" -o -name "*.json" -o -name "*.exp" \) \
   ! -path "*/node_modules/*" -print0 | xargs -0 perl -i -pe '
     s#channels/telegram(?![-\w])#channels/telegram-supercharged#g;
+    s#"channels"\s*,\s*"telegram"(?!-)#"channels", "telegram-supercharged"#g;
     s#plugin:telegram\@claude-plugins-official#plugin:telegram-supercharged\@blackpaw-plugins#g;
     s#(/telegram):(access|configure|update|daemon|monitor|context|calendar)\b#/telegram-supercharged:$2#g;
   '

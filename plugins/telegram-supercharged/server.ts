@@ -107,7 +107,7 @@ const ALLOWED_REACTIONS = new Set([
   "😡",
 ]);
 
-const STATE_DIR = join(homedir(), ".claude", "channels", "telegram");
+const STATE_DIR = join(homedir(), ".claude", "channels", "telegram-supercharged");
 const ACCESS_FILE = join(STATE_DIR, "access.json");
 const APPROVED_DIR = join(STATE_DIR, "approved");
 const ENV_FILE = join(STATE_DIR, ".env");
