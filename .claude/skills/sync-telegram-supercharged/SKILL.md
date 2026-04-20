@@ -61,6 +61,15 @@ find "$PLUGIN_DIR" -type f \( -name "*.ts" -o -name "*.md" -o -name "*.json" -o 
     s#(/telegram):(access|configure|update|daemon|monitor|context|calendar)\b#/telegram-supercharged:$2#g;
   '
 
+# Patch: ensure DATA_DIR exists before acquireLock writes the lock file.
+# Upstream only mkdirs DATA_DIR inside appendMemory(), which runs long after
+# acquireLock() — so a fresh install (or one migrating state from a different
+# plugin) crashes with ENOENT on `data/telegram.lock`. Slurp-mode perl so the
+# newline in the match actually works.
+perl -0777 -i -pe '
+  s#(function acquireLock\(\): void \{\n)(?!\s+mkdirSync)#$1  mkdirSync(DATA_DIR, { recursive: true });\n#
+' "$PLUGIN_DIR/server.ts"
+
 # Regenerate plugin.json from upstream version
 cat >"$PLUGIN_DIR/.claude-plugin/plugin.json" <<EOF
 {

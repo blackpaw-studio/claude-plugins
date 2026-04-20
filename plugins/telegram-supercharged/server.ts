@@ -153,6 +153,7 @@ const LOCK_FILE = join(DATA_DIR, "telegram.lock");
 let isSecondary = false; // true when another instance owns the bot polling
 
 function acquireLock(): void {
+  mkdirSync(DATA_DIR, { recursive: true });
   if (existsSync(LOCK_FILE)) {
     const existingPid = Number.parseInt(readFileSync(LOCK_FILE, "utf-8").trim(), 10);
     if (!Number.isNaN(existingPid)) {
