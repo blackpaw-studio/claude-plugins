@@ -2,6 +2,9 @@ This directory is a fork of https://github.com/k1p1l0/claude-telegram-supercharg
 (Apache-2.0), republished in this marketplace for easier installation.
 
 Local modifications vs upstream:
+- `.mcp.json` and `.npmrc` added at the plugin root — upstream assumes it
+  overlays the official Telegram plugin's MCP registration; as a standalone
+  marketplace plugin we need to register the MCP server ourselves
 - Plugin renamed from `telegram` to `telegram-supercharged` throughout
 - State directory changed from `~/.claude/channels/telegram/` to
   `~/.claude/channels/telegram-supercharged/` to avoid collisions with the
