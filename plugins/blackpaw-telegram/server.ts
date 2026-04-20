@@ -113,9 +113,19 @@ const SCHEDULE_DB = join(STATE_DIR, 'schedule.sqlite')
 // Exactly one process polls; everyone else uses its outbound tools.
 mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
 
+// Multi-session gating: when Leo (or any orchestrator) runs several Claude
+// sessions concurrently, only the user-facing session should receive Telegram
+// messages. Setting BLACKPAW_TELEGRAM_RECEIVE=0 opts a session out of the
+// poller race entirely — MCP tools still work via bot.api REST, but inbound
+// notifications bypass this process. Unset or =1 means "try to become the
+// poller" (legacy behavior); only =0 is a hard opt-out.
+const OPT_OUT_RECEIVE = process.env.BLACKPAW_TELEGRAM_RECEIVE === '0'
+
 let isPoller = false
 let releasePollerLock: (() => void) | null = null
-try {
+if (OPT_OUT_RECEIVE) {
+  logServer(`startup pid=${process.pid} (send-only; BLACKPAW_TELEGRAM_RECEIVE=0)`)
+} else try {
   const res = tryAcquirePollerLock(PID_FILE)
   if (res.held) {
     isPoller = true
@@ -1109,7 +1119,7 @@ setInterval(() => {
 // watchdog, so this loop doesn't need its own liveness check.
 const PROMOTION_POLL_MS = 15_000
 const promotionTimer = setInterval(() => {
-  if (isPoller || shuttingDown) {
+  if (isPoller || shuttingDown || OPT_OUT_RECEIVE) {
     clearInterval(promotionTimer)
     return
   }

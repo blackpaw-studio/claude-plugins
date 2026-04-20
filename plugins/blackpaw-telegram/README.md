@@ -189,6 +189,23 @@ Set `TELEGRAM_ROUTER_MODEL` to `sonnet` (default), `haiku`, or `opus`. The
 plugin surfaces a routing hint in the MCP instructions so Claude stays on
 the right model by default and knows when to escalate via `Agent(model:"opus")`.
 
+## Multi-session usage
+
+If you run several Claude Code sessions concurrently (e.g. via an
+orchestrator that spawns background agents alongside a user-facing one),
+set `BLACKPAW_TELEGRAM_RECEIVE` on each Claude process to tell the plugin
+which session should receive inbound Telegram messages:
+
+| Value | Meaning |
+| --- | --- |
+| `1` | This session wants to receive messages. It will race for the poller lock. |
+| `0` | This session explicitly opts out. MCP tools (`reply`, `react`, `schedule`, …) still work; inbound messages never reach it. |
+| unset | Legacy behavior — session races for the poller lock like any other. |
+
+For a single Claude session this variable does nothing. Set it only when
+running multiple Claude processes against the same bot and you need
+messages to land in a specific one.
+
 ## What's not here
 
 - **Daemon/supervisor** — this fork deliberately excludes the
