@@ -10,18 +10,12 @@
   },
   "plugins": [
     {
-      "name": "telegram-supercharged",
-      "source": "./plugins/telegram-supercharged",
-      "description": "Supercharged Claude Code Telegram plugin — threading, voice messages 2 ways, stickers, GIFs, reactions, MarkdownV2 & more. Mirrored from k1p1l0/claude-telegram-supercharged (Apache-2.0).",
-      "version": "0.0.1",
+      "name": "blackpaw-telegram",
+      "source": "./plugins/blackpaw-telegram",
+      "description": "Telegram channel for Claude Code — pairing, allowlists, groups with mention-triggers, photo inbox; voice transcription, document ingest, inline keyboards, and scheduled reminders land in upcoming releases.",
+      "version": "0.1.0",
       "category": "channel",
-      "keywords": [
-        "channel",
-        "telegram",
-        "mcp",
-        "voice",
-        "transcription"
-      ],
+      "keywords": ["channel", "telegram", "mcp", "voice", "transcription"],
       "strict": false
     }
   ]
