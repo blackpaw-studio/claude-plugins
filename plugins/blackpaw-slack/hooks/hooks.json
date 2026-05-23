@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/permission-bridge" }
+        ]
+      }
+    ]
+  }
+}
