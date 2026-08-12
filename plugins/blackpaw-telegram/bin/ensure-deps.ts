@@ -7,46 +7,44 @@
  * node_modules symlink creation ("Failed to link X: EEXIST"), fails
  * non-zero, and (via `&&`) prevents the server from ever starting.
  *
- * This script:
- *   - fast-paths to a no-op when a sentinel proves deps already match
- *     package.json's dependency set AND the lockfile (steady-state: no
- *     install, no lock)
- *   - otherwise takes an exclusive lock (atomic O_EXCL create) so only one
- *     process installs; contenders poll-wait for the winner instead of
- *     installing in parallel
- *   - breaks locks left behind by a genuinely DEAD process (liveness is
- *     checked via signal 0 on the holder's recorded PID, not just lock
- *     age — a slow-but-alive install must never be treated as stale)
- *   - only ever removes a lock it still owns (pid+token match)
- *   - NEVER exits non-zero. Any failure here is logged to stderr and
- *     swallowed so the server always gets a chance to start.
+ * DESIGN NOTE (third revision): earlier versions of this script implemented
+ * mutual exclusion with a plain lock *file* — create it with O_EXCL, and
+ * have waiters "break" it themselves when they judge the holder to be dead
+ * (by PID liveness, then by elapsed time as a fallback). That required every
+ * waiter to independently read-decide-then-mutate the lock file, which is an
+ * inherent TOCTOU: the read/decide and the mutate are not atomic, so two
+ * waiters can both decide to break the same lock and race each other, or a
+ * live-but-slow holder can look dead by any given heuristic. Three review
+ * rounds found three distinct bugs growing out of that same shape.
+ *
+ * This version deletes that whole bug class instead of patching it further:
+ * it uses the kernel's own advisory file lock (flock(2), the same mechanism
+ * already used elsewhere in this plugin — see ../src/lock.ts) as the single
+ * source of truth for "is the holder still alive". flock is tied to the
+ * holder's open file descriptor, so the kernel releases it automatically and
+ * atomically the instant the holder process exits for ANY reason, including
+ * a crash or SIGKILL — no PID bookkeeping, no staleness heuristics, no
+ * "breaking" step, and therefore nothing for a TOCTOU to happen in. The lock
+ * file itself is never deleted or rewritten by anyone; its content is
+ * irrelevant and untouched.
  */
 
-import { createHash, randomBytes } from 'node:crypto'
-import {
-  closeSync,
-  existsSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs'
+import { dlopen, FFIType, suffix } from 'bun:ffi'
+import { createHash } from 'node:crypto'
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const POLL_INTERVAL_MS = 200
 const POLL_TIMEOUT_MS = 5 * 60_000
 
-// Fallback ceiling used ONLY when a lock holder's liveness can't be
-// determined at all (e.g. permission errors reading /proc-equivalent state).
-// A genuinely alive holder is never broken regardless of elapsed time; a
-// genuinely dead holder is broken immediately regardless of elapsed time.
-// This constant only bounds the ambiguous "unknown" case. Configurable via
-// env so tests don't need to wait out a real multi-minute ceiling.
-const UNKNOWN_LIVENESS_CEILING_MS = Number(
-  process.env.ENSURE_DEPS_STALE_MS ?? 20 * 60_000,
-)
+const LOCK_EX = 2
+const LOCK_NB = 4
+const LOCK_UN = 8
+
+const libPath = process.platform === 'darwin' ? '/usr/lib/libSystem.B.dylib' : `libc.${suffix}`
+const { symbols } = dlopen(libPath, {
+  flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
+})
 
 function log(msg: string): void {
   process.stderr.write(`[ensure-deps] ${msg}\n`)
@@ -93,100 +91,6 @@ function writeSentinel(sentinelPath: string, hash: string, nodeModulesDir: strin
   writeFileSync(sentinelPath, `${hash}\n`)
 }
 
-type LockHandle = { fd: number; owner: string }
-
-function makeOwnerLine(): string {
-  return `${process.pid}:${randomBytes(8).toString('hex')}`
-}
-
-function parseLockOwner(content: string): { pid: number; token: string } | null {
-  const trimmed = content.trim()
-  const sep = trimmed.indexOf(':')
-  if (sep === -1) return null
-  const pid = Number(trimmed.slice(0, sep))
-  const token = trimmed.slice(sep + 1)
-  if (!Number.isFinite(pid) || pid <= 0 || !token) return null
-  return { pid, token }
-}
-
-/** Signal-0 liveness probe. */
-function isProcessAlive(pid: number): boolean | 'unknown' {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code
-    if (code === 'ESRCH') return false
-    // EPERM (exists, different user) or anything else we can't interpret:
-    // don't assume dead.
-    return 'unknown'
-  }
-}
-
-function createLock(lockPath: string, owner: string): LockHandle | null {
-  try {
-    const fd = openSync(lockPath, 'wx')
-    writeFileSync(lockPath, `${owner}\n`, { flag: 'w' })
-    return { fd, owner }
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
-    return null
-  }
-}
-
-/**
- * Try to acquire the lock. If it's held, break it ONLY when the recorded
- * holder PID is genuinely dead (or, failing that determination, once a long
- * ceiling has passed) — never on elapsed time alone.
- */
-function acquireLock(lockPath: string): LockHandle | null {
-  const owner = makeOwnerLine()
-  const fresh = createLock(lockPath, owner)
-  if (fresh) return fresh
-
-  let holder: { pid: number; token: string } | null = null
-  let lockAgeMs = 0
-  try {
-    holder = parseLockOwner(readFileSync(lockPath, 'utf8'))
-    lockAgeMs = Date.now() - statSync(lockPath).mtimeMs
-  } catch {
-    // Lock vanished between our EEXIST and reading it (winner just finished).
-    return null
-  }
-
-  const alive = holder ? isProcessAlive(holder.pid) : 'unknown'
-  const shouldBreak =
-    alive === false || (alive === 'unknown' && lockAgeMs > UNKNOWN_LIVENESS_CEILING_MS)
-  if (!shouldBreak) return null
-
-  log(
-    holder
-      ? `breaking lock held by pid ${holder.pid} (liveness=${alive}, age ${Math.round(lockAgeMs / 1000)}s)`
-      : `breaking unparsable lock (age ${Math.round(lockAgeMs / 1000)}s)`,
-  )
-  try {
-    rmSync(lockPath, { force: true })
-  } catch {}
-  return createLock(lockPath, owner) // may lose a race to recreate; null is fine, caller retries
-}
-
-/** Only removes the lock file if it still contains OUR owner line. */
-function releaseLock(lockPath: string, handle: LockHandle): void {
-  try {
-    closeSync(handle.fd)
-  } catch {}
-  try {
-    const content = readFileSync(lockPath, 'utf8').trim()
-    if (content === handle.owner) {
-      rmSync(lockPath, { force: true })
-    } else {
-      log(`not removing ${lockPath}: no longer owned by us (pid ${process.pid})`)
-    }
-  } catch {
-    // already gone — nothing to do
-  }
-}
-
 function runInstall(dir: string): boolean {
   const cmd = process.env.ENSURE_DEPS_INSTALL_CMD ?? 'bun install --no-summary'
   log(`installing dependencies in ${dir} (${cmd})`)
@@ -219,32 +123,41 @@ async function main(): Promise<void> {
 
   const depsHash = hashDependencies(pkg, readLockfile(dir))
 
-  const deadline = Date.now() + POLL_TIMEOUT_MS
-  while (true) {
-    if (isSentinelValid(sentinelPath, depsHash)) return
+  if (isSentinelValid(sentinelPath, depsHash)) return
 
-    const lock = acquireLock(lockPath)
-    if (lock) {
-      try {
-        // Someone may have finished installing while we were acquiring the lock.
-        if (isSentinelValid(sentinelPath, depsHash)) return
-
-        if (runInstall(dir)) {
-          writeSentinel(sentinelPath, depsHash, nodeModulesDir)
-        } else {
-          log('continuing without a confirmed dependency install; server startup will proceed anyway')
-        }
-      } finally {
-        releaseLock(lockPath, lock)
+  // Open (create-if-missing, never truncate, never delete) once. Content is
+  // never read or trusted for correctness — only the kernel-managed
+  // exclusive advisory lock on this fd matters.
+  const fd = openSync(lockPath, 'a+', 0o644)
+  try {
+    const deadline = Date.now() + POLL_TIMEOUT_MS
+    while (symbols.flock(fd, LOCK_EX | LOCK_NB) !== 0) {
+      if (isSentinelValid(sentinelPath, depsHash)) return
+      if (Date.now() > deadline) {
+        log(`timed out after ${POLL_TIMEOUT_MS}ms waiting for a concurrent install to finish`)
+        return
       }
-      return
+      await sleep(POLL_INTERVAL_MS)
     }
 
-    if (Date.now() > deadline) {
-      log(`timed out after ${POLL_TIMEOUT_MS}ms waiting for a concurrent install to finish`)
-      return
+    try {
+      // Someone may have finished installing while we were waiting for the lock.
+      if (isSentinelValid(sentinelPath, depsHash)) return
+
+      if (runInstall(dir)) {
+        writeSentinel(sentinelPath, depsHash, nodeModulesDir)
+      } else {
+        log('continuing without a confirmed dependency install; server startup will proceed anyway')
+      }
+    } finally {
+      try {
+        symbols.flock(fd, LOCK_UN)
+      } catch {}
     }
-    await sleep(POLL_INTERVAL_MS)
+  } finally {
+    try {
+      closeSync(fd)
+    } catch {}
   }
 }
 

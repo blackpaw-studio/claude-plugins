@@ -5,7 +5,6 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
-  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -44,6 +43,14 @@ async function runAndWait(env: Record<string, string> = {}) {
   const exitCode = await proc.exited
   const stderr = await new Response(proc.stderr).text()
   return { exitCode, stderr }
+}
+
+async function waitForFile(path: string, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (!existsSync(path) && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 20))
+  }
+  expect(existsSync(path)).toBe(true)
 }
 
 describe('ensure-deps', () => {
@@ -116,96 +123,63 @@ describe('ensure-deps', () => {
     expect(() => readFileSync(join(dir, 'node_modules', '.deps-ok'), 'utf8')).toThrow()
   })
 
-  test('a lock left by a genuinely dead process is broken and install proceeds', async () => {
+  test('a leftover lock file with arbitrary stale content does not block a fresh run', async () => {
+    // Earlier revisions parsed lock-file content (pid/token) to decide
+    // whether to "break" it, which is exactly the mechanism that produced
+    // the TOCTOU and pid-reuse bugs found in review. The current design
+    // never reads or trusts lock-file content for correctness — only the
+    // kernel-managed flock on the fd matters — so a leftover file with
+    // garbage content (e.g. from an old revision, or truncated by a crash)
+    // must never block or delay a fresh run.
     const lockPath = join(dir, '.ensure-deps.lock')
-    // A PID that (almost certainly) does not exist on this machine.
-    writeFileSync(lockPath, '999999:deadtoken\n')
-    const oldTime = new Date(Date.now() - 200_000)
-    utimesSync(lockPath, oldTime, oldTime)
+    writeFileSync(lockPath, 'garbage-not-a-pid-not-a-token\n')
 
     const counterFile = join(dir, 'install-count.txt')
     writeFileSync(counterFile, '')
-    const { exitCode, stderr } = await runAndWait({
+    const { exitCode } = await runAndWait({
       ENSURE_DEPS_INSTALL_CMD: `echo run >> ${counterFile}`,
     })
 
     expect(exitCode).toBe(0)
-    expect(stderr).toContain('breaking lock held by pid 999999')
     expect(readFileSync(counterFile, 'utf8').trim().split('\n').filter(Boolean).length).toBe(1)
     expect(readFileSync(join(dir, 'node_modules', '.deps-ok'), 'utf8').trim().length).toBe(64)
   })
 
-  test('a lock held by a genuinely ALIVE process past the old stale window is NOT broken', async () => {
-    // P1 acquires the lock and blocks synchronously inside its install for
-    // longer than the (now-irrelevant) elapsed-time threshold. P2 starts
-    // while P1 is still alive and must wait, not break the lock and race a
-    // second install. The install duration deliberately exceeds a
-    // configurable "stale window" so this reproduces the blocker scenario
-    // without requiring a real 120s sleep.
+  test('a crashed holder (SIGKILL) releases the lock immediately; a waiting contender takes over', async () => {
+    // This is the regression test for the class of bug found across three
+    // review rounds on the old file-based lock (TOCTOU on breaking, pid
+    // reuse looking "alive" forever). With flock(2) there is no heuristic
+    // and no "breaking" step: the kernel releases the lock the instant the
+    // holder's file descriptors close, for ANY reason including a crash —
+    // so a waiter picks it up deterministically, not on a timing guess.
+    const readyFile = join(dir, 'p1-ready')
+    const holderInstallCmd = `touch ${readyFile} && sleep 30`
+    const p1 = run({ ENSURE_DEPS_INSTALL_CMD: holderInstallCmd })
+
+    await waitForFile(readyFile)
+
     const counterFile = join(dir, 'install-count.txt')
     writeFileSync(counterFile, '')
-    const readyFile = join(dir, 'p1-ready')
-    const installCmd = `touch ${readyFile} && sleep 1.2 && echo run >> ${counterFile}`
-    // A short "stale window" knob so this scenario (holder outlives the
-    // window while still alive) reproduces in ~1s instead of 120s.
-    const env = { ENSURE_DEPS_INSTALL_CMD: installCmd, ENSURE_DEPS_STALE_MS: '500' }
+    const p2 = run({ ENSURE_DEPS_INSTALL_CMD: `echo run >> ${counterFile}` })
 
-    const p1 = run(env)
+    // Give P2 a moment to start polling for the (currently held) lock, then
+    // simulate a hard crash of the holder.
+    await new Promise((r) => setTimeout(r, 300))
+    p1.kill('SIGKILL')
 
-    // Wait for P1 to actually hold the lock before starting P2.
-    const deadline = Date.now() + 5000
-    while (!existsSync(readyFile) && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 20))
-    }
-    expect(existsSync(readyFile)).toBe(true)
+    const start = Date.now()
+    const p2ExitCode = await p2.exited
+    const elapsedMs = Date.now() - start
 
-    // Let the lock's age exceed the (injected, short) stale window while P1
-    // is still alive and mid-install, then start P2. This is what actually
-    // reproduces the blocker: staleness must be judged on liveness, not on
-    // how much wall-clock time has passed.
-    await new Promise((r) => setTimeout(r, 700))
+    expect(p2ExitCode).toBe(0)
+    // Must take over promptly (kernel-driven), not wait out the 5-minute poll cap.
+    expect(elapsedMs).toBeLessThan(10_000)
+    expect(readFileSync(counterFile, 'utf8').trim().split('\n').filter(Boolean).length).toBe(1)
+    expect(readFileSync(join(dir, 'node_modules', '.deps-ok'), 'utf8').trim().length).toBe(64)
 
-    const p2 = run(env)
-
-    const [r1, r2] = await Promise.all([
-      p1.exited.then(async (exitCode) => ({ exitCode, stderr: await new Response(p1.stderr).text() })),
-      p2.exited.then(async (exitCode) => ({ exitCode, stderr: await new Response(p2.stderr).text() })),
-    ])
-
-    expect(r1.exitCode).toBe(0)
-    expect(r2.exitCode).toBe(0)
-
-    const installRuns = readFileSync(counterFile, 'utf8').trim().split('\n').filter(Boolean)
-    expect(installRuns.length).toBe(1)
+    // p1's orphaned `sleep 30` child may still be running; nothing else in
+    // this process depends on it, so we don't wait on it.
   }, 15000)
-
-  test('releaseLock only removes the lock if it still owns it (no ownership hijack)', async () => {
-    const lockPath = join(dir, '.ensure-deps.lock')
-    const readyFile = join(dir, 'p1-ready')
-    const installCmd = `touch ${readyFile} && sleep 0.6`
-
-    const p1 = run({ ENSURE_DEPS_INSTALL_CMD: installCmd })
-
-    const deadline = Date.now() + 5000
-    while (!existsSync(readyFile) && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 20))
-    }
-    expect(existsSync(readyFile)).toBe(true)
-
-    // Simulate another process having since taken over the lock (as could
-    // happen if this lock were wrongly deemed stale and re-acquired).
-    const impostorOwner = `${process.pid}:impostor-token`
-    writeFileSync(lockPath, `${impostorOwner}\n`)
-
-    const r1 = { exitCode: await p1.exited, stderr: await new Response(p1.stderr).text() }
-    expect(r1.exitCode).toBe(0)
-
-    // P1 must not have deleted a lock it no longer owns.
-    expect(existsSync(lockPath)).toBe(true)
-    expect(readFileSync(lockPath, 'utf8').trim()).toBe(impostorOwner)
-
-    rmSync(lockPath, { force: true })
-  })
 
   test('a change to the lockfile (resolved versions) triggers reinstall even if ranges are unchanged', async () => {
     writeFileSync(join(dir, 'bun.lock'), 'lockfile-version-1')
