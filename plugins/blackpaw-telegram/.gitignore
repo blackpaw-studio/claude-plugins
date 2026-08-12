@@ -1,3 +1,4 @@
-# Transient lock file for bin/ensure-deps.ts; normally removed after use,
-# but may survive a hard crash mid-install.
+# Lock file for bin/ensure-deps.ts. Created once (if missing) and never
+# deleted or rewritten — mutual exclusion is via an OS-level flock(2) on the
+# fd, not the file's presence or contents, so there is nothing to clean up.
 .ensure-deps.lock

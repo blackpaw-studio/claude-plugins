@@ -181,6 +181,37 @@ describe('ensure-deps', () => {
     // this process depends on it, so we don't wait on it.
   }, 15000)
 
+  test('a genuinely contended lock past the poll cap times out, exits 0, and does not install', async () => {
+    // Zero coverage on the timeout branch before this: verify a waiter that
+    // never gets the lock gives up after ENSURE_DEPS_POLL_TIMEOUT_MS rather
+    // than hanging (the old default was 5 minutes; this uses a short
+    // injected timeout so the test itself doesn't hang).
+    const readyFile = join(dir, 'p1-ready')
+    const holderInstallCmd = `touch ${readyFile} && sleep 5`
+    const p1 = run({ ENSURE_DEPS_INSTALL_CMD: holderInstallCmd })
+
+    await waitForFile(readyFile)
+
+    const counterFile = join(dir, 'install-count.txt')
+    writeFileSync(counterFile, '')
+
+    const start = Date.now()
+    const { exitCode, stderr } = await runAndWait({
+      ENSURE_DEPS_INSTALL_CMD: `echo run >> ${counterFile}`,
+      ENSURE_DEPS_POLL_TIMEOUT_MS: '500',
+    })
+    const elapsedMs = Date.now() - start
+
+    expect(exitCode).toBe(0)
+    expect(stderr).toContain('timed out after 500ms')
+    expect(elapsedMs).toBeGreaterThanOrEqual(500)
+    expect(elapsedMs).toBeLessThan(4000) // did not wait out P1's full 5s hold
+    expect(readFileSync(counterFile, 'utf8').trim()).toBe('') // never installed
+    expect(existsSync(join(dir, 'node_modules', '.deps-ok'))).toBe(false)
+
+    p1.kill('SIGKILL')
+  }, 10000)
+
   test('a change to the lockfile (resolved versions) triggers reinstall even if ranges are unchanged', async () => {
     writeFileSync(join(dir, 'bun.lock'), 'lockfile-version-1')
     const counterFile = join(dir, 'install-count.txt')

@@ -18,33 +18,33 @@
  * rounds found three distinct bugs growing out of that same shape.
  *
  * This version deletes that whole bug class instead of patching it further:
- * it uses the kernel's own advisory file lock (flock(2), the same mechanism
- * already used elsewhere in this plugin — see ../src/lock.ts) as the single
- * source of truth for "is the holder still alive". flock is tied to the
- * holder's open file descriptor, so the kernel releases it automatically and
- * atomically the instant the holder process exits for ANY reason, including
- * a crash or SIGKILL — no PID bookkeeping, no staleness heuristics, no
- * "breaking" step, and therefore nothing for a TOCTOU to happen in. The lock
- * file itself is never deleted or rewritten by anyone; its content is
- * irrelevant and untouched.
+ * it uses the kernel's own advisory file lock (flock(2), the same FFI
+ * binding shared with ../src/lock.ts) as the single source of truth for "is
+ * the holder still alive". flock is tied to the holder's open file
+ * descriptor, so the kernel releases it automatically and atomically the
+ * instant the holder process exits for ANY reason, including a crash or
+ * SIGKILL — no PID bookkeeping, no staleness heuristics, no "breaking" step.
+ * The lock file itself is never deleted or rewritten by anyone; its content
+ * is irrelevant and untouched.
+ *
+ * flock(2) isn't available on every filesystem (some SMB/NFS/FUSE mounts
+ * return ENOTSUP/EINVAL). Rather than looping forever on an error that will
+ * never resolve, any errno other than EWOULDBLOCK/EAGAIN/EINTR is treated as
+ * "locking unavailable here" and we fall through to an unlocked install —
+ * degraded but forward-making, which is strictly better than never
+ * installing.
  */
 
-import { dlopen, FFIType, suffix } from 'bun:ffi'
 import { createHash } from 'node:crypto'
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { EAGAIN, EINTR, EWOULDBLOCK, LOCK_EX, LOCK_NB, LOCK_UN, flock, readErrno } from '../src/lock.ts'
 
 const POLL_INTERVAL_MS = 200
-const POLL_TIMEOUT_MS = 5 * 60_000
-
-const LOCK_EX = 2
-const LOCK_NB = 4
-const LOCK_UN = 8
-
-const libPath = process.platform === 'darwin' ? '/usr/lib/libSystem.B.dylib' : `libc.${suffix}`
-const { symbols } = dlopen(libPath, {
-  flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
-})
+// Well under any MCP handshake timeout — waiting the old 5 minutes was
+// functionally identical to hanging. Env-overridable for tests and for
+// operators on unusually slow/contended storage.
+const POLL_TIMEOUT_MS = Number(process.env.ENSURE_DEPS_POLL_TIMEOUT_MS ?? 90_000)
 
 function log(msg: string): void {
   process.stderr.write(`[ensure-deps] ${msg}\n`)
@@ -94,9 +94,15 @@ function writeSentinel(sentinelPath: string, hash: string, nodeModulesDir: strin
 function runInstall(dir: string): boolean {
   const cmd = process.env.ENSURE_DEPS_INSTALL_CMD ?? 'bun install --no-summary'
   log(`installing dependencies in ${dir} (${cmd})`)
-  const proc = Bun.spawnSync(['bash', '-lc', cmd], {
+  // No login shell (`-l`): it sources the user's profile, and any profile
+  // line that writes to stdout would land directly in the MCP JSON-RPC
+  // channel — the exact symptom class this script exists to prevent. PATH
+  // is already inherited from the parent process without it. stdout is
+  // discarded for the same reason (belt-and-braces); stderr is kept so
+  // install failures stay visible in logs.
+  const proc = Bun.spawnSync(['bash', '-c', cmd], {
     cwd: dir,
-    stdout: 'inherit',
+    stdout: 'ignore',
     stderr: 'inherit',
   })
   if (proc.exitCode !== 0) {
@@ -104,6 +110,26 @@ function runInstall(dir: string): boolean {
     return false
   }
   return true
+}
+
+/**
+ * Try to take the exclusive lock, non-blocking. Returns:
+ *   'acquired'  — we hold it, proceed to install and release when done
+ *   'contended' — someone else holds it; caller should poll-wait
+ *   'unlocked'  — flock isn't usable on this filesystem; proceed without
+ *                 mutual exclusion rather than looping forever
+ */
+function tryAcquire(fd: number): 'acquired' | 'contended' | 'unlocked' {
+  if (flock(fd, LOCK_EX | LOCK_NB) === 0) return 'acquired'
+
+  const errno = readErrno()
+  if (errno === EINTR) return 'contended' // treat as "try again", same as contended
+  if (errno === EWOULDBLOCK || errno === EAGAIN) return 'contended'
+
+  log(
+    `flock(2) is unavailable on this filesystem (errno ${errno}); proceeding with an unlocked install`,
+  )
+  return 'unlocked'
 }
 
 async function main(): Promise<void> {
@@ -127,11 +153,22 @@ async function main(): Promise<void> {
 
   // Open (create-if-missing, never truncate, never delete) once. Content is
   // never read or trusted for correctness — only the kernel-managed
-  // exclusive advisory lock on this fd matters.
+  // exclusive advisory lock on this fd matters (when supported).
   const fd = openSync(lockPath, 'a+', 0o644)
+  let holdingLock = false
   try {
     const deadline = Date.now() + POLL_TIMEOUT_MS
-    while (symbols.flock(fd, LOCK_EX | LOCK_NB) !== 0) {
+    acquireLoop: while (true) {
+      const result = tryAcquire(fd)
+      if (result === 'acquired') {
+        holdingLock = true
+        break acquireLoop
+      }
+      if (result === 'unlocked') {
+        break acquireLoop
+      }
+
+      // Contended: someone else may already be installing. Don't pile on.
       if (isSentinelValid(sentinelPath, depsHash)) return
       if (Date.now() > deadline) {
         log(`timed out after ${POLL_TIMEOUT_MS}ms waiting for a concurrent install to finish`)
@@ -150,9 +187,11 @@ async function main(): Promise<void> {
         log('continuing without a confirmed dependency install; server startup will proceed anyway')
       }
     } finally {
-      try {
-        symbols.flock(fd, LOCK_UN)
-      } catch {}
+      if (holdingLock) {
+        try {
+          flock(fd, LOCK_UN)
+        } catch {}
+      }
     }
   } finally {
     try {
