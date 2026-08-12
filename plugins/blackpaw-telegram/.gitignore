@@ -1,0 +1,3 @@
+# Transient lock file for bin/ensure-deps.ts; normally removed after use,
+# but may survive a hard crash mid-install.
+.ensure-deps.lock
