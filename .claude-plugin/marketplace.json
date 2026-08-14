@@ -23,6 +23,15 @@
         "transcription"
       ],
       "strict": false
+    },
+    {
+      "name": "blackpaw-slack",
+      "source": "./plugins/blackpaw-slack",
+      "description": "Slack channel for Claude Code — alerting-minimal incident bridge (post to thread, receive thread replies) over Socket Mode.",
+      "version": "0.1.0",
+      "category": "channel",
+      "keywords": ["slack", "messaging", "channel", "mcp", "alerting"],
+      "strict": false
     }
   ]
 }

@@ -1,0 +1,14 @@
+blackpaw-plugins / telegram
+Copyright 2026 Blackpaw Studio
+
+This plugin is a fork of Anthropic's official Telegram channel plugin:
+  https://github.com/anthropics/claude-plugins-official/tree/main/external_plugins/telegram
+  Copyright 2026 Anthropic, PBC
+  Licensed under the Apache License, Version 2.0.
+
+Additional feature scope draws from the claude-telegram-supercharged fork by
+k1p1l0, excluding its daemon/supervisor and Telegraph/sticker-rendering code:
+  https://github.com/k1p1l0/claude-telegram-supercharged
+
+Distributed under the Apache License, Version 2.0. See LICENSE for the full
+license text.
