@@ -1,0 +1,83 @@
+// The $.state contract of rich-statusline: the values its hooks collect and
+// its render hook reads. Self-contained (no imports), named in plugin.json.
+
+export type RichStatuslineLayout = '1a' | '1b' | '1c'
+
+export type RichStatuslineSettings = {
+  layout: RichStatuslineLayout
+  showCost: boolean
+  showPr: boolean
+  showDiff: boolean
+  showLegend: boolean
+  amberPercent: number
+  redPercent: number
+  gitRefreshSeconds: number
+  prRefreshSeconds: number
+}
+
+export type RichStatuslineDiff = { insertions: number; deletions: number }
+
+export type RichStatuslineGit = {
+  /** Current branch; null when the cwd is not inside a git repository. */
+  branch: string | null
+  /** Uncommitted changes against HEAD; null when clean or unknown. */
+  diff: RichStatuslineDiff | null
+}
+
+export type RichStatuslinePr = {
+  /** `#123` style label; null when there is no PR or gh is unavailable. */
+  label: string | null
+  /** The branch the label was read for. */
+  branch: string | null
+}
+
+export type RichStatuslineIdentity = {
+  /** Model id as the engine reports it. */
+  model: string
+  /** Effort level; absent when unknown or the model has none. */
+  effort?: string
+  cwd: string
+  home?: string
+}
+
+export type RichStatuslineRateLimit = {
+  kind: string
+  percentUsed: number
+  /** Reset time in epoch milliseconds. */
+  resetsAt?: number
+}
+
+export type RichStatuslineUsage = {
+  /** Input tokens of the last response; absent before the first one. */
+  tokens?: number
+  window: number
+  rateLimits: RichStatuslineRateLimit[]
+  costUsd?: number
+}
+
+export type RichStatuslineCategoryKey = 'system' | 'tools' | 'mcp' | 'memory' | 'chat'
+
+export type RichStatuslineCategory = { key: RichStatuslineCategoryKey; tokens: number }
+
+export type RichStatuslineBreakdown = {
+  /** The five folded categories, in display order. */
+  categories: RichStatuslineCategory[]
+  /** The window the breakdown measures against. */
+  rawMaxTokens: number
+  /** Auto-compact threshold as a fraction of rawMaxTokens; absent when off. */
+  compactFraction?: number
+}
+
+declare module 'claude-code' {
+  interface PluginState {
+    'rich-statusline': {
+      settings: RichStatuslineSettings | null
+      git: RichStatuslineGit | null
+      pr: RichStatuslinePr | null
+      identity: RichStatuslineIdentity | null
+      usage: RichStatuslineUsage | null
+      breakdown: RichStatuslineBreakdown | null
+      now: number
+    }
+  }
+}

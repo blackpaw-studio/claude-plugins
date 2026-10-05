@@ -1,0 +1,13 @@
+{
+  "name": "rich-statusline",
+  "version": "0.1.0",
+  "description": "Multi-row status dashboard under the prompt: model, location, git, context breakdown, usage limits and cost, in three layouts with a settings panel.",
+  "author": {
+    "name": "Evan Coleman"
+  },
+  "homepage": "https://github.com/blackpaw-studio/claude-plugins",
+  "repository": "https://github.com/blackpaw-studio/claude-plugins",
+  "license": "Apache-2.0",
+  "keywords": ["statusline", "ui", "context", "usage", "mod"],
+  "types": "./types/index.d.ts"
+}
