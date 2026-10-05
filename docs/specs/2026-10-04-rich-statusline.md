@@ -27,8 +27,9 @@ multi-row status layouts from the Claude Design artifact
   prompt → engine mode line → our rows → engine hint text (when non-empty). We never touch the mode line.
 
 ## Settings panel
-- Opened by `/rich-statusline` (or `/rich-statusline settings`) and a registered keybinding action
-  (default chord documented in README; user-rebindable). Pane with `focus`, `closeOnEscape`; Tab/arrows walk
+- Opened by `/rich-statusline` (or `/rich-statusline settings`). A keybinding action is not supported by the
+  plugin API (Button `action` accepts engine actions only); settings open via `/rich-statusline`. Pane with
+  `focus`, `closeOnEscape`; Tab/arrows walk
   controls, Enter/Space activates, Esc closes.
 - Controls: layout (1a/1b/1c `Select`), show cost, show PR, show legend (1a/1b), amber threshold, red
   threshold, git refresh seconds, PR refresh seconds. Changes apply live and persist in `$.store`.
