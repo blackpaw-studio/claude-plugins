@@ -1,6 +1,6 @@
 {
   "name": "rich-statusline",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Multi-row status dashboard under the prompt: model, location, git, context breakdown, usage limits and cost, in three layouts with a settings menu above the prompt.",
   "author": {
     "name": "Evan Coleman"

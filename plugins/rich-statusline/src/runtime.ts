@@ -61,6 +61,12 @@ export type Runtime = {
   setSettings: (settings: Settings) => Promise<boolean>
   /** A new or resumed session: identity, cwd, git and the breakdown again. */
   sessionStarted: () => Promise<void>
+  /**
+   * Seeds the session's state again from a timer, timers left running: a
+   * /clear empties it under a live runtime. At most one pending or running;
+   * nothing before attach.
+   */
+  reseed: () => void
   /** Restarts the refresh timers when their intervals changed. */
   retime: (settings: Settings) => void
 }
@@ -119,6 +125,8 @@ export const createRuntime = (): Runtime => {
   let work: ReturnType<typeof collectors> | null = null
   let timers: Timer[] = []
   let pendingBreakdown: Timer | null = null
+  // A start or reseed is pending or running; another asked meanwhile folds into it.
+  let isSeeding = false
 
   const background = (what: string, task: () => Promise<void>): void => {
     task().catch(error => ports?.log(`rich-statusline: ${what} failed: ${describeError(error)}`))
@@ -133,15 +141,20 @@ export const createRuntime = (): Runtime => {
     ]
   }
 
-  /** Settings, then timers, then each first read, each guarded: no failure stops the rest. */
-  const start = async (p: Ports, w: ReturnType<typeof collectors>): Promise<void> => {
+  /**
+   * Settings, then `andThen` (the timers, at start), then each first read, each
+   * guarded: no failure stops the rest.
+   */
+  const seed = async (
+    p: Ports,
+    w: ReturnType<typeof collectors>,
+    andThen: (settings: Settings) => void = () => undefined,
+  ): Promise<void> => {
     const settings = parseSettings(await p.storedSettings().catch(() => undefined))
     await p.settings.set(settings).catch(error => p.log(`rich-statusline: settings failed: ${describeError(error)}`))
-    try {
-      startTimers(p, w, settings)
-    } catch (error) {
-      p.log(`rich-statusline: timers failed: ${describeError(error)}`)
-    }
+    andThen(settings)
+    // Again on a reseed: a command is declared per session, and a second
+    // register replaces the first.
     background('command', async () => {
       await p.registerCommand()
     })
@@ -151,14 +164,40 @@ export const createRuntime = (): Runtime => {
     background('git', w.refreshGit)
   }
 
+  const start = (p: Ports, w: ReturnType<typeof collectors>): Promise<void> =>
+    seed(p, w, settings => {
+      try {
+        startTimers(p, w, settings)
+      } catch (error) {
+        p.log(`rich-statusline: timers failed: ${describeError(error)}`)
+      }
+    })
+
+  /** From a timer (a render hook must not write state), one at a time. */
+  const schedule = (p: Ports, what: string, task: () => Promise<void>): void => {
+    if (isSeeding) return
+    isSeeding = true
+    try {
+      p.after(0, () =>
+        background(what, () =>
+          task().finally(() => {
+            isSeeding = false
+          }),
+        ),
+      )
+    } catch (error) {
+      isSeeding = false
+      throw error
+    }
+  }
+
   return {
     attach: next => {
       if (ports !== null) return
       ports = next
       const w = collectors(next, background)
       work = w
-      // From a timer: the attaching render hook must not write state itself.
-      next.after(0, () => background('start', () => start(next, w)))
+      schedule(next, 'start', () => start(next, w))
     },
     isAttached: () => ports !== null,
     contextChanged: () => {
@@ -187,6 +226,11 @@ export const createRuntime = (): Runtime => {
       await w.loadIdentity().catch(error => ports?.log(`rich-statusline: identity failed: ${describeError(error)}`))
       background('breakdown', w.loadBreakdown)
       background('git', w.refreshGit)
+    },
+    reseed: () => {
+      const p = ports
+      const w = work
+      if (p !== null && w !== null) schedule(p, 'reseed', () => seed(p, w))
     },
     updateIdentity: async change => {
       if (ports === null) return false

@@ -137,6 +137,49 @@ describe('runtime', () => {
     expect(await createRuntime().setUsage({ window: 1, rateLimits: [] })).toBe(false)
   })
 
+  test('a reseed writes the stored settings again and rereads every collector, with no new timers', async () => {
+    const settingsSets: unknown[] = []
+    const counts = { commands: 0, usages: 0 }
+    const world = fakeWorld({
+      overrides: {
+        storedSettings: async () => ({ layout: '1c' }),
+        settings: { set: async value => void settingsSets.push(value.layout) },
+        registerCommand: async () => void (counts.commands += 1),
+        usage: async () => ((counts.usages += 1), { context: { window: 200_000 }, rateLimits: [] }),
+      },
+    })
+    const runtime = await started(world)
+    runtime.reseed()
+    world.fireAfter()
+    await flush()
+    expect(settingsSets).toEqual(['1c', '1c'])
+    expect(counts).toEqual({ commands: 2, usages: 2 })
+    expect(world.gitSets).toHaveLength(2)
+    expect(world.identity()?.cwd).toBe('/a')
+    expect(world.everyCount()).toBe(3)
+  })
+
+  test('reseeds asked while one is pending fold into it; none before attach', async () => {
+    let reads = 0
+    const world = fakeWorld({ overrides: { storedSettings: async () => void (reads += 1) } })
+    const runtime = createRuntime()
+    runtime.reseed()
+    runtime.attach(world.ports)
+    runtime.reseed()
+    world.fireAfter()
+    await flush()
+    expect(reads).toBe(1)
+    runtime.reseed()
+    runtime.reseed()
+    world.fireAfter()
+    await flush()
+    expect(reads).toBe(2)
+    runtime.reseed()
+    world.fireAfter()
+    await flush()
+    expect(reads).toBe(3)
+  })
+
   test('a new session refreshes identity and git', async () => {
     const world = fakeWorld()
     const runtime = await started(world)

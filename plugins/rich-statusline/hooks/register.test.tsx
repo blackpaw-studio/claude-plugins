@@ -77,6 +77,38 @@ describe('the status rows under the prompt', () => {
     expect(world.runs.filter(run => run.includes('--show-toplevel')).length).toBe(before + 1)
   })
 
+  // With isStateScoped nothing redraws on a write: each read is a fresh mount.
+  const drawnRows = async ($: Engine) => rowsOfTree(await (await mountHint($)).drawn()).map(textOfNode)
+  const gitReads = (world: { runs: string[] }) => world.runs.filter(run => run.includes('--show-toplevel')).length
+
+  test('after a /clear empties the session state, the rows come back and every collector reads again', async ($, on) => {
+    const world = installWorld(on, { stored: GROUPED, branch: 'main', isStateScoped: true })
+    await mountHint($)
+    await world.clock.settle()
+    const before = await drawnRows($)
+    const [gits, usages] = [gitReads(world), world.usageCalls()]
+    await $.session.end({ reason: 'clear', sessionId: 'cleared', resume: { id: 'cleared' } })
+    await world.clock.settle()
+    expect(before).toHaveLength(7)
+    expect(await drawnRows($)).toEqual(before)
+    expect([gitReads(world), world.usageCalls()]).toEqual([gits + 1, usages + 1])
+  })
+
+  test('state emptied with no event: the next draw seeds it again, once however often it draws', async ($, on) => {
+    const world = installWorld(on, { stored: GROUPED, branch: 'main', isStateScoped: true })
+    await mountHint($)
+    await world.clock.settle()
+    const before = await drawnRows($)
+    const [gits, usages] = [gitReads(world), world.usageCalls()]
+    world.wipeState()
+    expect(await drawnRows($)).toEqual([ENGINE_HINT])
+    await drawnRows($)
+    await drawnRows($)
+    await world.clock.settle()
+    expect(await drawnRows($)).toEqual(before)
+    expect([gitReads(world), world.usageCalls()]).toEqual([gits + 1, usages + 1])
+  })
+
   test('nothing but the engine line until the stored settings have loaded', async ($, on) => {
     installWorld(on, { stored: { settings: { layout: '1c' } } })
     const ui = await mountHint($)
