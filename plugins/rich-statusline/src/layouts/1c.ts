@@ -18,7 +18,7 @@ const NAMES = { system: 'sys', tools: 'tools', mcp: 'mcp', memory: 'mem', chat: 
 const MIN_GAP = 2
 
 const barRow = (s: Snapshot, o: ViewOptions): Line =>
-  categoryBar(s, o.columns, { fill: '▀', empty: '▀', emptyColor: COLORS.empty1c })
+  categoryBar(s, o.columns, { fill: '▀', empty: '▀', emptyColor: COLORS.empty })
 
 type IdentityParts = { isPrShown: boolean; isDiffShown: boolean; isWorktreeShown: boolean }
 

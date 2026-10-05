@@ -6,16 +6,32 @@ branch, linked worktree, uncommitted diff stats, PR), the context window broken 
 category, the 5-hour and weekly usage limits with reset countdowns, and the
 session's cost.
 
-Three layouts, switchable live:
+Three layouts, switchable live (the short names 1a, 1b and 1c below refer to
+them):
 
+- **Labeled grid** (1b, the default): `model` / `where` / `context` /
+  `limits` rows, a category legend ending in `· N free  · compact N%`.
 - **Grouped rows** (1a): identity, a 60-cell context bar with the
   auto-compact marker, a category legend, and the limits.
-- **Labeled grid** (1b, default): `model` / `where` / `context` / `limits`
-  columns.
 - **Compact** (1c): a full-width bar and two justified rows.
+
+Every layout ends in a full-width `─` rule.
+
+## Screenshots
+
+![Labeled grid](docs/labeled-grid.png)
+![Grouped rows](docs/grouped-rows.png)
+![Compact](docs/compact.png)
+![Switching layouts](docs/demo.gif)
 
 Claude Code's own permission-mode line and its hint text (`? for shortcuts`,
 `esc to interrupt`, task pills) stay exactly as the engine draws them.
+
+## Requirements
+
+- Claude Code 2.1.289 or later.
+- Function-hook plugins (mods) are early access; the API may change between
+  releases.
 
 ## Install
 
@@ -61,11 +77,15 @@ bind only the engine's own keybinding actions, not a plugin-defined one.
 
 - **Terminal only.** On desktop, VS Code and mobile the hint line is left as
   the engine draws it.
-- **Narrow terminals:** under 100 columns the legend goes; under 80 the reset
-  countdowns and the PR go and the context bar shrinks to fit; under 60 the
-  compact layout is used whatever is chosen.
+- **Narrow terminals:** the context bar shrinks to fit; under 100 columns the
+  legend goes; under 80 the reset countdowns and the PR go; under 60 the
+  compact layout is used whatever is chosen. When a row still overflows, 1b's
+  `· compact N%` note is the first thing its legend drops.
 - **No rate limits** (API key, gateway): the limits row is hidden.
-- **Before the first response:** `ctx —` over an empty bar.
+- **Before the first response:** `—` replaces the context percentage, over an
+  empty bar.
+- **Zero-token categories** are left out of the legends. MCP tools loaded via
+  tool search are deferred (outside the window), so mcp is often 0.
 - The category split uses the local `summary` estimate of `/context` (no
   token-count requests), refreshed two seconds after the context last changed.
 - `git` and `gh` run through the host with a timeout; a render never waits on

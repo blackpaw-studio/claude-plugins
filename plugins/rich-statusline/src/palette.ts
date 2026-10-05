@@ -21,9 +21,8 @@ export const COLORS = {
   dim: DIM,
   faint: DIM,
   separator: DIM,
+  /** Empty bar cells (every layout) and the bottom rule. */
   empty: { ...slot('gray'), ...DIM },
-  empty1c: { ...slot('gray'), ...DIM },
-  rule: { ...slot('gray'), ...DIM },
   system: slot('blue'),
   tools: slot('cyan'),
   mcp: slot('magenta'),

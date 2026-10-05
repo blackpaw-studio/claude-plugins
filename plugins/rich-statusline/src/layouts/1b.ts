@@ -1,16 +1,18 @@
 // Layout 1b: labeled grid — model, where, context, legend, limits.
 import { formatCost, formatDuration, formatTokens } from '../format'
-import { firstFitting, fitOrTruncate, type Line, mergeRuns, type Span, span, widthOf } from '../line'
+import { firstFitting, fitOrTruncate, type Line, mergeRuns, type Span, span } from '../line'
 import { CATEGORY_COLORS, COLORS } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
 import type { ViewOptions } from '../view-options'
 import {
   categoryBar,
   clamp,
+  compactNote,
   contextFigure,
   diffSpans,
   FILLED_CELL,
   legendCategories,
+  legendRow,
   limitFigure,
   resetLabel,
   worktreeSpans,
@@ -71,10 +73,8 @@ const legendLine = (s: Snapshot, isCompactShown: boolean): Line => {
     span(NAMES[key], CATEGORY_COLORS[key]),
     span(` ${formatTokens(tokens)}${ITEM_GAP}`, COLORS.muted),
   ])
-  const compact =
-    !isCompactShown || s.compactFraction === undefined
-      ? []
-      : [span(`${ITEM_GAP}· compact ${Math.round(s.compactFraction * 100)}%`, COLORS.dim)]
+  const note = isCompactShown ? compactNote(s) : undefined
+  const compact = note === undefined ? [] : [span(`${ITEM_GAP}· ${note}`, COLORS.dim)]
   return mergeRuns([
     span(' '.repeat(LABEL_WIDTH)),
     ...items,
@@ -83,12 +83,6 @@ const legendLine = (s: Snapshot, isCompactShown: boolean): Line => {
   ])
 }
 
-/** The legend, without its compact note if that is what overflows; else none. */
-const legendRow = (s: Snapshot, o: ViewOptions): Line | null => {
-  if (!o.showLegend || s.categories === null) return null
-  const row = firstFitting([legendLine(s, true), legendLine(s, false)], o.columns)
-  return widthOf(row) <= o.columns ? row : null
-}
 
 const limitSpans = (name: string, limit: LimitView | undefined, isResetShown: boolean): Span[] => {
   if (limit === undefined) return []
@@ -123,7 +117,7 @@ const limitsRow = (s: Snapshot, o: ViewOptions): Line | null => {
 }
 
 export const layout1b = (s: Snapshot, o: ViewOptions): Line[] => {
-  const legend = legendRow(s, o)
+  const legend = legendRow(s, o, legendLine)
   const limits = limitsRow(s, o)
   return [
     modelRow(s),

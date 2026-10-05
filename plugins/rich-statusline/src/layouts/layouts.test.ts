@@ -14,8 +14,6 @@ const C = {
   faint: 'fg+dim',
   separator: 'fg+dim',
   empty: 'ansi256(8)+dim',
-  empty1c: 'ansi256(8)+dim',
-  rule: 'ansi256(8)+dim',
   system: 'ansi256(4)',
   tools: 'ansi256(6)',
   mcp: 'ansi256(5)',
@@ -41,7 +39,7 @@ describe('1a grouped rows, design fixture at 120 columns', () => {
       '5h   ▆·········  10%  ↻ 1h 11m  │  week  ▆▆▆▆▆▆▆▆··  75%  ↻ 1d 12h 11m',
       '─'.repeat(120),
     ])
-    expect(runsOf(lines[4])).toEqual([`${'─'.repeat(120)}@${C.rule}`])
+    expect(runsOf(lines[4])).toEqual([`${'─'.repeat(120)}@${C.empty}`])
   })
   test('identity colours', () => {
     expect(spanOf(lines[0], '◆ Opus 5.5')).toEqual({ text: '◆ Opus 5.5', color: C.mcp, bold: true })
@@ -143,7 +141,7 @@ describe('1b labeled grid, design fixture at 120 columns', () => {
       `75%@${C.amber}`,
       ` resets 1d 12h 11m@${C.muted}`,
     ])
-    expect(runsOf(lines[5])).toEqual([`${'─'.repeat(120)}@${C.rule}`])
+    expect(runsOf(lines[5])).toEqual([`${'─'.repeat(120)}@${C.empty}`])
   })
 })
 
@@ -159,7 +157,7 @@ describe('1c compact, design fixture at 100 columns', () => {
       `${' '.repeat(100 - limits.length)}${limits}`,
       '─'.repeat(100),
     ])
-    expect(runsOf(lines[3])).toEqual([`${'─'.repeat(100)}@${C.rule}`])
+    expect(runsOf(lines[3])).toEqual([`${'─'.repeat(100)}@${C.empty}`])
   })
   test('colours', () => {
     expect(runsOf(lines[0])).toEqual([
@@ -168,7 +166,7 @@ describe('1c compact, design fixture at 100 columns', () => {
       `▀▀@${C.mcp}`,
       `▀@${C.memory}`,
       `▀▀▀▀@${C.ok}`,
-      `${'▀'.repeat(86)}@${C.empty1c}`,
+      `${'▀'.repeat(86)}@${C.empty}`,
     ])
     expect(runsOf(lines[1])).toEqual([
       `Opus 5.5@${C.mcp}`,

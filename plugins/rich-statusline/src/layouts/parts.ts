@@ -1,9 +1,10 @@
 // Pieces the three layouts share: the category bar, limit bars, figures.
 import type { RichStatuslineCategory, RichStatuslineDiff } from '../../types'
 import { allocateCells, markerIndex, wholeCells } from '../bar'
-import { type Line, type Span, span, type Tone } from '../line'
+import { firstFitting, type Line, type Span, span, type Tone, widthOf } from '../line'
 import { barColor, CATEGORY_COLORS, COLORS, figureColor } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
+import type { ViewOptions } from '../view-options'
 import { levelFor } from '../thresholds'
 
 export type BarGlyphs = { fill: string; empty: string; emptyColor: Tone; marker?: string }
@@ -94,10 +95,24 @@ export const diffSpans = (diff: RichStatuslineDiff | null, isShown: boolean): Sp
       ]
 
 /** The block's last row in every layout: a full-width rule. */
-export const ruleRow = (columns: number): Line => [span('─'.repeat(Math.max(0, columns)), COLORS.rule)]
+export const ruleRow = (columns: number): Line => [span('─'.repeat(Math.max(0, columns)), COLORS.empty)]
 
 /** The categories a legend names: those with tokens, in order (the bar gives the rest no cells). */
 export const legendCategories = (snapshot: Snapshot): RichStatuslineCategory[] =>
   (snapshot.categories ?? []).filter(category => category.tokens > 0)
+
+/** `compact 85%`: where auto-compact triggers; undefined when it is off. */
+export const compactNote = (snapshot: Snapshot): string | undefined =>
+  snapshot.compactFraction === undefined ? undefined : `compact ${Math.round(snapshot.compactFraction * 100)}%`
+
+/** A layout's legend line, with or without its compact note. */
+export type LegendLine = (snapshot: Snapshot, isCompactShown: boolean) => Line
+
+/** The legend, without its compact note if that is what overflows; else none. */
+export const legendRow = (snapshot: Snapshot, options: ViewOptions, legendLine: LegendLine): Line | null => {
+  if (!options.showLegend || snapshot.categories === null) return null
+  const row = firstFitting([legendLine(snapshot, true), legendLine(snapshot, false)], options.columns)
+  return widthOf(row) <= options.columns ? row : null
+}
 
 export const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value))

@@ -88,7 +88,7 @@ legend indented 5 cols `■ system 6.4k  ■ tools 8.2k …  ┊ compact 85%` /
 
 **1b** — 8-col label column (`model`, `where`, `context`, `limits`): rows per design, empty cells `▆` in the
 empty tone (gray + dimColor) so the bar keeps one cell height (the design's `░` is full height; Evan, 2026-10-05)
-(51-cell bar, no compact marker: Evan, 2026-10-05), legend row with short names
+(60-cell bar, clamped to 10–60 by width; no compact marker: Evan, 2026-10-05), legend row with short names
 (`sys tools mcp mem chat · 172k free  · compact 85%`, the compact note dim; hidden when auto-compact is off; on overflow the note drops before the legend; Evan, 2026-10-05), `limits` row, then the shared bottom rule.
 
 **1c** — full-width `▀` bar (width = `bodyColumns`), then two justified rows:
