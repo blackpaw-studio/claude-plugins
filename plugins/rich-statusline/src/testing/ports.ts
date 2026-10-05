@@ -36,7 +36,7 @@ export type FakeWorld = {
 
 /** Answers git for a repo rooted at the cwd on branch `main`, gh with #1. */
 export const answerFor = (argv: string, cwd: string): RunResult => {
-  if (argv.includes('--show-toplevel')) return ok(`${cwd}\n`)
+  if (argv.includes('--show-toplevel')) return ok(`${cwd.replace(/\/sub$/, '')}\n`)
   if (argv.includes('--abbrev-ref')) return ok('main\n')
   if (argv.startsWith('gh')) return ok('{"number":1,"state":"OPEN"}')
   return ok('')

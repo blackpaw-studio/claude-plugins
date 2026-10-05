@@ -2,6 +2,7 @@
 // Created once per module load (a hot reload drops it with its timers). It
 // never sees `$`: the hooks hand it Ports, closures over their own `$` calls.
 import type { RichStatuslineBreakdown, RichStatuslineGit, RichStatuslineIdentity, RichStatuslinePr, RichStatuslineUsage } from '../types'
+import { coalesce } from './coalesce'
 import { collectGit } from './collect/git'
 import { collectPr } from './collect/pr'
 import type { Run } from './collect/run'
@@ -55,31 +56,6 @@ export type Runtime = {
   retime: (settings: Settings) => void
 }
 
-/**
- * Runs `task` one at a time. A call while it runs queues exactly one rerun
- * (later calls fold into it) and resolves when that rerun is done.
- */
-const coalesce = (task: () => Promise<void>) => {
-  let running: Promise<void> | null = null
-  let isQueued = false
-  const loop = async (): Promise<void> => {
-    do {
-      isQueued = false
-      await task()
-    } while (isQueued)
-  }
-  return (): Promise<void> => {
-    if (running !== null) {
-      isQueued = true
-      return running
-    }
-    running = loop().finally(() => {
-      running = null
-    })
-    return running
-  }
-}
-
 const describeError = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 const collectors = (ports: Ports, background: (what: string, task: () => Promise<void>) => void) => {
@@ -88,7 +64,7 @@ const collectors = (ports: Ports, background: (what: string, task: () => Promise
     const git = await ports.git.get()
     const branch = git?.branch ?? null
     const root = git?.root ?? null
-    const label = branch === null ? null : await collectPr(ports.run, await cwdOf())
+    const label = branch === null ? null : await collectPr(ports.run, root ?? (await cwdOf()))
     const now = await ports.git.get()
     const isCurrent = (now?.branch ?? null) === branch && (now?.root ?? null) === root
     if (label !== undefined && isCurrent) await ports.pr.set({ label, root, branch })
@@ -148,13 +124,15 @@ export const createRuntime = (): Runtime => {
     ]
   }
 
-  /** Timers first, then each first read on its own: no failure stops the rest. */
+  /** Settings, then timers, then each first read, each guarded: no failure stops the rest. */
   const start = async (p: Ports, w: ReturnType<typeof collectors>): Promise<void> => {
     const settings = parseSettings(await p.storedSettings().catch(() => undefined))
-    startTimers(p, w, settings)
-    background('settings', async () => {
-      await p.settings.set(settings)
-    })
+    await p.settings.set(settings).catch(error => p.log(`rich-statusline: settings failed: ${describeError(error)}`))
+    try {
+      startTimers(p, w, settings)
+    } catch (error) {
+      p.log(`rich-statusline: timers failed: ${describeError(error)}`)
+    }
     background('command', async () => {
       await p.registerCommand()
     })
@@ -196,9 +174,10 @@ export const createRuntime = (): Runtime => {
     sessionStarted: async () => {
       const w = work
       if (w === null) return
-      await w.loadIdentity()
+      // Identity first (git reads its cwd), but a failure there stops nothing.
+      await w.loadIdentity().catch(error => ports?.log(`rich-statusline: identity failed: ${describeError(error)}`))
       background('breakdown', w.loadBreakdown)
-      await w.refreshGit()
+      background('git', w.refreshGit)
     },
     retime: settings => {
       if (ports !== null && work !== null) startTimers(ports, work, settings)

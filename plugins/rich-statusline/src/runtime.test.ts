@@ -79,6 +79,31 @@ describe('runtime', () => {
     expect(world.everyCount()).toBe(3)
   })
 
+  test('a new session still reads git when the identity read fails', async () => {
+    let isBroken = false
+    const world = fakeWorld({
+      overrides: {
+        model: async () => {
+          if (isBroken) throw new Error('no model')
+          return 'claude-opus-5-5'
+        },
+      },
+    })
+    const runtime = await started(world)
+    isBroken = true
+    const before = world.calls.length
+    await runtime.sessionStarted()
+    await flush()
+    expect(world.calls.length).toBeGreaterThan(before)
+  })
+
+  test('gh runs in the repository root', async () => {
+    const world = fakeWorld()
+    world.setCwd('/a/sub')
+    await started(world)
+    expect(world.calls.find(c => c.argv.startsWith('gh'))?.cwd).toBe('/a')
+  })
+
   test('a new session refreshes identity and git', async () => {
     const world = fakeWorld()
     const runtime = await started(world)
