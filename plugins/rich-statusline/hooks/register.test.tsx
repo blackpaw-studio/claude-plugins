@@ -21,10 +21,12 @@ describe('the status rows under the prompt', () => {
     await world.clock.settle()
     const rows = rowsOfTree(await ui.drawn())
     expect(rows.map(textOfNode)).toEqual([
-      '◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ main (+12,-3)  #123',
-      `ctx  ${CTX_1A}  14.0% 28k/200k`,
-      '     ■ system 6.4k  ■ tools 8.2k  ■ mcp 3.0k  ■ memory 1.6k  ■ chat 8.8k  ┊ compact 85%',
-      '5h   ▆·········  10%  ↻ 1h 11m  │  week  ▆▆▆▆▆▆▆▆··  75%  ↻ 1d 12h 11m',
+      '◆ Opus 5.5   thinking medium   │   ~/.l/workspace   ⎇ main (+12,-3)   #123',
+      ' ',
+      `ctx   ${CTX_1A}   14.0%  28k/200k`,
+      '      ■ system 6.4k   ■ tools 8.2k   ■ mcp 3.0k   ■ memory 1.6k   ■ chat 8.8k   ┊ compact 85%',
+      ' ',
+      '5h    ▆·········   10%   ↻ 1h 11m   │   week   ▆▆▆▆▆▆▆▆··   75%   ↻ 1d 12h 11m',
       ENGINE_HINT,
     ])
     expect(rows[rows.length - 1]).toEqual({ type: 'Text', props: { dimColor: true }, children: [ENGINE_HINT] })
@@ -40,7 +42,7 @@ describe('the status rows under the prompt', () => {
     const world = installWorld(on)
     const ui = await mountHint($)
     await world.clock.settle()
-    expect(textOfNode(rowsOfTree(await ui.drawn())[0])).toBe('◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ no git  no PR')
+    expect(textOfNode(rowsOfTree(await ui.drawn())[0])).toBe('◆ Opus 5.5   thinking medium   │   ~/.l/workspace   ⎇ no git   no PR')
     expect(world.runs.some(run => run.startsWith('gh'))).toBe(false)
   })
 
@@ -49,7 +51,7 @@ describe('the status rows under the prompt', () => {
     const ui = await mountHint($)
     await world.clock.settle()
     expect(textOfNode(rowsOfTree(await ui.drawn())[0])).toBe(
-      '◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ main (+12,-3)  #123',
+      '◆ Opus 5.5   thinking medium   │   ~/.l/workspace   ⎇ main (+12,-3)   #123',
     )
     const before = world.runs.length
     await world.clock.advance(10_000)
@@ -100,8 +102,8 @@ describe('the status rows under the prompt', () => {
       changed: ['context', 'cost'],
     })
     const rows = rowsOfTree(await ui.drawn()).map(textOfNode)
-    expect(rows[0]?.endsWith('no PR  $1.23')).toBe(true)
-    expect(rows[1]?.endsWith('15.0% 30k/200k')).toBe(true)
+    expect(rows[0]?.endsWith('no PR   $1.23')).toBe(true)
+    expect(rows[2]?.endsWith('15.0%  30k/200k')).toBe(true)
     expect(world.usageCalls()).toBe(before)
     await world.clock.advance(2_000)
     expect(world.usageCalls()).toBe(before + 1)
@@ -113,7 +115,7 @@ describe('the status rows under the prompt', () => {
     await world.clock.settle()
     await world.clock.set(NOW + 60_000)
     const rows = rowsOfTree(await ui.drawn()).map(textOfNode)
-    expect(rows[3]).toBe('5h   ▆·········  10%  ↻ 1h 10m  │  week  ▆▆▆▆▆▆▆▆··  75%  ↻ 1d 12h 10m')
+    expect(rows[5]).toBe('5h    ▆·········   10%   ↻ 1h 10m   │   week   ▆▆▆▆▆▆▆▆··   75%   ↻ 1d 12h 10m')
   })
 })
 
@@ -185,6 +187,6 @@ describe('the settings panel', () => {
     const world = installWorld(on, { stored: { settings: { layout: '1b', redPercent: 'very' } } })
     const ui = await mountHint($)
     await world.clock.settle()
-    expect(textOfNode(rowsOfTree(await ui.drawn())[0])).toBe('model   Opus 5.5  ·  thinking medium')
+    expect(textOfNode(rowsOfTree(await ui.drawn())[0])).toBe('model   Opus 5.5   ·   thinking medium')
   })
 })

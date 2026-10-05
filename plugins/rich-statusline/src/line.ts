@@ -12,6 +12,12 @@ export const span = (text: string, color?: string, bold?: boolean): Span => ({
 
 export const GAP: Span = span('  ')
 
+/** The 1a/1b gap between items: three cells (comfortable spacing). */
+export const WIDE_GAP: Span = span('   ')
+
+/** An empty row between groups; one space so the row keeps its height. */
+export const BLANK_LINE: Line = [span(' ')]
+
 export const widthOf = (spans: readonly Span[]): number =>
   spans.reduce((total, { text }) => total + [...text].length, 0)
 
@@ -36,3 +42,7 @@ export const mergeRuns = (spans: readonly Span[]): Span[] =>
       ? [...merged.slice(0, -1), { ...last, text: last.text + next.text }]
       : [...merged, next]
   }, [])
+
+/** The first candidate that fits `width` cells, else the last (the leanest). */
+export const firstFitting = (candidates: readonly Line[], width: number): Line =>
+  candidates.find(line => widthOf(line) <= width) ?? candidates[candidates.length - 1] ?? []

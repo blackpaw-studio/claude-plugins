@@ -1,58 +1,85 @@
-// Layout 1a: grouped rows — identity, context bar, legend, limits.
+// Layout 1a: grouped rows — identity, context bar, legend, limits — with
+// three-cell gaps and a blank row between groups.
 import { formatCost, formatDuration, formatTokens } from '../format'
-import { GAP, joinGroups, type Line, type Span, span } from '../line'
+import { BLANK_LINE, firstFitting, joinGroups, type Line, type Span, span, WIDE_GAP, widthOf } from '../line'
 import { CATEGORY_COLORS, COLORS } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
 import type { ViewOptions } from '../view-options'
-import { categoryBar, FILLED_CELL, clamp, contextFigure, diffSpans, limitBar, limitFigure, resetLabel } from './parts'
+import { categoryBar, clamp, contextFigure, diffSpans, FILLED_CELL, limitBar, limitFigure, resetLabel } from './parts'
 
 const BAR_WIDTH = 60
 const MIN_BAR_WIDTH = 10
-const CTX_ROW_CHROME = 21
-const LEGEND_INDENT = '     '
+/** `ctx`, two gaps and the widest figures (`100.0%  200k/200k`) around the bar. */
+const CTX_ROW_CHROME = 3 + 3 + 3 + 17
+const LABEL_GAP = '   '
+const LEGEND_INDENT = ' '.repeat(3 + LABEL_GAP.length)
 const NAMES = { system: 'system', tools: 'tools', mcp: 'mcp', memory: 'memory', chat: 'chat' } as const
 
-const identityRow = (s: Snapshot, o: ViewOptions): Line =>
-  joinGroups([
+const join = (groups: readonly (readonly Span[])[]): Span[] => joinGroups(groups, [WIDE_GAP])
+
+type IdentityParts = { isCostShown: boolean; isPrShown: boolean; isDiffShown: boolean }
+
+const identityLine = (s: Snapshot, { isCostShown, isPrShown, isDiffShown }: IdentityParts): Line =>
+  join([
     [span(`◆ ${s.model}`, COLORS.model, true)],
     s.effort === undefined ? [] : [span('thinking ', COLORS.muted), span(s.effort, COLORS.text)],
     [span('│', COLORS.separator)],
     s.cwd === '' ? [] : [span(s.cwd, COLORS.system)],
-    [span(s.branch === null ? '⎇ no git' : `⎇ ${s.branch}`, COLORS.muted), ...diffSpans(s.diff, o.showDiff)],
-    o.showPr ? [span(s.pr ?? 'no PR', COLORS.muted)] : [],
-    o.showCost && s.cost !== undefined ? [span(formatCost(s.cost), COLORS.muted)] : [],
+    [span(s.branch === null ? '⎇ no git' : `⎇ ${s.branch}`, COLORS.muted), ...diffSpans(s.diff, isDiffShown)],
+    isPrShown ? [span(s.pr ?? 'no PR', COLORS.muted)] : [],
+    isCostShown && s.cost !== undefined ? [span(formatCost(s.cost), COLORS.muted)] : [],
   ])
+
+/** Drops cost, then PR, then diff stats until the row fits. */
+const identityRow = (s: Snapshot, o: ViewOptions): Line =>
+  firstFitting(
+    [
+      identityLine(s, { isCostShown: o.showCost, isPrShown: o.showPr, isDiffShown: o.showDiff }),
+      identityLine(s, { isCostShown: false, isPrShown: o.showPr, isDiffShown: o.showDiff }),
+      identityLine(s, { isCostShown: false, isPrShown: false, isDiffShown: o.showDiff }),
+      identityLine(s, { isCostShown: false, isPrShown: false, isDiffShown: false }),
+    ],
+    o.columns,
+  )
 
 const contextFigures = (s: Snapshot): Span[] =>
   s.context.tokens === undefined
     ? [contextFigure(s, 1)]
     : [
         contextFigure(s, 1),
-        span(' '),
+        span('  '),
         span(`${formatTokens(s.context.tokens)}/${formatTokens(s.context.window)}`, COLORS.muted),
       ]
 
 const contextRow = (s: Snapshot, o: ViewOptions): Line => {
   const width = clamp(o.columns - CTX_ROW_CHROME, MIN_BAR_WIDTH, BAR_WIDTH)
   const bar = categoryBar(s, width, { fill: FILLED_CELL, empty: '·', emptyColor: COLORS.empty, marker: '┊' })
-  return joinGroups([[span('ctx', COLORS.muted)], bar, contextFigures(s)])
+  return join([[span('ctx', COLORS.muted)], bar, contextFigures(s)])
 }
 
-const legendRow = (s: Snapshot, o: ViewOptions): Line | null => {
-  if (!o.showLegend || s.categories === null) return null
-  const items = s.categories.map(({ key, tokens }) => [
+const legendLine = (s: Snapshot, isCompactShown: boolean): Line => {
+  const items = (s.categories ?? []).map(({ key, tokens }) => [
     span('■', CATEGORY_COLORS[key]),
     span(` ${NAMES[key]} ${formatTokens(tokens)}`, COLORS.muted),
   ])
   const compact =
-    s.compactFraction === undefined ? [] : [span(`┊ compact ${Math.round(s.compactFraction * 100)}%`, COLORS.faint)]
-  return [span(LEGEND_INDENT), ...joinGroups([...items, compact])]
+    !isCompactShown || s.compactFraction === undefined
+      ? []
+      : [span(`┊ compact ${Math.round(s.compactFraction * 100)}%`, COLORS.faint)]
+  return [span(LEGEND_INDENT), ...join([...items, compact])]
 }
 
-const limitGroup = (label: string, limit: LimitView | undefined, o: ViewOptions): Span[] => {
+/** The legend, without its compact note if that is what overflows; else none. */
+const legendRow = (s: Snapshot, o: ViewOptions): Line | null => {
+  if (!o.showLegend || s.categories === null) return null
+  const row = firstFitting([legendLine(s, true), legendLine(s, false)], o.columns)
+  return widthOf(row) <= o.columns ? row : null
+}
+
+const limitGroup = (label: string, limit: LimitView | undefined, isResetShown: boolean): Span[] => {
   if (limit === undefined) return []
-  const reset = o.showResets ? resetLabel(limit, formatDuration) : undefined
-  return joinGroups([
+  const reset = isResetShown ? resetLabel(limit, formatDuration) : undefined
+  return join([
     [span(label, COLORS.muted)],
     limitBar(limit),
     [limitFigure(limit)],
@@ -60,14 +87,27 @@ const limitGroup = (label: string, limit: LimitView | undefined, o: ViewOptions)
   ])
 }
 
+const limitsLine = (s: Snapshot, isResetShown: boolean): Line =>
+  joinGroups([limitGroup('5h ', s.fiveHour, isResetShown), limitGroup('week', s.week, isResetShown)], [
+    WIDE_GAP,
+    span('│', COLORS.separator),
+    WIDE_GAP,
+  ])
+
+/** Reset countdowns go first when the row would overflow. */
 const limitsRow = (s: Snapshot, o: ViewOptions): Line | null => {
   if (s.fiveHour === undefined && s.week === undefined) return null
-  return joinGroups([limitGroup('5h ', s.fiveHour, o), limitGroup('week', s.week, o)], [
-    GAP,
-    span('│', COLORS.separator),
-    GAP,
-  ])
+  return firstFitting([limitsLine(s, o.showResets), limitsLine(s, false)], o.columns)
 }
 
-export const layout1a = (s: Snapshot, o: ViewOptions): Line[] =>
-  [identityRow(s, o), contextRow(s, o), legendRow(s, o), limitsRow(s, o)].filter((line): line is Line => line !== null)
+export const layout1a = (s: Snapshot, o: ViewOptions): Line[] => {
+  const legend = legendRow(s, o)
+  const limits = limitsRow(s, o)
+  return [
+    identityRow(s, o),
+    BLANK_LINE,
+    contextRow(s, o),
+    ...(legend === null ? [] : [legend]),
+    ...(limits === null ? [] : [BLANK_LINE, limits]),
+  ]
+}
