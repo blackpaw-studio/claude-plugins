@@ -22,8 +22,9 @@ multi-row status layouts from the Claude Design artifact
 - `ui.render` on `PromptHint`: `const engine = await next(e)`, return a column of our layout rows followed by
   `engine` unchanged — permission mode, task pills, `esc to interrupt`, `? for shortcuts` stay the engine's.
 - `SessionMode` passes through unchanged.
-- **Prototype gate (step 1):** confirm (a) `PromptHint` accepts a multi-row tree, (b) the wrapped engine line's
-  pills stay live. If either fails, stop and raise it with Evan before building further.
+- **Prototype gate — passed 2026-10-04:** `PromptHint` draws a multi-row tree. The permission-mode/agents line
+  is a separate engine row *above* `PromptHint` (below any settings `statusLine`), so the actual order is
+  prompt → engine mode line → our rows → engine hint text (when non-empty). We never touch the mode line.
 
 ## Settings panel
 - Opened by `/rich-statusline` (or `/rich-statusline settings`) and a registered keybinding action
