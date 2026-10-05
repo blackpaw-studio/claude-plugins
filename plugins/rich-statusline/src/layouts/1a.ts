@@ -4,7 +4,7 @@ import { GAP, joinGroups, type Line, type Span, span } from '../line'
 import { CATEGORY_COLORS, COLORS } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
 import type { ViewOptions } from '../view-options'
-import { categoryBar, clamp, contextFigure, diffSpans, limitBar, limitFigure } from './parts'
+import { categoryBar, clamp, contextFigure, diffSpans, limitBar, limitFigure, resetLabel } from './parts'
 
 const BAR_WIDTH = 60
 const MIN_BAR_WIDTH = 10
@@ -49,15 +49,16 @@ const legendRow = (s: Snapshot, o: ViewOptions): Line | null => {
   return [span(LEGEND_INDENT), ...joinGroups([...items, compact])]
 }
 
-const limitGroup = (label: string, limit: LimitView | undefined, o: ViewOptions): Span[] =>
-  limit === undefined
-    ? []
-    : joinGroups([
-        [span(label, COLORS.muted)],
-        limitBar(limit),
-        [limitFigure(limit)],
-        o.showResets && limit.resetInMs !== undefined ? [span(`↻ ${formatDuration(limit.resetInMs)}`, COLORS.muted)] : [],
-      ])
+const limitGroup = (label: string, limit: LimitView | undefined, o: ViewOptions): Span[] => {
+  if (limit === undefined) return []
+  const reset = o.showResets ? resetLabel(limit, formatDuration) : undefined
+  return joinGroups([
+    [span(label, COLORS.muted)],
+    limitBar(limit),
+    [limitFigure(limit)],
+    reset === undefined ? [] : [span(`↻ ${reset}`, COLORS.muted)],
+  ])
+}
 
 const limitsRow = (s: Snapshot, o: ViewOptions): Line | null => {
   if (s.fiveHour === undefined && s.week === undefined) return null

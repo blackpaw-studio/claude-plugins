@@ -67,6 +67,9 @@ bind only the engine's own keybinding actions, not a plugin-defined one.
 ## Limitations
 
 - **Light themes are not designed for.** The palette is the dark design's.
+- Column widths count characters, not display cells: a path or branch with
+  wide characters (CJK, emoji) can push a 1c row past the edge, where it is
+  cut off.
 - Category sizes are estimates, so they need not add up to the exact
   `28k/200k` figure, which is the last API response's.
 

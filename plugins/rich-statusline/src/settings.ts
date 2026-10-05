@@ -40,8 +40,9 @@ const pickLayout = (value: unknown): RichStatuslineLayout =>
 const pickThresholds = (raw: Record<string, unknown>): Pick<Settings, 'amberPercent' | 'redPercent'> => {
   const amberPercent = pickInteger(raw.amberPercent, BOUNDS.amberPercent, DEFAULT_SETTINGS.amberPercent)
   const redPercent = pickInteger(raw.redPercent, BOUNDS.redPercent, DEFAULT_SETTINGS.redPercent)
-  return amberPercent < redPercent
-    ? { amberPercent, redPercent }
+  if (amberPercent < redPercent) return { amberPercent, redPercent }
+  return amberPercent < DEFAULT_SETTINGS.redPercent
+    ? { amberPercent, redPercent: DEFAULT_SETTINGS.redPercent }
     : { amberPercent: DEFAULT_SETTINGS.amberPercent, redPercent: DEFAULT_SETTINGS.redPercent }
 }
 

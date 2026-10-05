@@ -16,6 +16,20 @@ describe('buildSnapshot', () => {
     expect(snapshot.week?.level).toBe('amber')
     expect(snapshot.cost).toBeUndefined()
   })
+  test('a limit level follows the rounded figure it is shown as', () => {
+    const snapshot = buildSnapshot({
+      ...FIXTURE,
+      usage: { ...FIXTURE.usage!, rateLimits: [{ kind: 'five_hour', percentUsed: 69.6 }] },
+    })
+    expect(snapshot.fiveHour).toEqual({ percent: 69.6, level: 'amber' })
+  })
+  test('a reset exactly now is not stale', () => {
+    const snapshot = buildSnapshot({
+      ...FIXTURE,
+      usage: { ...FIXTURE.usage!, rateLimits: [{ kind: 'five_hour', percentUsed: 5, resetsAt: NOW }] },
+    })
+    expect(snapshot.fiveHour).toEqual({ percent: 5, level: 'ok', resetInMs: 0 })
+  })
   test('a PR read for another branch is not shown', () => {
     const snapshot = buildSnapshot({
       ...FIXTURE,
@@ -58,7 +72,7 @@ describe('buildSnapshot', () => {
       },
     })
     expect(snapshot.context.level).toBe('red')
-    expect(snapshot.fiveHour).toEqual({ percent: 92, level: 'red', resetInMs: 0 })
+    expect(snapshot.fiveHour).toEqual({ percent: 92, level: 'red', isStale: true })
     expect(snapshot.cost).toBe(2)
   })
 })

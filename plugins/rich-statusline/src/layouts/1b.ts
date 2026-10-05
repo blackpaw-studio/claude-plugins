@@ -4,7 +4,7 @@ import { type Line, mergeRuns, type Span, span } from '../line'
 import { CATEGORY_COLORS, COLORS } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
 import type { ViewOptions } from '../view-options'
-import { categoryBar, clamp, contextFigure, diffSpans, limitFigure } from './parts'
+import { categoryBar, clamp, contextFigure, diffSpans, limitFigure, resetLabel } from './parts'
 
 const LABEL_WIDTH = 8
 const BAR_WIDTH = 60
@@ -47,16 +47,15 @@ const legendRow = (s: Snapshot, o: ViewOptions): Line | null => {
   return mergeRuns([span(' '.repeat(LABEL_WIDTH)), ...items, span(`· ${formatTokens(s.freeTokens)} free`, COLORS.faint)])
 }
 
-const limitSpans = (name: string, limit: LimitView | undefined, o: ViewOptions): Span[] =>
-  limit === undefined
-    ? []
-    : [
-        span(`${name} `, COLORS.muted),
-        limitFigure(limit),
-        ...(o.showResets && limit.resetInMs !== undefined
-          ? [span(` resets ${formatDuration(limit.resetInMs)}`, COLORS.muted)]
-          : []),
-      ]
+const limitSpans = (name: string, limit: LimitView | undefined, o: ViewOptions): Span[] => {
+  if (limit === undefined) return []
+  const reset = o.showResets ? resetLabel(limit, formatDuration) : undefined
+  return [
+    span(`${name} `, COLORS.muted),
+    limitFigure(limit),
+    ...(reset === undefined ? [] : [span(` resets ${reset}`, COLORS.muted)]),
+  ]
+}
 
 const costSpans = (s: Snapshot, o: ViewOptions, prefix: string): Span[] =>
   o.showCost && s.cost !== undefined ? [span(`${prefix}${formatCost(s.cost)}`, COLORS.muted)] : []

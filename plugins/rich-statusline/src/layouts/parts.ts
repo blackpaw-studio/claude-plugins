@@ -4,6 +4,7 @@ import { allocateCells, halfBlocks, markerIndex } from '../bar'
 import { type Span, span } from '../line'
 import { barColor, CATEGORY_COLORS, COLORS, figureColor } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
+import { levelFor } from '../thresholds'
 
 export type BarGlyphs = { fill: string; empty: string; emptyColor: string; marker?: string }
 
@@ -53,14 +54,26 @@ export const limitBar = (limit: LimitView): Span[] => {
   ]
 }
 
+/** A limit's whole percentage; dim once its window has passed unread. */
 export const limitFigure = (limit: LimitView): Span =>
-  span(`${Math.round(limit.percent)}%`, figureColor(limit.level), true)
+  limit.isStale === true
+    ? span(`${Math.round(limit.percent)}%`, COLORS.dim)
+    : span(`${Math.round(limit.percent)}%`, figureColor(limit.level), true)
 
-/** The context percentage with `digits` decimals, or a dash before a reading. */
-export const contextFigure = (snapshot: Snapshot, digits: number): Span =>
-  snapshot.context.percent === undefined
-    ? span('—', COLORS.muted)
-    : span(`${snapshot.context.percent.toFixed(digits)}%`, figureColor(snapshot.context.level), true)
+/** When the limit resets, `now` once passed; undefined when unknown. */
+export const resetLabel = (limit: LimitView, format: (ms: number) => string): string | undefined =>
+  limit.isStale === true ? 'now' : limit.resetInMs === undefined ? undefined : format(limit.resetInMs)
+
+/**
+ * The context percentage with `digits` decimals, or a dash before a reading;
+ * coloured by the value as shown, so `70.0%` is never drawn as under 70.
+ */
+export const contextFigure = (snapshot: Snapshot, digits: number): Span => {
+  const { percent } = snapshot.context
+  if (percent === undefined) return span('—', COLORS.muted)
+  const shown = percent.toFixed(digits)
+  return span(`${shown}%`, figureColor(levelFor(Number(shown), snapshot.thresholds)), true)
+}
 
 /** ` (+12,-3)` after the branch; nothing when clean or hidden. */
 export const diffSpans = (diff: RichStatuslineDiff | null, isShown: boolean): Span[] =>

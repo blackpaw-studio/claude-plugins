@@ -23,12 +23,14 @@ export type SnapshotInputs = {
   now: number
 }
 
-export type LimitView = { percent: number; level: Level; resetInMs?: number }
+/** A limit; `isStale` once its window has reset without a new reading. */
+export type LimitView = { percent: number; level: Level; resetInMs?: number; isStale?: true }
 
 export type ContextView = { tokens?: number; window: number; percent?: number; level: Level }
 
 export type Snapshot = {
   model: string
+  thresholds: Thresholds
   effort?: string
   cwd: string
   branch: string | null
@@ -53,7 +55,7 @@ const contextView = (usage: RichStatuslineUsage | null, thresholds: Thresholds):
   const tokens = usage?.tokens
   if (tokens === undefined || window <= 0) return { window, level: 'ok' }
   const percent = (tokens * 100) / window
-  return { tokens, window, percent, level: levelFor(percent, thresholds) }
+  return { tokens, window, percent, level: levelFor(Math.round(percent * 10) / 10, thresholds) }
 }
 
 const limitView = (
@@ -64,9 +66,9 @@ const limitView = (
 ): LimitView | undefined => {
   const limit = limits.find(entry => entry.kind === kind)
   if (limit === undefined) return undefined
-  const view = { percent: limit.percentUsed, level: levelFor(limit.percentUsed, thresholds) }
-  const isTimed = limit.resetsAt !== undefined && now > 0
-  return isTimed ? { ...view, resetInMs: Math.max(0, (limit.resetsAt ?? now) - now) } : view
+  const view = { percent: limit.percentUsed, level: levelFor(Math.round(limit.percentUsed), thresholds) }
+  if (limit.resetsAt === undefined || now <= 0) return view
+  return limit.resetsAt < now ? { ...view, isStale: true } : { ...view, resetInMs: limit.resetsAt - now }
 }
 
 /** The PR only when it was read for this repository and branch. */
@@ -84,6 +86,7 @@ export const buildSnapshot = ({ identity, git, pr, usage, breakdown, settings, n
   const week = limitView(limits, 'seven_day', settings, now)
   return {
     model: identity === null ? FALLBACK_MODEL : displayModel(identity.model),
+    thresholds: { amberPercent: settings.amberPercent, redPercent: settings.redPercent },
     ...(identity?.effort === undefined ? {} : { effort: identity.effort }),
     cwd: identity === null || identity.cwd === '' ? '' : abbreviatePath(identity.cwd, identity.home),
     branch: git?.branch ?? null,

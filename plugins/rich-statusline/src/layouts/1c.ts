@@ -4,7 +4,7 @@ import { joinGroups, justify, type Line, mergeRuns, type Span, span, widthOf } f
 import { CATEGORY_COLORS, COLORS } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
 import type { ViewOptions } from '../view-options'
-import { categoryBar, contextFigure, diffSpans, limitFigure } from './parts'
+import { categoryBar, contextFigure, diffSpans, limitFigure, resetLabel } from './parts'
 
 const NAMES = { system: 'sys', tools: 'tools', mcp: 'mcp', memory: 'mem', chat: 'chat' } as const
 const MIN_GAP = 2
@@ -15,7 +15,7 @@ const barRow = (s: Snapshot, o: ViewOptions): Line =>
 const identitySpans = (s: Snapshot, o: ViewOptions): Span[] =>
   mergeRuns([
     span(s.model, COLORS.model, true),
-    span(s.effort === undefined ? '  ' : `·${shortEffort(s.effort)}  `, COLORS.muted),
+    span(`${s.effort === undefined ? '' : `·${shortEffort(s.effort)}`}${s.cwd === '' ? '' : '  '}`, COLORS.muted),
     span(s.cwd, COLORS.system),
     span(`  ${s.branch ?? 'no git'}`, COLORS.dim),
     ...diffSpans(s.diff, o.showDiff),
@@ -35,16 +35,15 @@ const contextRow = (s: Snapshot, o: ViewOptions): Line => {
   return justify(left, fits ? withNames : figure, o.columns)
 }
 
-const limitSpans = (name: string, limit: LimitView | undefined, o: ViewOptions): Span[] =>
-  limit === undefined
-    ? []
-    : [
-        span(`${name} `, COLORS.muted),
-        limitFigure(limit),
-        ...(o.showResets && limit.resetInMs !== undefined
-          ? [span(` ↻${formatDurationCompact(limit.resetInMs)}`, COLORS.dim)]
-          : []),
-      ]
+const limitSpans = (name: string, limit: LimitView | undefined, o: ViewOptions): Span[] => {
+  if (limit === undefined) return []
+  const reset = o.showResets ? resetLabel(limit, formatDurationCompact) : undefined
+  return [
+    span(`${name} `, COLORS.muted),
+    limitFigure(limit),
+    ...(reset === undefined ? [] : [span(` ↻${reset}`, COLORS.dim)]),
+  ]
+}
 
 const limitsRow = (s: Snapshot, o: ViewOptions): Line | null => {
   const cost = o.showCost && s.cost !== undefined ? [span(formatCost(s.cost), COLORS.muted)] : []

@@ -241,6 +241,27 @@ describe('extrapolated states', () => {
     const snap = buildSnapshot({ ...FIXTURE, usage: { ...FIXTURE.usage!, tokens: 182_000 } })
     expect(spanOf(draw('1a', 120, DEFAULT_SETTINGS, snap)[1], '91.0%')?.color).toBe(C.red)
   })
+  test('the context colour follows the figure as shown', () => {
+    const near = (tokens: number) => buildSnapshot({ ...FIXTURE, usage: { ...FIXTURE.usage!, tokens } })
+    expect(spanOf(draw('1a', 120, DEFAULT_SETTINGS, near(139_920))[1], '70.0%')?.color).toBe(C.amber)
+    expect(spanOf(draw('1a', 120, DEFAULT_SETTINGS, near(139_000))[1], '69.5%')?.color).toBe(C.text)
+    expect(spanOf(draw('1c', 100, DEFAULT_SETTINGS, near(139_000))[1], '70%')?.color).toBe(C.amber)
+  })
+  test('a limit whose window has passed reads stale: dim figure, reset now', () => {
+    const snap = buildSnapshot({
+      ...FIXTURE,
+      usage: { ...FIXTURE.usage!, rateLimits: [{ kind: 'five_hour', percentUsed: 40, resetsAt: FIXTURE.now - 60_000 }] },
+    })
+    const row = draw('1a', 120, DEFAULT_SETTINGS, snap)[3]
+    expect(textOf(row)).toBe('5h   ████······  40%  ↻ now')
+    expect(spanOf(row, '40%')?.color).toBe(C.dim)
+    expect(textOf(draw('1b', 120, DEFAULT_SETTINGS, snap)[4])).toBe('limits  session 40% resets now')
+    expect(textOf(draw('1c', 100, DEFAULT_SETTINGS, snap)[2]).trimStart()).toBe('5h 40% ↻now')
+  })
+  test('1c with no path yet keeps single gaps', () => {
+    const snap = buildSnapshot({ ...FIXTURE, identity: { ...FIXTURE.identity!, cwd: '' } })
+    expect(textOf(draw('1c', 100, DEFAULT_SETTINGS, snap)[1]).startsWith('Opus 5.5·med  no git · no PR  ')).toBe(true)
+  })
   test('effort unknown omits thinking', () => {
     const snap = buildSnapshot({ ...FIXTURE, identity: { ...FIXTURE.identity!, effort: undefined } })
     expect(textOf(draw('1a', 120, DEFAULT_SETTINGS, snap)[0])).toBe('◆ Opus 5.5  │  ~/.l/workspace  ⎇ no git  no PR')

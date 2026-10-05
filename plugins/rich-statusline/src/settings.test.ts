@@ -21,6 +21,14 @@ describe('parseSettings', () => {
     expect(parsed.amberPercent).toBe(DEFAULT_SETTINGS.amberPercent)
     expect(parsed.redPercent).toBe(DEFAULT_SETTINGS.redPercent)
   })
+  test('an invalid threshold resets alone', () => {
+    expect(parseSettings({ amberPercent: 'x', redPercent: 80 })).toMatchObject({ amberPercent: 70, redPercent: 80 })
+    expect(parseSettings({ amberPercent: 60, redPercent: 'x' })).toMatchObject({ amberPercent: 60, redPercent: 90 })
+  })
+  test('an inverted pair resets red, or both when red would still not be above amber', () => {
+    expect(parseSettings({ amberPercent: 60, redPercent: 50 })).toMatchObject({ amberPercent: 60, redPercent: 90 })
+    expect(parseSettings({ amberPercent: 95, redPercent: 80 })).toMatchObject({ amberPercent: 70, redPercent: 90 })
+  })
   test('does not mutate its input', () => {
     const raw = Object.freeze({ layout: '1b' })
     expect(parseSettings(raw).layout).toBe('1b')
