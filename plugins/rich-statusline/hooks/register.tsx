@@ -97,7 +97,13 @@ export const register: Register = on => {
 
   on('turn.step', async function* ($, e, next) {
     if (e.agentId === undefined) {
-      update($, identityAtom, held => withStep(held, e)).catch(error => $.ui.log(`rich-statusline: step: ${describeError(error)}`, { to: 'debug' }))
+      // Through the runtime's serialized identity writer once attached, so a
+      // step never races the session's own identity refreshes.
+      const change = (held: Parameters<typeof withStep>[0]) => withStep(held, e)
+      runtime
+        .updateIdentity(change)
+        .then(isApplied => (isApplied ? undefined : update($, identityAtom, change)))
+        .catch(error => $.ui.log(`rich-statusline: step: ${describeError(error)}`, { to: 'debug' }))
     }
     return yield* next(e)
   })

@@ -104,6 +104,20 @@ describe('runtime', () => {
     expect(world.calls.find(c => c.argv.startsWith('gh'))?.cwd).toBe('/a')
   })
 
+  test('identity changes from outside go through the serialized identity port', async () => {
+    const changes: unknown[] = []
+    const world = fakeWorld()
+    const port = world.ports.identity
+    const runtime = await started({
+      ...world,
+      ports: { ...world.ports, identity: { ...port, update: change => (changes.push(change), port.update(change)) } },
+    })
+    const before = changes.length
+    await runtime.updateIdentity(held => (held === null ? held : { ...held, model: 'claude-sonnet-4-5' }))
+    expect(changes.length).toBe(before + 1)
+    expect(world.identity()?.model).toBe('claude-sonnet-4-5')
+  })
+
   test('a new session refreshes identity and git', async () => {
     const world = fakeWorld()
     const runtime = await started(world)

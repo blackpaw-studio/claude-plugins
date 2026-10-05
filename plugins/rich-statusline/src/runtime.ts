@@ -50,6 +50,11 @@ export type Runtime = {
   /** Asks for a breakdown once the context has been quiet for the debounce. */
   contextChanged: () => void
   cwdMaybeChanged: () => Promise<void>
+  /**
+   * Applies an identity change through the attached, serialized identity port;
+   * false before attach (nothing else writes identity then).
+   */
+  updateIdentity: (change: (held: RichStatuslineIdentity | null) => RichStatuslineIdentity | null) => Promise<boolean>
   /** A new or resumed session: identity, cwd, git and the breakdown again. */
   sessionStarted: () => Promise<void>
   /** Restarts the refresh timers when their intervals changed. */
@@ -178,6 +183,11 @@ export const createRuntime = (): Runtime => {
       await w.loadIdentity().catch(error => ports?.log(`rich-statusline: identity failed: ${describeError(error)}`))
       background('breakdown', w.loadBreakdown)
       background('git', w.refreshGit)
+    },
+    updateIdentity: async change => {
+      if (ports === null) return false
+      await ports.identity.update(change)
+      return true
     },
     retime: settings => {
       if (ports !== null && work !== null) startTimers(ports, work, settings)
