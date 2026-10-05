@@ -5,17 +5,19 @@ const FIXTURE = [6_400, 8_200, 3_000, 1_600, 8_800]
 const sum = (xs: readonly number[]) => xs.reduce((a, b) => a + b, 0)
 
 describe('allocateCells', () => {
-  test('segments sum to the rounded total fill', () => {
+  test('rounds each category, at least one cell for any with tokens (design fixture)', () => {
     const cells = allocateCells(FIXTURE, 200_000, 60)
-    expect(sum(cells)).toBe(8)
-    expect(cells).toEqual([2, 2, 1, 0, 3])
+    expect(cells).toEqual([2, 2, 1, 1, 3])
+    expect(sum(cells)).toBe(9)
+  })
+  test('a category with no tokens gets no cell', () => {
+    expect(allocateCells([6_400, 0, 100], 200_000, 60)).toEqual([2, 0, 1])
+  })
+  test('over the width trims from the largest category', () => {
+    expect(allocateCells([150_000, 100_000], 200_000, 10)).toEqual([5, 5])
   })
   test('largest remainder at the 1c width', () => {
     expect(allocateCells(FIXTURE, 200_000, 100)).toEqual([3, 4, 2, 1, 4])
-  })
-  test('over a full window fills exactly the width', () => {
-    const cells = allocateCells([150_000, 100_000], 200_000, 10)
-    expect(sum(cells)).toBe(10)
   })
   test('empty or invalid inputs fill nothing', () => {
     expect(allocateCells([], 200_000, 60)).toEqual([])

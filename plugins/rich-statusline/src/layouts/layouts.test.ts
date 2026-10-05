@@ -28,7 +28,7 @@ const snapshot = buildSnapshot(FIXTURE)
 const draw = (layout: '1a' | '1b' | '1c', columns: number, settings = DEFAULT_SETTINGS, snap = snapshot) =>
   renderLayout(snap, viewOptions({ ...settings, layout }, columns))
 
-const CTX_1A = `${'█'.repeat(8)}${'·'.repeat(43)}┊${'·'.repeat(8)}`
+const CTX_1A = `${'█'.repeat(9)}${'·'.repeat(42)}┊${'·'.repeat(8)}`
 
 describe('1a grouped rows, design fixture at 120 columns', () => {
   const lines = draw('1a', 120)
@@ -58,8 +58,9 @@ describe('1a grouped rows, design fixture at 120 columns', () => {
       `██@${C.system}`,
       `██@${C.tools}`,
       `█@${C.mcp}`,
+      `█@${C.memory}`,
       `███@${C.ok}`,
-      `${'·'.repeat(43)}@${C.empty}`,
+      `${'·'.repeat(42)}@${C.empty}`,
       `┊@${C.muted}`,
       `${'·'.repeat(8)}@${C.empty}`,
       `14.0%@${C.text}`,
@@ -105,7 +106,7 @@ describe('1b labeled grid, design fixture at 120 columns', () => {
     expect(rowsOf(lines)).toEqual([
       'model   Opus 5.5  ·  thinking medium',
       'where   ~/.l/workspace  ·  no git  ·  no PR',
-      `context ${'█'.repeat(8)}${'░'.repeat(52)}  14.0%`,
+      `context ${'█'.repeat(9)}${'░'.repeat(51)}  14.0%`,
       '        sys 6.4k  tools 8.2k  mcp 3.0k  mem 1.6k  chat 8.8k  · 172k free',
       'limits  session 10% resets 1h 11m    weekly 75% resets 1d 12h 11m',
       '─'.repeat(120),
@@ -114,7 +115,7 @@ describe('1b labeled grid, design fixture at 120 columns', () => {
   test('colours', () => {
     expect(runsOf(lines[0])).toEqual([`model   @${C.dim}`, `Opus 5.5@${C.mcp}`, `  ·  thinking @${C.muted}`, `medium@${C.text}`])
     expect(runsOf(lines[1])).toEqual([`where   @${C.dim}`, `~/.l/workspace@${C.system}`, `  ·  no git  ·  no PR@${C.muted}`])
-    expect(spanOf(lines[2], '░'.repeat(52))?.color).toBe(C.empty)
+    expect(spanOf(lines[2], '░'.repeat(51))?.color).toBe(C.empty)
     expect(runsOf(lines[3])).toEqual([
       `sys@${C.system}`,
       ` 6.4k  @${C.muted}`,

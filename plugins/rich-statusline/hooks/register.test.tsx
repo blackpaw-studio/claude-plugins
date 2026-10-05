@@ -9,7 +9,7 @@ const run = (args: string) => ({
   origin: { kind: 'composer' as const },
   presentation: { isFullscreen: false, columns: 120 },
 })
-const CTX_1A = `${'█'.repeat(8)}${'·'.repeat(43)}┊${'·'.repeat(8)}`
+const CTX_1A = `${'█'.repeat(9)}${'·'.repeat(42)}┊${'·'.repeat(8)}`
 
 const mountHint = ($: Engine, columns = 120) =>
   $.ui.mount({ plugin: PLUGIN, surface: 'terminal', ...PROMPT_HINT, viewport: { columns, rows: 40 } })

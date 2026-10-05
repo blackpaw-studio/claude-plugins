@@ -72,8 +72,9 @@ rule separating our grid from the engine's line below.
 `Opus 5.5·med  ~/.l/workspace  no git · no PR` | `ctx 14%  sys tools mcp mem chat` and a second row
 with the limits right-aligned `5h 10% ↻1h11m   wk 75% ↻1d12h` (left side empty — the mode moved to the engine's line).
 
-Bar math: cells = round(tokens / window × width) per category, largest-remainder so segments sum to the
-total-filled cell count; compact marker at round(threshold × width). Window = `rawMaxTokens` (scales for 1M).
+Bar math: cells = round(tokens / window × width) per category, minimum 1 cell for any category with tokens > 0;
+if the total passes the width, trim one cell at a time from the largest category. Fixture at 60 cells → 2,2,1,1,3 = 9
+(matches the design). Compact marker at round(threshold × width). Window = `rawMaxTokens` (scales for 1M).
 
 Diff stats placement (not in designs): right after the branch — 1a `⎇ main (+12,-3)`, 1b `where` row `· main (+12,-3)`, 1c `main (+12,-3)`; `+N` in `#8dca80`, `-N` in `#f97770`, parens muted. Toggle in settings (default on).
 
