@@ -13,6 +13,10 @@ describe('allocateCells', () => {
   test('a category with no tokens gets no cell', () => {
     expect(allocateCells([6_400, 0, 100], 200_000, 60)).toEqual([2, 0, 1])
   })
+  test('more categories than cells drops the smallest, never passing the width', () => {
+    expect(allocateCells([10, 20, 30, 40, 50], 100, 3)).toEqual([0, 0, 1, 1, 1])
+    expect(allocateCells([50, 40, 30, 20, 10], 100, 2)).toEqual([1, 1, 0, 0, 0])
+  })
   test('over the width trims from the largest category', () => {
     expect(allocateCells([150_000, 100_000], 200_000, 10)).toEqual([5, 5])
   })

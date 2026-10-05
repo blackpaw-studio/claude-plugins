@@ -18,14 +18,29 @@ const fitToWidth = (cells: readonly number[], width: number): number[] => {
   )
 }
 
+/** Indexes of the segments kept when there are more of them than cells: the largest. */
+const keptSegments = (tokens: readonly number[], width: number): ReadonlySet<number> =>
+  new Set(
+    tokens
+      .map((value, index) => ({ value, index }))
+      .filter(({ value }) => value > 0)
+      .sort((a, b) => b.value - a.value || a.index - b.index)
+      .slice(0, width)
+      .map(({ index }) => index),
+  )
+
 /**
  * Cells per segment: round(tokens / window × width) each, at least one for a
- * segment with tokens, trimmed from the largest when the total passes width.
+ * segment with tokens, trimmed from the largest when the total passes width;
+ * with more segments than cells, the smallest get none.
  */
 export const allocateCells = (tokens: readonly number[], window: number, width: number): number[] => {
   const safe = tokens.map(value => Math.max(0, value))
   if (window <= 0 || width <= 0) return safe.map(() => 0)
-  const cells = safe.map(value => (value > 0 ? Math.max(1, Math.round((value / window) * width)) : 0))
+  const kept = keptSegments(safe, width)
+  const cells = safe.map((value, index) =>
+    kept.has(index) ? Math.max(1, Math.round((value / window) * width)) : 0,
+  )
   return fitToWidth(cells, width)
 }
 
