@@ -15,6 +15,8 @@ const TITLE_ROWS = 1
 const HINT_ROWS = 1
 const PREFERRED_PER_ROW = 2
 const MOST_PER_ROW = 3
+/** Columns between two cells of a row: a Select draws to its cell's edge, so cells need it to stay apart. */
+const CELL_GAP = 2
 
 export const COMMAND: CommandSpec = {
   name: COMMAND_NAME,
@@ -51,16 +53,19 @@ export const cellNeed = (controls: readonly Control[]): number =>
   longest(controls.flatMap(control => control.options.map(option => option.label))) +
   SELECT_CHROME
 
-export type BandLayout = { perRow: number; cellWidth: number; labelWidth: number; showHint: boolean }
+export type BandLayout = { perRow: number; cellWidth: number; gap: number; labelWidth: number; showHint: boolean }
+
+/** Cells of `need` that fit `bodyColumns` with `CELL_GAP` between each two. Pure. */
+const cellsFitting = (bodyColumns: number, need: number): number => Math.floor((bodyColumns + CELL_GAP) / (need + CELL_GAP))
 
 /**
  * How the band fits `bodyColumns` × `maxRows`: two controls to a row when no
- * cell would wrap; over `maxRows`, drop the hint first, then three to a row
- * when the width allows. Pure.
+ * cell would wrap and `CELL_GAP` still parts them; over `maxRows`, drop the
+ * hint first, then three to a row when the width allows. Pure.
  */
 export const bandLayout = (controls: readonly Control[], bodyColumns: number, maxRows: number): BandLayout => {
   const need = cellNeed(controls)
-  const widest = Math.max(1, Math.min(MOST_PER_ROW, Math.floor(bodyColumns / need)))
+  const widest = Math.max(1, Math.min(MOST_PER_ROW, cellsFitting(bodyColumns, need)))
   const rowsAt = (perRow: number, showHint: boolean) =>
     TITLE_ROWS + (showHint ? HINT_ROWS : 0) + Math.ceil(controls.length / perRow)
   const preferred = Math.min(PREFERRED_PER_ROW, widest)
@@ -68,7 +73,8 @@ export const bandLayout = (controls: readonly Control[], bodyColumns: number, ma
   const perRow = showHint || rowsAt(preferred, false) <= maxRows ? preferred : widest
   return {
     perRow,
-    cellWidth: Math.floor(bodyColumns / perRow),
+    cellWidth: Math.floor((bodyColumns - CELL_GAP * (perRow - 1)) / perRow),
+    gap: CELL_GAP,
     labelWidth: longest(controls.map(control => control.label)),
     showHint,
   }
@@ -81,7 +87,7 @@ export const settingsBand = (
   handlers: BandHandlers,
 ) => {
   const controls = settingsControls(settings)
-  const { perRow, cellWidth, labelWidth, showHint } = bandLayout(controls, bodyColumns, maxRows)
+  const { perRow, cellWidth, gap, labelWidth, showHint } = bandLayout(controls, bodyColumns, maxRows)
   const select = (control: Control, isFirst: boolean) => (
     <Box width={cellWidth}>
       <Select
@@ -109,7 +115,9 @@ export const settingsBand = (
         </Text>
       ) : null}
       {rowsOfControls(controls, perRow).map((row, rowIndex) => (
-        <Box flexDirection="row">{row.map((control, index) => select(control, rowIndex === 0 && index === 0))}</Box>
+        <Box flexDirection="row" gap={gap}>
+          {row.map((control, index) => select(control, rowIndex === 0 && index === 0))}
+        </Box>
       ))}
     </Box>
   )

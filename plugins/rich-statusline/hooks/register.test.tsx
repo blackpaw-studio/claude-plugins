@@ -234,6 +234,23 @@ describe('the settings menu in the band above the prompt', () => {
     expect(await band.findAll({ type: 'Select' })).toHaveLength(10)
   })
 
+  test('a short band at 106 columns keeps cells apart and inside the row', async ($, on) => {
+    await ready($, on)
+    await $.command.run(run(''))
+    const band = await mountBand($, { bodyColumns: 106, maxRows: 5, scroll: { offset: 0, bodyRows: 4 } })
+    const [, ...controlRows] = rowsOfTree(await band.drawn()) as { props?: { gap?: number }; children?: { props?: { width?: number } }[] }[]
+    const overflows = controlRows.flatMap((row, index) => {
+      const cells = row.children ?? []
+      const gap = row.props?.gap ?? 0
+      const extent = cells.reduce((sum, cell) => sum + (cell.props?.width ?? 0), 0) + gap * (cells.length - 1)
+      return [
+        ...(cells.length > 1 && gap < 2 ? [`row ${index}: gap ${gap}`] : []),
+        ...(extent > 106 ? [`row ${index}: ${extent} cells`] : []),
+      ]
+    })
+    expect(overflows).toEqual([])
+  })
+
   test('Done closes the menu', async ($, on) => {
     await ready($, on)
     await $.command.run(run(''))

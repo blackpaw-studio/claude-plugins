@@ -36,8 +36,8 @@ multi-row status layouts from the Claude Design artifact
 - While open (and no survey holds the band): a title row with the bold `rich-statusline settings` and the
   `Done` (hotkey `d`, closes the menu) and `Reset to defaults` (`r`) buttons, so they are always visible; a dim
   hint row `ctrl+x tab to focus · ↑↓/tab move · enter change`; then the controls two to a row once
-  `bodyColumns` fits two cells of (longest label + longest option + 4 Select chrome), else one, so no cell
-  wraps. Over `maxRows` the hint row goes first, then three to a row when the width allows; still taller, the
+  `bodyColumns` fits two cells of (longest label + longest option + 4 Select chrome) with a 2-column gap
+  between them, else one, so no cell wraps and no two run together. Over `maxRows` the hint row goes first, then three to a row when the width allows; still taller, the
   engine scrolls it.
 - Controls: layout (1a/1b/1c `Select`), show cost, show PR, show diff stats, show worktree, show legend (1a/1b), amber threshold, red
   threshold, git refresh seconds, PR refresh seconds. Changes apply live and persist in `$.store`.
