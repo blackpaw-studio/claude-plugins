@@ -12,10 +12,7 @@ export const span = (text: string, color?: string, bold?: boolean): Span => ({
 
 export const GAP: Span = span('  ')
 
-/** The 1a/1b gap between items: three cells (comfortable spacing). */
-export const WIDE_GAP: Span = span('   ')
-
-/** An empty row between groups; one space so the row keeps its height. */
+/** An empty row (padding); one space so the row keeps its height. */
 export const BLANK_LINE: Line = [span(' ')]
 
 export const widthOf = (spans: readonly Span[]): number =>

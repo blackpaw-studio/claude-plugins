@@ -1,7 +1,6 @@
-// Layout 1a: grouped rows — identity, context bar, legend, limits — with
-// three-cell gaps and a blank row between groups.
+// Layout 1a: grouped rows — identity, context bar, legend, limits.
 import { formatCost, formatDuration, formatTokens } from '../format'
-import { BLANK_LINE, firstFitting, joinGroups, type Line, type Span, span, WIDE_GAP, widthOf } from '../line'
+import { firstFitting, GAP, joinGroups, type Line, type Span, span, widthOf } from '../line'
 import { CATEGORY_COLORS, COLORS } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
 import type { ViewOptions } from '../view-options'
@@ -9,13 +8,13 @@ import { categoryBar, clamp, contextFigure, diffSpans, FILLED_CELL, limitBar, li
 
 const BAR_WIDTH = 60
 const MIN_BAR_WIDTH = 10
-/** `ctx`, two gaps and the widest figures (`100.0%  200k/200k`) around the bar. */
-const CTX_ROW_CHROME = 3 + 3 + 3 + 17
-const LABEL_GAP = '   '
+/** `ctx`, two gaps and the widest figures (`100.0% 200k/200k`) around the bar. */
+const CTX_ROW_CHROME = 3 + 2 + 2 + 16
+const LABEL_GAP = '  '
 const LEGEND_INDENT = ' '.repeat(3 + LABEL_GAP.length)
 const NAMES = { system: 'system', tools: 'tools', mcp: 'mcp', memory: 'memory', chat: 'chat' } as const
 
-const join = (groups: readonly (readonly Span[])[]): Span[] => joinGroups(groups, [WIDE_GAP])
+const join = (groups: readonly (readonly Span[])[]): Span[] => joinGroups(groups, [GAP])
 
 type IdentityParts = { isCostShown: boolean; isPrShown: boolean; isDiffShown: boolean }
 
@@ -47,7 +46,7 @@ const contextFigures = (s: Snapshot): Span[] =>
     ? [contextFigure(s, 1)]
     : [
         contextFigure(s, 1),
-        span('  '),
+        span(' '),
         span(`${formatTokens(s.context.tokens)}/${formatTokens(s.context.window)}`, COLORS.muted),
       ]
 
@@ -89,9 +88,9 @@ const limitGroup = (label: string, limit: LimitView | undefined, isResetShown: b
 
 const limitsLine = (s: Snapshot, isResetShown: boolean): Line =>
   joinGroups([limitGroup('5h ', s.fiveHour, isResetShown), limitGroup('week', s.week, isResetShown)], [
-    WIDE_GAP,
+    GAP,
     span('│', COLORS.separator),
-    WIDE_GAP,
+    GAP,
   ])
 
 /** Reset countdowns go first when the row would overflow. */
@@ -105,9 +104,8 @@ export const layout1a = (s: Snapshot, o: ViewOptions): Line[] => {
   const limits = limitsRow(s, o)
   return [
     identityRow(s, o),
-    BLANK_LINE,
     contextRow(s, o),
     ...(legend === null ? [] : [legend]),
-    ...(limits === null ? [] : [BLANK_LINE, limits]),
+    ...(limits === null ? [] : [limits]),
   ]
 }

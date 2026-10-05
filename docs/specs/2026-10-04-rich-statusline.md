@@ -61,7 +61,7 @@ separator `#3f4348`, empty cell `#303338` (1c: `#2b2e33`), rule `#24272a`, syste
 mcp + model `#c3a5f9`, memory `#ee97c9`, chat/ok `#8dca80`, amber `#f3ae58`.
 
 Deviation: in 1a and 1b, filled cells use ▆ for row spacing (limit bars in whole cells, no ▌); 1c keeps ▀. Evan-approved 2026-10-05.
-Comfortable spacing: 3-space gaps + blank rows between groups in 1a/1b; Evan-approved 2026-10-05.
+Padding: one blank row above/below the block; 2-space gaps; Evan-approved 2026-10-05.
 
 **1a** — rows: `◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ <branch>  <PR>` /
 `ctx  <60-cell bar █ filled, · empty, ┊ at compact threshold>  14.0% 28k/200k` /

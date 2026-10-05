@@ -1,7 +1,6 @@
-// Layout 1b: labeled grid — model, where, context, legend, limits, rule —
-// with three-cell gaps and a blank row between groups.
+// Layout 1b: labeled grid — model, where, context, legend, limits, rule.
 import { formatCost, formatDuration, formatTokens } from '../format'
-import { BLANK_LINE, firstFitting, type Line, mergeRuns, type Span, span, widthOf } from '../line'
+import { firstFitting, type Line, mergeRuns, type Span, span, widthOf } from '../line'
 import { CATEGORY_COLORS, COLORS } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
 import type { ViewOptions } from '../view-options'
@@ -10,11 +9,11 @@ import { categoryBar, clamp, FILLED_CELL, contextFigure, diffSpans, limitFigure,
 const LABEL_WIDTH = 8
 const BAR_WIDTH = 60
 const MIN_BAR_WIDTH = 10
-const FIGURE_GAP = '   '
+const FIGURE_GAP = '  '
 /** The label column, the gap and the widest figure (`100.0%`) beside the bar. */
 const CTX_ROW_CHROME = LABEL_WIDTH + FIGURE_GAP.length + 6
-const DOT = '   ·   '
-const ITEM_GAP = '   '
+const DOT = '  ·  '
+const ITEM_GAP = '  '
 const NAMES = { system: 'sys', tools: 'tools', mcp: 'mcp', memory: 'mem', chat: 'chat' } as const
 
 const label = (text: string): Span => span(text.padEnd(LABEL_WIDTH), COLORS.dim)
@@ -103,10 +102,9 @@ export const layout1b = (s: Snapshot, o: ViewOptions): Line[] => {
   return [
     modelRow(s),
     whereRow(s, o),
-    BLANK_LINE,
     contextRow(s, o),
     ...(legend === null ? [] : [legend]),
-    ...(limits === null ? [] : [BLANK_LINE, limits]),
+    ...(limits === null ? [] : [limits]),
     ruleRow(o),
   ]
 }

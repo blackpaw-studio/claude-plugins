@@ -1,7 +1,7 @@
 // Layout lines to terminal elements, and the status rows over the engine's line.
 import type { Elements, RenderElement } from 'claude-code'
 import { renderLayout } from './layouts/index'
-import type { Line, Span } from './line'
+import { BLANK_LINE, type Line, type Span } from './line'
 import { buildSnapshot, type SnapshotInputs } from './snapshot'
 import { viewOptions } from './view-options'
 
@@ -26,10 +26,10 @@ export const lineNode = (Text: StatusElements['Text'], line: Line) => (
 export const statusLines = (inputs: SnapshotInputs, columns: number): Line[] =>
   renderLayout(buildSnapshot(inputs), viewOptions(inputs.settings, columns))
 
-/** Our rows, then the engine's own line unchanged as the last child. */
+/** Our rows padded by one blank row above and below, then the engine's own line unchanged, last. */
 export const statusTree = ({ Box, Text }: StatusElements, lines: readonly Line[], engine: RenderElement) => (
   <Box flexDirection="column">
-    {lines.map(line => lineNode(Text, line))}
+    {[BLANK_LINE, ...lines, BLANK_LINE].map(line => lineNode(Text, line))}
     {engine}
   </Box>
 )

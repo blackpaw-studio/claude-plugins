@@ -34,12 +34,10 @@ describe('1a grouped rows, design fixture at 120 columns', () => {
   const lines = draw('1a', 120)
   test('exact rows', () => {
     expect(rowsOf(lines)).toEqual([
-      '◆ Opus 5.5   thinking medium   │   ~/.l/workspace   ⎇ no git   no PR',
-      ' ',
-      `ctx   ${CTX_1A}   14.0%  28k/200k`,
-      '      ■ system 6.4k   ■ tools 8.2k   ■ mcp 3.0k   ■ memory 1.6k   ■ chat 8.8k   ┊ compact 85%',
-      ' ',
-      '5h    ▆·········   10%   ↻ 1h 11m   │   week   ▆▆▆▆▆▆▆▆··   75%   ↻ 1d 12h 11m',
+      '◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ no git  no PR',
+      `ctx  ${CTX_1A}  14.0% 28k/200k`,
+      '     ■ system 6.4k  ■ tools 8.2k  ■ mcp 3.0k  ■ memory 1.6k  ■ chat 8.8k  ┊ compact 85%',
+      '5h   ▆·········  10%  ↻ 1h 11m  │  week  ▆▆▆▆▆▆▆▆··  75%  ↻ 1d 12h 11m',
     ])
   })
   test('identity colours', () => {
@@ -55,7 +53,7 @@ describe('1a grouped rows, design fixture at 120 columns', () => {
     ])
   })
   test('context bar colours, marker and figures', () => {
-    expect(runsOf(lines[2])).toEqual([
+    expect(runsOf(lines[1])).toEqual([
       `ctx@${C.muted}`,
       `▆▆@${C.system}`,
       `▆▆@${C.tools}`,
@@ -68,10 +66,10 @@ describe('1a grouped rows, design fixture at 120 columns', () => {
       `14.0%@${C.text}`,
       `28k/200k@${C.muted}`,
     ])
-    expect(spanOf(lines[2], '14.0%')?.bold).toBe(true)
+    expect(spanOf(lines[1], '14.0%')?.bold).toBe(true)
   })
   test('legend colours', () => {
-    expect(runsOf(lines[3])).toEqual([
+    expect(runsOf(lines[2])).toEqual([
       `■@${C.system}`,
       ` system 6.4k@${C.muted}`,
       `■@${C.tools}`,
@@ -86,7 +84,7 @@ describe('1a grouped rows, design fixture at 120 columns', () => {
     ])
   })
   test('limit colours shift to amber', () => {
-    expect(runsOf(lines[5])).toEqual([
+    expect(runsOf(lines[3])).toEqual([
       `5h @${C.muted}`,
       `▆@${C.ok}`,
       `·········@${C.empty}`,
@@ -106,34 +104,32 @@ describe('1b labeled grid, design fixture at 120 columns', () => {
   const lines = draw('1b', 120)
   test('exact rows', () => {
     expect(rowsOf(lines)).toEqual([
-      'model   Opus 5.5   ·   thinking medium',
-      'where   ~/.l/workspace   ·   no git   ·   no PR',
-      ' ',
-      `context ${'▆'.repeat(9)}${'░'.repeat(51)}   14.0%`,
-      '        sys 6.4k   tools 8.2k   mcp 3.0k   mem 1.6k   chat 8.8k   · 172k free',
-      ' ',
+      'model   Opus 5.5  ·  thinking medium',
+      'where   ~/.l/workspace  ·  no git  ·  no PR',
+      `context ${'▆'.repeat(9)}${'░'.repeat(51)}  14.0%`,
+      '        sys 6.4k  tools 8.2k  mcp 3.0k  mem 1.6k  chat 8.8k  · 172k free',
       'limits  session 10% resets 1h 11m    weekly 75% resets 1d 12h 11m',
       '─'.repeat(120),
     ])
   })
   test('colours', () => {
-    expect(runsOf(lines[0])).toEqual([`model   @${C.dim}`, `Opus 5.5@${C.mcp}`, `   ·   thinking @${C.muted}`, `medium@${C.text}`])
-    expect(runsOf(lines[1])).toEqual([`where   @${C.dim}`, `~/.l/workspace@${C.system}`, `   ·   no git   ·   no PR@${C.muted}`])
-    expect(spanOf(lines[3], '░'.repeat(51))?.color).toBe(C.empty)
-    expect(runsOf(lines[4])).toEqual([
+    expect(runsOf(lines[0])).toEqual([`model   @${C.dim}`, `Opus 5.5@${C.mcp}`, `  ·  thinking @${C.muted}`, `medium@${C.text}`])
+    expect(runsOf(lines[1])).toEqual([`where   @${C.dim}`, `~/.l/workspace@${C.system}`, `  ·  no git  ·  no PR@${C.muted}`])
+    expect(spanOf(lines[2], '░'.repeat(51))?.color).toBe(C.empty)
+    expect(runsOf(lines[3])).toEqual([
       `sys@${C.system}`,
-      ` 6.4k   @${C.muted}`,
+      ` 6.4k  @${C.muted}`,
       `tools@${C.tools}`,
-      ` 8.2k   @${C.muted}`,
+      ` 8.2k  @${C.muted}`,
       `mcp@${C.mcp}`,
-      ` 3.0k   @${C.muted}`,
+      ` 3.0k  @${C.muted}`,
       `mem@${C.memory}`,
-      ` 1.6k   @${C.muted}`,
+      ` 1.6k  @${C.muted}`,
       `chat@${C.ok}`,
-      ` 8.8k   @${C.muted}`,
+      ` 8.8k  @${C.muted}`,
       `· 172k free@${C.faint}`,
     ])
-    expect(runsOf(lines[6])).toEqual([
+    expect(runsOf(lines[4])).toEqual([
       `limits  @${C.dim}`,
       `session @${C.muted}`,
       `10%@${C.text}`,
@@ -141,7 +137,7 @@ describe('1b labeled grid, design fixture at 120 columns', () => {
       `75%@${C.amber}`,
       ` resets 1d 12h 11m@${C.muted}`,
     ])
-    expect(runsOf(lines[7])).toEqual([`${'─'.repeat(120)}@${C.rule}`])
+    expect(runsOf(lines[5])).toEqual([`${'─'.repeat(120)}@${C.rule}`])
   })
 })
 
@@ -199,7 +195,7 @@ describe('git, diff stats, PR and cost', () => {
   })
   test('1a identity row', () => {
     const [row] = draw('1a', 120, DEFAULT_SETTINGS, snap)
-    expect(textOf(row)).toBe('◆ Opus 5.5   thinking medium   │   ~/.l/workspace   ⎇ main (+12,-3)   #123   $1.23')
+    expect(textOf(row)).toBe('◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ main (+12,-3)  #123  $1.23')
     expect(runsOf(row).slice(5)).toEqual([
       `⎇ main@${C.muted}`,
       ` (@${C.muted}`,
@@ -213,8 +209,8 @@ describe('git, diff stats, PR and cost', () => {
   })
   test('1b where and limits rows', () => {
     const lines = draw('1b', 120, DEFAULT_SETTINGS, snap)
-    expect(textOf(lines[1])).toBe('where   ~/.l/workspace   ·   main (+12,-3)   ·   #123')
-    expect(textOf(lines[6])).toBe('limits  session 10% resets 1h 11m    weekly 75% resets 1d 12h 11m   ·   $1.23')
+    expect(textOf(lines[1])).toBe('where   ~/.l/workspace  ·  main (+12,-3)  ·  #123')
+    expect(textOf(lines[4])).toBe('limits  session 10% resets 1h 11m    weekly 75% resets 1d 12h 11m  ·  $1.23')
   })
   test('1c rows', () => {
     const lines = draw('1c', 100, DEFAULT_SETTINGS, snap)
@@ -223,12 +219,12 @@ describe('git, diff stats, PR and cost', () => {
   })
   test('a clean repository shows (+0,-0)', () => {
     const clean = buildSnapshot({ ...FIXTURE, git: { root: '/repo', branch: 'main', diff: { insertions: 0, deletions: 0 } } })
-    expect(textOf(draw('1a', 120, DEFAULT_SETTINGS, clean)[0])).toBe('◆ Opus 5.5   thinking medium   │   ~/.l/workspace   ⎇ main (+0,-0)   no PR')
+    expect(textOf(draw('1a', 120, DEFAULT_SETTINGS, clean)[0])).toBe('◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ main (+0,-0)  no PR')
   })
   test('toggles hide diff, PR and cost', () => {
     const settings = { ...DEFAULT_SETTINGS, showDiff: false, showPr: false, showCost: false }
     const [row] = draw('1a', 120, settings, snap)
-    expect(textOf(row)).toBe('◆ Opus 5.5   thinking medium   │   ~/.l/workspace   ⎇ main')
+    expect(textOf(row)).toBe('◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ main')
   })
 })
 
@@ -250,38 +246,38 @@ describe('a 1M window with a smaller compaction window', () => {
   })
   const lines = draw('1a', 120, DEFAULT_SETTINGS, snap)
   test('the bar fills as the label reads, marker at the threshold of the whole window', () => {
-    const bar = textOf(lines[2]).slice(6, 66)
-    expect(textOf(lines[2]).endsWith('21.8%  218k/1M')).toBe(true)
+    const bar = textOf(lines[1]).slice(5, 65)
+    expect(textOf(lines[1]).endsWith('21.8% 218k/1M')).toBe(true)
     expect([...bar].filter(cell => cell === '▆').length).toBe(Math.round(0.218 * 60))
     expect([...bar].indexOf('┊')).toBe(Math.round(0.386 * 60))
   })
   test('the legend and 1b free measure against the whole window', () => {
-    expect(textOf(lines[3]).endsWith('┊ compact 39%')).toBe(true)
-    expect(textOf(draw('1b', 120, DEFAULT_SETTINGS, snap)[4]).endsWith('· 782k free')).toBe(true)
+    expect(textOf(lines[2]).endsWith('┊ compact 39%')).toBe(true)
+    expect(textOf(draw('1b', 120, DEFAULT_SETTINGS, snap)[3]).endsWith('· 782k free')).toBe(true)
   })
 })
 
 describe('extrapolated states', () => {
   test('no rate limits hides the limits rows', () => {
     const snap = buildSnapshot({ ...FIXTURE, usage: { ...FIXTURE.usage!, rateLimits: [] } })
-    expect(draw('1a', 120, DEFAULT_SETTINGS, snap)).toHaveLength(4)
+    expect(draw('1a', 120, DEFAULT_SETTINGS, snap)).toHaveLength(3)
     expect(rowsOf(draw('1b', 120, DEFAULT_SETTINGS, snap)).some(row => row.startsWith('limits'))).toBe(false)
     expect(draw('1c', 100, DEFAULT_SETTINGS, snap)).toHaveLength(2)
   })
   test('no context reading shows a dash over an empty bar', () => {
     const snap = buildSnapshot({ ...FIXTURE, usage: null, breakdown: null })
     const lines = draw('1a', 120, DEFAULT_SETTINGS, snap)
-    expect(textOf(lines[2])).toBe(`ctx   ${'·'.repeat(60)}   —`)
+    expect(textOf(lines[1])).toBe(`ctx  ${'·'.repeat(60)}  —`)
     expect(textOf(draw('1c', 100, DEFAULT_SETTINGS, snap)[1]).trimEnd().endsWith('ctx —')).toBe(true)
   })
   test('red context percent at the red threshold', () => {
     const snap = buildSnapshot({ ...FIXTURE, usage: { ...FIXTURE.usage!, tokens: 182_000 } })
-    expect(spanOf(draw('1a', 120, DEFAULT_SETTINGS, snap)[2], '91.0%')?.color).toBe(C.red)
+    expect(spanOf(draw('1a', 120, DEFAULT_SETTINGS, snap)[1], '91.0%')?.color).toBe(C.red)
   })
   test('the context colour follows the figure as shown', () => {
     const near = (tokens: number) => buildSnapshot({ ...FIXTURE, usage: { ...FIXTURE.usage!, tokens } })
-    expect(spanOf(draw('1a', 120, DEFAULT_SETTINGS, near(139_920))[2], '70.0%')?.color).toBe(C.amber)
-    expect(spanOf(draw('1a', 120, DEFAULT_SETTINGS, near(139_000))[2], '69.5%')?.color).toBe(C.text)
+    expect(spanOf(draw('1a', 120, DEFAULT_SETTINGS, near(139_920))[1], '70.0%')?.color).toBe(C.amber)
+    expect(spanOf(draw('1a', 120, DEFAULT_SETTINGS, near(139_000))[1], '69.5%')?.color).toBe(C.text)
     expect(spanOf(draw('1c', 100, DEFAULT_SETTINGS, near(139_000))[1], '70%')?.color).toBe(C.amber)
   })
   test('a limit whose window has passed reads stale: dim figure, reset now', () => {
@@ -289,10 +285,10 @@ describe('extrapolated states', () => {
       ...FIXTURE,
       usage: { ...FIXTURE.usage!, rateLimits: [{ kind: 'five_hour', percentUsed: 40, resetsAt: FIXTURE.now - 60_000 }] },
     })
-    const row = draw('1a', 120, DEFAULT_SETTINGS, snap)[5]
-    expect(textOf(row)).toBe('5h    ▆▆▆▆······   40%   ↻ now')
+    const row = draw('1a', 120, DEFAULT_SETTINGS, snap)[3]
+    expect(textOf(row)).toBe('5h   ▆▆▆▆······  40%  ↻ now')
     expect(spanOf(row, '40%')?.color).toBe(C.dim)
-    expect(textOf(draw('1b', 120, DEFAULT_SETTINGS, snap)[6])).toBe('limits  session 40% resets now')
+    expect(textOf(draw('1b', 120, DEFAULT_SETTINGS, snap)[4])).toBe('limits  session 40% resets now')
     expect(textOf(draw('1c', 100, DEFAULT_SETTINGS, snap)[2]).trimStart()).toBe('5h 40% ↻now')
   })
   test('1c with no path yet keeps single gaps', () => {
@@ -301,7 +297,7 @@ describe('extrapolated states', () => {
   })
   test('effort unknown omits thinking', () => {
     const snap = buildSnapshot({ ...FIXTURE, identity: { ...FIXTURE.identity!, effort: undefined } })
-    expect(textOf(draw('1a', 120, DEFAULT_SETTINGS, snap)[0])).toBe('◆ Opus 5.5   │   ~/.l/workspace   ⎇ no git   no PR')
+    expect(textOf(draw('1a', 120, DEFAULT_SETTINGS, snap)[0])).toBe('◆ Opus 5.5  │  ~/.l/workspace  ⎇ no git  no PR')
     expect(textOf(draw('1b', 120, DEFAULT_SETTINGS, snap)[0])).toBe('model   Opus 5.5')
     expect(textOf(draw('1c', 100, DEFAULT_SETTINGS, snap)[1]).startsWith('Opus 5.5  ~/.l/workspace')).toBe(true)
   })
@@ -310,12 +306,12 @@ describe('extrapolated states', () => {
     expect(rowsOf(draw('1b', 99)).some(row => row.includes('free'))).toBe(false)
   })
   test('legend toggle', () => {
-    expect(draw('1a', 120, { ...DEFAULT_SETTINGS, showLegend: false })).toHaveLength(5)
+    expect(draw('1a', 120, { ...DEFAULT_SETTINGS, showLegend: false })).toHaveLength(3)
   })
   test('under 80 columns resets and PR go and the bar fits', () => {
     const rows = rowsOf(draw('1a', 79))
-    expect(rows[0]).toBe('◆ Opus 5.5   thinking medium   │   ~/.l/workspace   ⎇ no git')
-    expect(rows[4]).toBe('5h    ▆·········   10%   │   week   ▆▆▆▆▆▆▆▆··   75%')
+    expect(rows[0]).toBe('◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ no git')
+    expect(rows[2]).toBe('5h   ▆·········  10%  │  week  ▆▆▆▆▆▆▆▆··  75%')
     expect(rows.every(row => row.length <= 79)).toBe(true)
   })
   test('rows stay inside the width at every breakpoint, with heavy figures', () => {
