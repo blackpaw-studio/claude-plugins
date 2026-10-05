@@ -54,7 +54,7 @@ multi-row status layouts from the Claude Design artifact
 | PR | `gh pr view --json number,state` → `#123`; `no PR` when none or gh missing/unauthed | 60 s timer, cached, only when branch changes or timer fires |
 | context tokens / window / % | `session.measure` `context` | event-driven |
 | categories | `$.session.usage({ breakdown: 'summary' })`, folded into 5 (see below) | on `context` change, debounced 2 s |
-| compact threshold | breakdown `autoCompactThreshold / rawMaxTokens`; marker hidden when auto-compact off | with categories |
+| compact threshold | breakdown `autoCompactThreshold / context.window`; marker hidden when auto-compact off | with categories |
 | 5h / week limits, resets | `session.measure` `rateLimits` (`five_hour`, `seven_day`) | event-driven; reset countdowns tick every 60 s |
 | cost | `session.measure` `cost` | event-driven |
 
@@ -85,7 +85,7 @@ with the limits right-aligned `5h 10% ↻1h11m   wk 75% ↻1d12h` (left side emp
 
 Bar math: cells = round(tokens / window × width) per category, minimum 1 cell for any category with tokens > 0;
 if the total passes the width, trim one cell at a time from the largest category. Fixture at 60 cells → 2,2,1,1,3 = 9
-(matches the design). Compact marker at round(threshold × width). Window = `rawMaxTokens` (scales for 1M).
+(matches the design). Compact marker at round(threshold × width). Window = `context.window` (the model window shown in the label; scales for 1M). The compaction window (`rawMaxTokens`) is not used, so bar, label and marker agree.
 
 Diff stats placement (not in designs): right after the branch — 1a `⎇ main (+12,-3)`, 1b `where` row `· main (+12,-3)`, 1c `main (+12,-3)`; `+N` in `#8dca80`, `-N` in `#f97770`, parens muted. Toggle in settings (default on).
 
