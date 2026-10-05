@@ -26,10 +26,10 @@ export const lineNode = (Text: StatusElements['Text'], line: Line) => (
 export const statusLines = (inputs: SnapshotInputs, columns: number): Line[] =>
   renderLayout(buildSnapshot(inputs), viewOptions(inputs.settings, columns))
 
-/** Our rows padded by one blank row above and below, then the engine's own line unchanged, last. */
+/** One blank row above our rows, then the engine's own line unchanged, right after them. */
 export const statusTree = ({ Box, Text }: StatusElements, lines: readonly Line[], engine: RenderElement) => (
   <Box flexDirection="column">
-    {[BLANK_LINE, ...lines, BLANK_LINE].map(line => lineNode(Text, line))}
+    {[BLANK_LINE, ...lines].map(line => lineNode(Text, line))}
     {engine}
   </Box>
 )

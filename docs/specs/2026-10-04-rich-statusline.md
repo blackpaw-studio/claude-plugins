@@ -69,7 +69,8 @@ separator `#3f4348`, empty cell `#303338` (1c: `#2b2e33`), system `#82baff`, too
 mcp + model `#c3a5f9`, memory `#ee97c9`, chat/ok `#8dca80`, amber `#f3ae58`.
 
 Deviation: in 1a and 1b, filled cells use ▆ for row spacing (limit bars in whole cells, no ▌: rounded, but any use shows at least one cell and anything under 100 % leaves at least one empty); 1c keeps ▀. Evan-approved 2026-10-05.
-Padding: one blank row above/below the block; 2-space gaps; Evan-approved 2026-10-05.
+Padding: one blank row above the block, none below (the engine hint line, when present, follows our last row
+directly); 2-space gaps; Evan-approved 2026-10-05.
 
 **1a** — rows: `◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ <branch>  <PR>` /
 `ctx  <60-cell bar █ filled, · empty, ┊ at compact threshold>  14.0% 28k/200k` /
@@ -78,8 +79,7 @@ legend indented 5 cols `■ system 6.4k  ■ tools 8.2k …  ┊ compact 85%` /
 
 **1b** — 8-col label column (`model`, `where`, `context`, `limits`): rows per design with `░` empty cells
 (51-cell bar), legend row with short names (`sys tools mcp mem chat · 172k free`), `limits` row. No bottom `─` rule
-(it separated the grid from the old mode footer, which now sits above the block; Evan, 2026-10-05); the bottom
-padding row stays.
+(it separated the grid from the old mode footer, which now sits above the block; Evan, 2026-10-05).
 
 **1c** — full-width `▀` bar (width = `bodyColumns`), then two justified rows:
 `Opus 5.5·med  ~/.l/workspace  no git · no PR` | `ctx 14%  sys tools mcp mem chat` and a second row

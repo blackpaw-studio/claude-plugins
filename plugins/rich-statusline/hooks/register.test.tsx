@@ -18,7 +18,7 @@ describe('the status rows under the prompt', () => {
   // These rows are drawn in 1a (grouped rows); the default layout is 1b.
   const GROUPED = { settings: { layout: '1a' } }
 
-  test('draws 1a from the session and keeps the engine line last, unchanged', async ($, on) => {
+  test('draws 1a from the session, a blank row above, and the engine line right after, unchanged', async ($, on) => {
     const world = installWorld(on, { stored: GROUPED, branch: 'main' })
     const ui = await mountHint($)
     await world.clock.settle()
@@ -29,7 +29,6 @@ describe('the status rows under the prompt', () => {
       `ctx  ${CTX_1A}  14.0% 28k/200k`,
       '     ■ system 6.4k  ■ tools 8.2k  ■ mcp 3.0k  ■ memory 1.6k  ■ chat 8.8k  ┊ compact 85%',
       '5h   ▆·········  10%  ↻ 1h 11m  │  week  ▆▆▆▆▆▆▆▆··  75%  ↻ 1d 12h 11m',
-      ' ',
       ENGINE_HINT,
     ])
     expect(rows[rows.length - 1]).toEqual({ type: 'Text', props: { dimColor: true }, children: [ENGINE_HINT] })
