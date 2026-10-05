@@ -218,6 +218,28 @@ describe('runtime', () => {
     expect(reads).toBe(2)
   })
 
+  test('a clear that seeds while a staleness check waits on the clock is not doubled', async () => {
+    let reads = 0
+    let clock: Deferred<number> | null = null
+    const world = fakeWorld({
+      overrides: {
+        storedSettings: async () => void (reads += 1),
+        now: () => (clock === null ? Promise.resolve(1) : clock.promise),
+      },
+    })
+    const runtime = await started(world)
+    clock = deferred()
+    runtime.stateMissing()
+    world.fireAfter()
+    await flush()
+    runtime.sessionCleared()
+    world.fireAfter()
+    await flush()
+    clock.resolve(1 + TICK_MS)
+    await flush()
+    expect(reads).toBe(2)
+  })
+
   test('a failed settings write stops the seed before the collectors, timers still started', async () => {
     const counts = { commands: 0, usages: 0 }
     const world = fakeWorld({

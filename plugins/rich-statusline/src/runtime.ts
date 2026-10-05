@@ -70,7 +70,9 @@ export type Runtime = {
   /**
    * A draw found the state empty (a clear the event missed): as
    * sessionCleared, but at most once per TICK_MS since the last seed began, so
-   * a write that keeps failing cannot turn every redraw into a reseed.
+   * a write that keeps failing cannot turn every redraw into a reseed. A
+   * failed clock lifts the bound: the reseed then runs per draw, as no seed
+   * that failed its write draws again by itself.
    */
   stateMissing: () => void
   /** Restarts the refresh timers when their intervals changed. */
