@@ -188,12 +188,15 @@ export const createRuntime = (): Runtime => {
     background('pr', w.refreshPr)
   }
 
-  /** Whether the last seed began at least a tick ago (or none has). */
+  /**
+   * Whether the last seed began at least a tick ago (or none has). A failed
+   * clock reads as stale; a seed begun while this waited reads as fresh.
+   */
   const isSeedStale = async (p: Ports): Promise<boolean> => {
     const last = lastSeedAt
     if (last === null) return true
-    const [now, then] = await Promise.all([p.now(), last])
-    return now - then >= TICK_MS
+    const [now, then] = await Promise.all([p.now().catch(() => Number.POSITIVE_INFINITY), last])
+    return lastSeedAt === last && now - then >= TICK_MS
   }
 
   /**

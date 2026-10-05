@@ -201,6 +201,23 @@ describe('runtime', () => {
     expect(reads).toBe(2)
   })
 
+  test('a failing clock reads missing state as stale, so it still reseeds', async () => {
+    let reads = 0
+    const world = fakeWorld({
+      overrides: {
+        storedSettings: async () => void (reads += 1),
+        now: async () => {
+          throw new Error('no clock')
+        },
+      },
+    })
+    const runtime = await started(world)
+    runtime.stateMissing()
+    world.fireAfter()
+    await flush()
+    expect(reads).toBe(2)
+  })
+
   test('a failed settings write stops the seed before the collectors, timers still started', async () => {
     const counts = { commands: 0, usages: 0 }
     const world = fakeWorld({
