@@ -78,9 +78,9 @@ export const register: Register = on => {
     ])
     // Until the stored settings load, the engine's line alone: no flash of 1a.
     // Null once loaded means the session's state was emptied (a /clear the
-    // session.end hook missed): ask for a reseed, which folds repeats.
+    // session.end hook missed): ask for a reseed, which the runtime bounds.
     if (settings === null) {
-      runtime.reseed()
+      runtime.stateMissing()
       return engine
     }
     const inputs = { settings: parseSettings(settings), git, pr, identity, usage, breakdown, now }
@@ -98,7 +98,7 @@ export const register: Register = on => {
   // again once the engine's end step has run (scheduling only: the end is bounded).
   on('session.end', async (_$, e, next) => {
     const ended = await next(e)
-    if (e.reason === 'clear') runtime.reseed()
+    if (e.reason === 'clear') runtime.sessionCleared()
     return ended
   })
 

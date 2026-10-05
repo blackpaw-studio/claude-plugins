@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
+import { TICK_MS } from '../src/runtime'
 import { ENGINE_BAND, ENGINE_HINT, installWorld, NOW, PROMPT_HINT, rowsOfTree, SETTINGS_BAND, textOfNode } from '../src/testing/world'
 
 const PLUGIN = 'rich-statusline'
@@ -98,6 +99,8 @@ describe('the status rows under the prompt', () => {
     const world = installWorld(on, { stored: GROUPED, branch: 'main', isStateScoped: true })
     await mountHint($)
     await world.clock.settle()
+    // Past the bound on draw-asked reseeds, counted from the start's own seed.
+    await world.clock.advance(TICK_MS)
     const before = await drawnRows($)
     const [gits, usages] = [gitReads(world), world.usageCalls()]
     world.wipeState()
@@ -107,6 +110,25 @@ describe('the status rows under the prompt', () => {
     await world.clock.settle()
     expect(await drawnRows($)).toEqual(before)
     expect([gitReads(world), world.usageCalls()]).toEqual([gits + 1, usages + 1])
+  })
+
+  test('a settings write that keeps failing: draws reseed at most once a tick and read nothing else', async ($, on) => {
+    const world = installWorld(on, { stored: GROUPED, branch: 'main', isStateScoped: true, isSettingsRefused: true })
+    await mountHint($)
+    for (let draw = 0; draw < 5; draw += 1) {
+      await world.clock.settle()
+      expect(await drawnRows($)).toEqual([ENGINE_HINT])
+    }
+    await world.clock.settle()
+    expect(world.storeReads()).toBe(1)
+    await world.clock.advance(TICK_MS)
+    for (let draw = 0; draw < 5; draw += 1) {
+      await drawnRows($)
+      await world.clock.settle()
+    }
+    expect(world.storeReads()).toBe(2)
+    // No seed got past the settings: usage is read by seeds alone (the timers still poll git).
+    expect(world.usageCalls()).toBe(0)
   })
 
   test('nothing but the engine line until the stored settings have loaded', async ($, on) => {

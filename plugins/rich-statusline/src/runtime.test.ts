@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { createRuntime } from './runtime'
+import { createRuntime, TICK_MS } from './runtime'
 import { DEFAULT_SETTINGS } from './settings'
-import { answerFor, fakeWorld, flush } from './testing/ports'
+import { answerFor, type Deferred, deferred, fakeWorld, flush } from './testing/ports'
 
 /** Attaches and runs the deferred start. */
 const started = async (world: ReturnType<typeof fakeWorld>) => {
@@ -66,20 +66,6 @@ describe('runtime', () => {
     expect(world.identity()).toEqual({ model: 'claude-opus-5-5', cwd: '/a', home: '/h' })
   })
 
-  test('timers start even when the settings state write fails', async () => {
-    const world = fakeWorld({
-      overrides: {
-        settings: {
-          set: async () => {
-            throw new Error('denied')
-          },
-        },
-      },
-    })
-    await started(world)
-    expect(world.everyCount()).toBe(3)
-  })
-
   test('a new session still reads git when the identity read fails', async () => {
     let isBroken = false
     const world = fakeWorld({
@@ -137,7 +123,7 @@ describe('runtime', () => {
     expect(await createRuntime().setUsage({ window: 1, rateLimits: [] })).toBe(false)
   })
 
-  test('a reseed writes the stored settings again and rereads every collector, with no new timers', async () => {
+  test('a cleared session gets the stored settings and every collector again, with no new timers', async () => {
     const settingsSets: unknown[] = []
     const counts = { commands: 0, usages: 0 }
     const world = fakeWorld({
@@ -149,35 +135,90 @@ describe('runtime', () => {
       },
     })
     const runtime = await started(world)
-    runtime.reseed()
+    const prSets = world.prSets.length
+    runtime.sessionCleared()
     world.fireAfter()
     await flush()
     expect(settingsSets).toEqual(['1c', '1c'])
     expect(counts).toEqual({ commands: 2, usages: 2 })
     expect(world.gitSets).toHaveLength(2)
+    // The PR is read again outright, not only when git looks changed.
+    expect(world.prSets.length).toBeGreaterThan(prSets)
     expect(world.identity()?.cwd).toBe('/a')
     expect(world.everyCount()).toBe(3)
   })
 
-  test('reseeds asked while one is pending fold into it; none before attach', async () => {
-    let reads = 0
-    const world = fakeWorld({ overrides: { storedSettings: async () => void (reads += 1) } })
+  test('a clear while a seed runs folds into one more seed; nothing before attach', async () => {
+    const reads: Deferred<unknown>[] = []
+    const world = fakeWorld({ overrides: { storedSettings: () => (reads.push(deferred()), reads.at(-1)!.promise) } })
     const runtime = createRuntime()
-    runtime.reseed()
+    runtime.sessionCleared()
+    runtime.stateMissing()
+    world.fireAfter()
+    expect(reads).toHaveLength(0)
     runtime.attach(world.ports)
-    runtime.reseed()
     world.fireAfter()
     await flush()
-    expect(reads).toBe(1)
-    runtime.reseed()
-    runtime.reseed()
+    runtime.sessionCleared()
+    runtime.sessionCleared()
+    world.fireAfter()
+    await flush()
+    expect(reads).toHaveLength(1)
+    reads.forEach(read => read.resolve(undefined))
+    await flush()
+    reads.forEach(read => read.resolve(undefined))
+    await flush()
+    expect(reads).toHaveLength(2)
+  })
+
+  test('a clear whose timer never ran does not block the next', async () => {
+    let reads = 0
+    const world = fakeWorld({ overrides: { storedSettings: async () => void (reads += 1) } })
+    const runtime = await started(world)
+    runtime.sessionCleared()
+    world.dropAfter()
+    runtime.sessionCleared()
     world.fireAfter()
     await flush()
     expect(reads).toBe(2)
-    runtime.reseed()
-    world.fireAfter()
-    await flush()
-    expect(reads).toBe(3)
+  })
+
+  test('missing state reseeds at most once a tick, however often it is reported', async () => {
+    let reads = 0
+    const world = fakeWorld({ overrides: { storedSettings: async () => void (reads += 1) } })
+    const runtime = await started(world)
+    const reportTwice = async () => {
+      runtime.stateMissing()
+      runtime.stateMissing()
+      world.fireAfter()
+      await flush()
+    }
+    await reportTwice()
+    expect(reads).toBe(1)
+    world.setNow(1 + TICK_MS)
+    await reportTwice()
+    await reportTwice()
+    expect(reads).toBe(2)
+  })
+
+  test('a failed settings write stops the seed before the collectors, timers still started', async () => {
+    const counts = { commands: 0, usages: 0 }
+    const world = fakeWorld({
+      overrides: {
+        settings: {
+          set: async () => {
+            throw new Error('denied')
+          },
+        },
+        registerCommand: async () => void (counts.commands += 1),
+        usage: async () => ((counts.usages += 1), { context: { window: 200_000 }, rateLimits: [] }),
+      },
+    })
+    await started(world)
+    expect(counts).toEqual({ commands: 0, usages: 0 })
+    expect(world.calls).toHaveLength(0)
+    expect(world.identity()).toBe(null)
+    expect(world.everyCount()).toBe(3)
   })
 
   test('a new session refreshes identity and git', async () => {
