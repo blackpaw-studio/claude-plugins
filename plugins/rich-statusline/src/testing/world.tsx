@@ -10,6 +10,8 @@ const DAY = 24 * HOUR
 const SLACK = 30_000
 
 export const ENGINE_HINT = '? for shortcuts'
+/** What the engine (beneath the plugin) draws in the band when we pass. */
+export const ENGINE_BAND = 'engine band'
 
 export const BREAKDOWN = {
   categories: [
@@ -44,7 +46,6 @@ export const RATE_LIMITS = [
 export type World = {
   clock: ReturnType<typeof mock.clock>
   runs: string[]
-  opened: unknown[]
   usageCalls: () => number
   hintDraws: () => number
   stores: unknown[]
@@ -65,18 +66,12 @@ export const installWorld = (on: On, { branch = null, stored = {}, isUsageBroken
   const clock = mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/Users/evan' })
   const runs: string[] = []
-  const opened: unknown[] = []
   let usageCount = 0
   let hintDraws = 0
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.cwd', () => ({ value: '/Users/evan/.leo/workspace' }))
   on('settings.read', () => ({ value: { effortLevel: 'medium' } }))
   on('command.register', (_$, e) => ({ value: { command: e.name } }))
-  on('ui.open', (_$, e) => {
-    opened.push(e)
-    return { value: { isPlaced: true } }
-  })
-  on('ui.close', () => ({ value: undefined }))
   on('ui.log', () => ({ value: undefined }))
   on('session.measure', (_$, e) => ({ changed: e.changed }))
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
@@ -105,12 +100,16 @@ export const installWorld = (on: On, { branch = null, stored = {}, isUsageBroken
           : ' 2 files changed, 12 insertions(+), 3 deletions(-)\n'
     return { value: { ...done, exitCode: 0, stdout } }
   })
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return <Text key="engine-band">{ENGINE_BAND}</Text>
+  })
   on('ui.render', { component: 'PromptHint' }, ($, e) => {
     hintDraws += 1
     const { Text } = $.ui.resolve(e)
     return <Text dimColor>{e.props.hint}</Text>
   })
-  return { clock, runs, opened, stores, usageCalls: () => usageCount, hintDraws: () => hintDraws }
+  return { clock, runs, stores, usageCalls: () => usageCount, hintDraws: () => hintDraws }
 }
 
 export const PROMPT_HINT = {
@@ -118,15 +117,14 @@ export const PROMPT_HINT = {
   props: { isDraft: false, isWorking: false, hint: ENGINE_HINT },
 }
 
-export const SETTINGS_PANE = {
-  component: 'Pane' as const,
-  requestId: 'rich-statusline-settings',
+export const SETTINGS_BAND = {
+  component: 'AbovePrompt' as const,
   props: {
-    title: 'Rich statusline',
-    isFocused: true,
-    bodyColumns: 80,
-    placement: 'inline' as const,
-    scroll: { offset: 0, bodyRows: 14 },
+    hasSurvey: false,
+    isWorking: false,
+    maxRows: 12,
+    bodyColumns: 95,
+    scroll: { offset: 0, bodyRows: 11 },
     view: {},
   },
 }

@@ -9,7 +9,7 @@ import { DEFAULT_COLUMNS, statusLines, statusTree } from '../src/render'
 import { createRuntime } from '../src/runtime'
 import { DEFAULT_SETTINGS, parseSettings, type Settings } from '../src/settings'
 import { applyPick } from '../src/settings-controls'
-import { COMMAND, COMMAND_NAME, opensPanel, PANE, PANE_ID, settingsPane } from '../src/settings-pane'
+import { COMMAND, COMMAND_NAME, settingsBand, togglesMenu } from '../src/settings-band'
 
 const STORE_KEY = 'settings'
 
@@ -22,6 +22,7 @@ const identityAtom = atom({ plugin: 'rich-statusline', key: 'identity' } as cons
 const usageAtom = atom({ plugin: 'rich-statusline', key: 'usage' } as const, null)
 const breakdownAtom = atom({ plugin: 'rich-statusline', key: 'breakdown' } as const, null)
 const nowAtom = atom({ plugin: 'rich-statusline', key: 'now' } as const, 0)
+const settingsOpenAtom = atom({ plugin: 'rich-statusline', key: 'settingsOpen' } as const, false)
 
 const isRetimed = (a: Settings, b: Settings): boolean =>
   a.gitRefreshSeconds !== b.gitRefreshSeconds || a.prRefreshSeconds !== b.prRefreshSeconds
@@ -116,18 +117,18 @@ export const register: Register = on => {
     return ran
   })
 
+  // Toggles the settings menu in the band above the prompt; no output row.
   on('command.run', { command: 'rich-statusline' }, async ($, e) => {
-    if (!opensPanel(e.args)) return { text: `Usage: /${COMMAND_NAME} [settings]` }
-    const opened = await $.ui.open(PANE)
-    return opened.isPlaced ? {} : { text: `rich-statusline: the settings panel is waiting for room (${opened.reason}).` }
+    if (!togglesMenu(e.args)) return { text: `Usage: /${COMMAND_NAME} [settings]` }
+    await update($, settingsOpenAtom, isOpen => !isOpen)
+    return {}
   })
 
-  on('ui.render', { component: 'Pane', requestId: 'rich-statusline-settings' }, async ($, e) => {
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    // The band is raised on the terminal and desktop, the two with a Select.
+    if (e.surface !== 'terminal' && e.surface !== 'desktop') return next(e)
+    if (e.props.hasSurvey || !(await read($, settingsOpenAtom))) return next(e)
     const settings = parseSettings(await read($, settingsAtom))
-    if (e.surface === 'mobile') {
-      const { Text } = $.ui.resolve(e)
-      return <Text dimColor>Open /{COMMAND_NAME} in a terminal to change these settings.</Text>
-    }
     const fail = (error: unknown) => $.ui.log(`rich-statusline: settings: ${describeError(error)}`, { to: 'debug' })
     const applyNow = async (change: (held: Settings) => unknown): Promise<void> => {
       const before = parseSettings(await read($, settingsAtom))
@@ -141,10 +142,10 @@ export const register: Register = on => {
       applying = applying.then(() => applyNow(change)).catch(fail)
       return applying
     }
-    return settingsPane($.ui.resolve(e), settings, {
+    return settingsBand($.ui.resolve(e), settings, e.props.bodyColumns, {
       onPick: (key, value) => void apply(held => applyPick(held, key, value)),
       onReset: () => void apply(() => DEFAULT_SETTINGS),
-      onClose: () => void $.ui.close({ id: PANE_ID }).catch(fail),
+      onDone: () => void update($, settingsOpenAtom, () => false).catch(fail),
     })
   })
 }

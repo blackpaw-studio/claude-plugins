@@ -81,6 +81,8 @@ declare module 'claude-code' {
       usage: RichStatuslineUsage | null
       breakdown: RichStatuslineBreakdown | null
       now: number
+      /** Whether the settings menu is open in the band above the prompt. */
+      settingsOpen: boolean
     }
   }
 }

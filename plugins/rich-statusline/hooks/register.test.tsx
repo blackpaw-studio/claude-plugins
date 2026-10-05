@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
-import { ENGINE_HINT, installWorld, NOW, PROMPT_HINT, rowsOfTree, SETTINGS_PANE, textOfNode } from '../src/testing/world'
+import { ENGINE_BAND, ENGINE_HINT, installWorld, NOW, PROMPT_HINT, rowsOfTree, SETTINGS_BAND, textOfNode } from '../src/testing/world'
 
 const PLUGIN = 'rich-statusline'
 const run = (args: string) => ({
@@ -119,63 +119,93 @@ describe('the status rows under the prompt', () => {
   })
 })
 
-describe('the settings panel', () => {
-  test('/rich-statusline opens a focused dialog pane', async ($, on) => {
+describe('the settings menu in the band above the prompt', () => {
+  const mountBand = ($: Engine, props: Partial<typeof SETTINGS_BAND.props> = {}) =>
+    $.ui.mount({ plugin: PLUGIN, surface: 'terminal', ...SETTINGS_BAND, props: { ...SETTINGS_BAND.props, ...props } })
+
+  const ready = async ($: Engine, on: Parameters<typeof installWorld>[0]) => {
     const world = installWorld(on)
-    await mountHint($)
+    const hint = await mountHint($, 100)
     await world.clock.settle()
-    expect(await $.command.run(run(''))).toEqual({})
-    expect(await $.command.run(run('settings'))).toEqual({})
-    expect((await $.command.run(run('bogus'))).text).toBe('Usage: /rich-statusline [settings]')
-    expect(world.opened).toHaveLength(2)
-    expect(world.opened[0]).toMatchObject({ id: 'rich-statusline-settings', focus: true, closeOnEscape: true })
-  })
-
-  for (const surface of ['terminal'] as const) {
-    test(`picking a layout re-renders the rows and persists (${surface})`, async ($, on) => {
-      const world = installWorld(on)
-      const hint = await mountHint($, 100)
-      await world.clock.settle()
-      const pane = await $.ui.mount({ plugin: PLUGIN, surface, ...SETTINGS_PANE })
-      const selects = await pane.findAll({ type: 'Select' })
-      expect(selects.map(s => s.key)).toEqual([
-        'layout',
-        'showCost',
-        'showPr',
-        'showDiff',
-        'showLegend',
-        'amberPercent',
-        'redPercent',
-        'gitRefreshSeconds',
-        'prRefreshSeconds',
-      ])
-      expect(selects[0]?.props.autoFocus).toBe(true)
-      expect(selects[0]?.props.value).toBe('1a')
-
-      await pane.select({ key: 'layout', value: '1c' })
-      const rows = rowsOfTree(await hint.drawn()).map(textOfNode)
-      expect(rows[0]).toBe(' ')
-      expect(rows[1]).toBe('▀'.repeat(100))
-      expect(rows[rows.length - 2]).toBe(' ')
-      expect((await pane.find({ type: 'Select', key: 'layout' }))?.props.value).toBe('1c')
-      expect(world.stores[world.stores.length - 1]).toMatchObject({ key: 'settings', value: { layout: '1c' } })
-
-      await pane.select({ key: 'showLegend', value: 'off' })
-      await pane.press({ key: 'reset' })
-      expect((await pane.find({ type: 'Select', key: 'layout' }))?.props.value).toBe('1a')
-      await pane.press({ key: 'done' })
-    })
+    return { world, hint }
   }
 
+  test('the band is the engine\'s own while the menu is closed', async ($, on) => {
+    await ready($, on)
+    const band = await mountBand($)
+    expect(textOfNode(await band.drawn())).toBe(ENGINE_BAND)
+  })
+
+  test('/rich-statusline toggles the menu with no output and opens no pane', async ($, on) => {
+    await ready($, on)
+    const band = await mountBand($)
+    expect(await $.command.run(run(''))).toEqual({})
+    expect(await band.findAll({ type: 'Select' })).toHaveLength(9)
+    expect(await $.command.run(run('settings'))).toEqual({})
+    expect(textOfNode(await band.drawn())).toBe(ENGINE_BAND)
+    expect((await $.command.run(run('bogus'))).text).toBe('Usage: /rich-statusline [settings]')
+  })
+
+  test('a survey keeps the band even while the menu is open', async ($, on) => {
+    await ready($, on)
+    await $.command.run(run(''))
+    const band = await mountBand($, { hasSurvey: true })
+    expect(textOfNode(await band.drawn())).toBe(ENGINE_BAND)
+  })
+
+  test('open: header, every control, Done and Reset', async ($, on) => {
+    await ready($, on)
+    await $.command.run(run(''))
+    const band = await mountBand($)
+    expect((await band.find({ type: 'Text', text: /^rich-statusline settings/ }))?.text).toBe(
+      'rich-statusline settings  ctrl+x tab to focus · ↑↓/tab move · enter change',
+    )
+    const selects = await band.findAll({ type: 'Select' })
+    expect(selects.map(select => select.key)).toEqual([
+      'layout',
+      'showCost',
+      'showPr',
+      'showDiff',
+      'showLegend',
+      'amberPercent',
+      'redPercent',
+      'gitRefreshSeconds',
+      'prRefreshSeconds',
+    ])
+    expect(selects[0]?.props.value).toBe('1a')
+    expect((await band.find({ type: 'Button', key: 'done' }))?.props).toMatchObject({ hotkey: 'd', role: 'dismiss' })
+    expect(await band.find({ type: 'Button', key: 'reset' })).toBeDefined()
+  })
+
+  test('Done closes the menu', async ($, on) => {
+    await ready($, on)
+    await $.command.run(run(''))
+    const band = await mountBand($)
+    await band.press({ key: 'done' })
+    expect(textOfNode(await band.drawn())).toBe(ENGINE_BAND)
+  })
+
+  test('picking a layout redraws the status rows and persists; Reset restores', async ($, on) => {
+    const { world, hint } = await ready($, on)
+    await $.command.run(run(''))
+    const band = await mountBand($)
+    await band.select({ key: 'layout', value: '1c' })
+    const rows = rowsOfTree(await hint.drawn()).map(textOfNode)
+    expect(rows[1]).toBe('▀'.repeat(100))
+    expect((await band.find({ type: 'Select', key: 'layout' }))?.props.value).toBe('1c')
+    expect(world.stores[world.stores.length - 1]).toMatchObject({ key: 'settings', value: { layout: '1c' } })
+    await band.press({ key: 'reset' })
+    expect((await band.find({ type: 'Select', key: 'layout' }))?.props.value).toBe('1a')
+  })
+
   test('quick picks persist in order, each over the last', async ($, on) => {
-    const world = installWorld(on)
-    await mountHint($)
-    await world.clock.settle()
-    const pane = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', ...SETTINGS_PANE })
+    const { world } = await ready($, on)
+    await $.command.run(run(''))
+    const band = await mountBand($)
     await Promise.all([
-      pane.select({ key: 'layout', value: '1c' }),
-      pane.select({ key: 'showCost', value: 'off' }),
-      pane.select({ key: 'showPr', value: 'off' }),
+      band.select({ key: 'layout', value: '1c' }),
+      band.select({ key: 'showCost', value: 'off' }),
+      band.select({ key: 'showPr', value: 'off' }),
     ])
     const values = world.stores.map(write => (write as { value: Record<string, unknown> }).value)
     expect(values.map(v => [v.layout, v.showCost, v.showPr])).toEqual([
