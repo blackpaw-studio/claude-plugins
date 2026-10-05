@@ -4,7 +4,7 @@ import { GAP, joinGroups, type Line, type Span, span } from '../line'
 import { CATEGORY_COLORS, COLORS } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
 import type { ViewOptions } from '../view-options'
-import { categoryBar, clamp, contextFigure, diffSpans, limitBar, limitFigure, resetLabel } from './parts'
+import { categoryBar, FILLED_CELL, clamp, contextFigure, diffSpans, limitBar, limitFigure, resetLabel } from './parts'
 
 const BAR_WIDTH = 60
 const MIN_BAR_WIDTH = 10
@@ -34,7 +34,7 @@ const contextFigures = (s: Snapshot): Span[] =>
 
 const contextRow = (s: Snapshot, o: ViewOptions): Line => {
   const width = clamp(o.columns - CTX_ROW_CHROME, MIN_BAR_WIDTH, BAR_WIDTH)
-  const bar = categoryBar(s, width, { fill: '█', empty: '·', emptyColor: COLORS.empty, marker: '┊' })
+  const bar = categoryBar(s, width, { fill: FILLED_CELL, empty: '·', emptyColor: COLORS.empty, marker: '┊' })
   return joinGroups([[span('ctx', COLORS.muted)], bar, contextFigures(s)])
 }
 

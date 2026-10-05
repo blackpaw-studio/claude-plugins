@@ -48,13 +48,11 @@ export const allocateCells = (tokens: readonly number[], window: number, width: 
 export const markerIndex = (fraction: number, width: number): number =>
   Math.min(width - 1, Math.max(0, Math.round(fraction * width)))
 
-export type HalfBlocks = { full: number; half: number; empty: number }
+export type WholeCells = { full: number; empty: number }
 
-/** A percentage as whole cells plus at most one half cell. */
-export const halfBlocks = (percent: number, width: number): HalfBlocks => {
+/** A percentage as whole cells, rounded to the nearest. */
+export const wholeCells = (percent: number, width: number): WholeCells => {
   const clamped = Math.min(100, Math.max(0, percent))
-  const halves = Math.round((clamped / 100) * width * 2)
-  const full = Math.floor(halves / 2)
-  const half = halves % 2
-  return { full, half, empty: width - full - half }
+  const full = Math.round((clamped / 100) * width)
+  return { full, empty: width - full }
 }

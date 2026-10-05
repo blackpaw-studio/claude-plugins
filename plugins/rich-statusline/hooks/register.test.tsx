@@ -9,7 +9,7 @@ const run = (args: string) => ({
   origin: { kind: 'composer' as const },
   presentation: { isFullscreen: false, columns: 120 },
 })
-const CTX_1A = `${'█'.repeat(9)}${'·'.repeat(42)}┊${'·'.repeat(8)}`
+const CTX_1A = `${'▆'.repeat(9)}${'·'.repeat(42)}┊${'·'.repeat(8)}`
 
 const mountHint = ($: Engine, columns = 120) =>
   $.ui.mount({ plugin: PLUGIN, surface: 'terminal', ...PROMPT_HINT, viewport: { columns, rows: 40 } })
@@ -24,7 +24,7 @@ describe('the status rows under the prompt', () => {
       '◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ main (+12,-3)  #123',
       `ctx  ${CTX_1A}  14.0% 28k/200k`,
       '     ■ system 6.4k  ■ tools 8.2k  ■ mcp 3.0k  ■ memory 1.6k  ■ chat 8.8k  ┊ compact 85%',
-      '5h   █·········  10%  ↻ 1h 11m  │  week  ███████▌··  75%  ↻ 1d 12h 11m',
+      '5h   ▆·········  10%  ↻ 1h 11m  │  week  ▆▆▆▆▆▆▆▆··  75%  ↻ 1d 12h 11m',
       ENGINE_HINT,
     ])
     expect(rows[rows.length - 1]).toEqual({ type: 'Text', props: { dimColor: true }, children: [ENGINE_HINT] })
@@ -113,7 +113,7 @@ describe('the status rows under the prompt', () => {
     await world.clock.settle()
     await world.clock.set(NOW + 60_000)
     const rows = rowsOfTree(await ui.drawn()).map(textOfNode)
-    expect(rows[3]).toBe('5h   █·········  10%  ↻ 1h 10m  │  week  ███████▌··  75%  ↻ 1d 12h 10m')
+    expect(rows[3]).toBe('5h   ▆·········  10%  ↻ 1h 10m  │  week  ▆▆▆▆▆▆▆▆··  75%  ↻ 1d 12h 10m')
   })
 })
 

@@ -28,7 +28,7 @@ const snapshot = buildSnapshot(FIXTURE)
 const draw = (layout: '1a' | '1b' | '1c', columns: number, settings = DEFAULT_SETTINGS, snap = snapshot) =>
   renderLayout(snap, viewOptions({ ...settings, layout }, columns))
 
-const CTX_1A = `${'█'.repeat(9)}${'·'.repeat(42)}┊${'·'.repeat(8)}`
+const CTX_1A = `${'▆'.repeat(9)}${'·'.repeat(42)}┊${'·'.repeat(8)}`
 
 describe('1a grouped rows, design fixture at 120 columns', () => {
   const lines = draw('1a', 120)
@@ -37,7 +37,7 @@ describe('1a grouped rows, design fixture at 120 columns', () => {
       '◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ no git  no PR',
       `ctx  ${CTX_1A}  14.0% 28k/200k`,
       '     ■ system 6.4k  ■ tools 8.2k  ■ mcp 3.0k  ■ memory 1.6k  ■ chat 8.8k  ┊ compact 85%',
-      '5h   █·········  10%  ↻ 1h 11m  │  week  ███████▌··  75%  ↻ 1d 12h 11m',
+      '5h   ▆·········  10%  ↻ 1h 11m  │  week  ▆▆▆▆▆▆▆▆··  75%  ↻ 1d 12h 11m',
     ])
   })
   test('identity colours', () => {
@@ -55,11 +55,11 @@ describe('1a grouped rows, design fixture at 120 columns', () => {
   test('context bar colours, marker and figures', () => {
     expect(runsOf(lines[1])).toEqual([
       `ctx@${C.muted}`,
-      `██@${C.system}`,
-      `██@${C.tools}`,
-      `█@${C.mcp}`,
-      `█@${C.memory}`,
-      `███@${C.ok}`,
+      `▆▆@${C.system}`,
+      `▆▆@${C.tools}`,
+      `▆@${C.mcp}`,
+      `▆@${C.memory}`,
+      `▆▆▆@${C.ok}`,
       `${'·'.repeat(42)}@${C.empty}`,
       `┊@${C.muted}`,
       `${'·'.repeat(8)}@${C.empty}`,
@@ -86,13 +86,13 @@ describe('1a grouped rows, design fixture at 120 columns', () => {
   test('limit colours shift to amber', () => {
     expect(runsOf(lines[3])).toEqual([
       `5h @${C.muted}`,
-      `█@${C.ok}`,
+      `▆@${C.ok}`,
       `·········@${C.empty}`,
       `10%@${C.text}`,
       `↻ 1h 11m@${C.muted}`,
       `│@${C.separator}`,
       `week@${C.muted}`,
-      `███████▌@${C.amber}`,
+      `▆▆▆▆▆▆▆▆@${C.amber}`,
       `··@${C.empty}`,
       `75%@${C.amber}`,
       `↻ 1d 12h 11m@${C.muted}`,
@@ -106,7 +106,7 @@ describe('1b labeled grid, design fixture at 120 columns', () => {
     expect(rowsOf(lines)).toEqual([
       'model   Opus 5.5  ·  thinking medium',
       'where   ~/.l/workspace  ·  no git  ·  no PR',
-      `context ${'█'.repeat(9)}${'░'.repeat(51)}  14.0%`,
+      `context ${'▆'.repeat(9)}${'░'.repeat(51)}  14.0%`,
       '        sys 6.4k  tools 8.2k  mcp 3.0k  mem 1.6k  chat 8.8k  · 172k free',
       'limits  session 10% resets 1h 11m    weekly 75% resets 1d 12h 11m',
       '─'.repeat(120),
@@ -248,7 +248,7 @@ describe('a 1M window with a smaller compaction window', () => {
   test('the bar fills as the label reads, marker at the threshold of the whole window', () => {
     const bar = textOf(lines[1]).slice(5, 65)
     expect(textOf(lines[1]).endsWith('21.8% 218k/1M')).toBe(true)
-    expect([...bar].filter(cell => cell === '█').length).toBe(Math.round(0.218 * 60))
+    expect([...bar].filter(cell => cell === '▆').length).toBe(Math.round(0.218 * 60))
     expect([...bar].indexOf('┊')).toBe(Math.round(0.386 * 60))
   })
   test('the legend and 1b free measure against the whole window', () => {
@@ -286,7 +286,7 @@ describe('extrapolated states', () => {
       usage: { ...FIXTURE.usage!, rateLimits: [{ kind: 'five_hour', percentUsed: 40, resetsAt: FIXTURE.now - 60_000 }] },
     })
     const row = draw('1a', 120, DEFAULT_SETTINGS, snap)[3]
-    expect(textOf(row)).toBe('5h   ████······  40%  ↻ now')
+    expect(textOf(row)).toBe('5h   ▆▆▆▆······  40%  ↻ now')
     expect(spanOf(row, '40%')?.color).toBe(C.dim)
     expect(textOf(draw('1b', 120, DEFAULT_SETTINGS, snap)[4])).toBe('limits  session 40% resets now')
     expect(textOf(draw('1c', 100, DEFAULT_SETTINGS, snap)[2]).trimStart()).toBe('5h 40% ↻now')
@@ -311,7 +311,7 @@ describe('extrapolated states', () => {
   test('under 80 columns resets and PR go and the bar fits', () => {
     const rows = rowsOf(draw('1a', 79))
     expect(rows[0]).toBe('◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ no git')
-    expect(rows[2]).toBe('5h   █·········  10%  │  week  ███████▌··  75%')
+    expect(rows[2]).toBe('5h   ▆·········  10%  │  week  ▆▆▆▆▆▆▆▆··  75%')
     expect(rows.every(row => row.length <= 79)).toBe(true)
   })
   test('under 60 columns forces 1c', () => {

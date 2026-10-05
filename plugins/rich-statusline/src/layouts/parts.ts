@@ -1,6 +1,6 @@
 // Pieces the three layouts share: the category bar, limit bars, figures.
 import type { RichStatuslineDiff } from '../../types'
-import { allocateCells, halfBlocks, markerIndex } from '../bar'
+import { allocateCells, markerIndex, wholeCells } from '../bar'
 import { type Span, span } from '../line'
 import { barColor, CATEGORY_COLORS, COLORS, figureColor } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
@@ -43,11 +43,13 @@ export const categoryBar = (snapshot: Snapshot, width: number, glyphs: BarGlyphs
 }
 
 export const LIMIT_BAR_WIDTH = 10
+/** Filled cell of the 1a/1b bars: ¾ height leaves a gap between rows (approved deviation). */
+export const FILLED_CELL = '▆'
 
-/** A limit as whole and half cells in its level's colour. */
+/** A limit as whole cells in its level's colour. */
 export const limitBar = (limit: LimitView): Span[] => {
-  const { full, half, empty } = halfBlocks(limit.percent, LIMIT_BAR_WIDTH)
-  const filled = '█'.repeat(full) + (half === 1 ? '▌' : '')
+  const { full, empty } = wholeCells(limit.percent, LIMIT_BAR_WIDTH)
+  const filled = FILLED_CELL.repeat(full)
   return [
     ...(filled === '' ? [] : [span(filled, barColor(limit.level))]),
     ...(empty > 0 ? [span('·'.repeat(empty), COLORS.empty)] : []),

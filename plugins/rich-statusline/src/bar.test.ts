@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { allocateCells, halfBlocks, markerIndex } from './bar'
+import { allocateCells, markerIndex, wholeCells } from './bar'
 
 const FIXTURE = [6_400, 8_200, 3_000, 1_600, 8_800]
 const sum = (xs: readonly number[]) => xs.reduce((a, b) => a + b, 0)
@@ -40,13 +40,14 @@ describe('markerIndex', () => {
   })
 })
 
-describe('halfBlocks', () => {
-  test('whole and half cells', () => {
-    expect(halfBlocks(10, 10)).toEqual({ full: 1, half: 0, empty: 9 })
-    expect(halfBlocks(75, 10)).toEqual({ full: 7, half: 1, empty: 2 })
+describe('wholeCells', () => {
+  test('rounds to the nearest whole cell', () => {
+    expect(wholeCells(10, 10)).toEqual({ full: 1, empty: 9 })
+    expect(wholeCells(75, 10)).toEqual({ full: 8, empty: 2 })
+    expect(wholeCells(74, 10)).toEqual({ full: 7, empty: 3 })
   })
   test('clamps to the bar', () => {
-    expect(halfBlocks(130, 10)).toEqual({ full: 10, half: 0, empty: 0 })
-    expect(halfBlocks(-3, 10)).toEqual({ full: 0, half: 0, empty: 10 })
+    expect(wholeCells(130, 10)).toEqual({ full: 10, empty: 0 })
+    expect(wholeCells(-3, 10)).toEqual({ full: 0, empty: 10 })
   })
 })

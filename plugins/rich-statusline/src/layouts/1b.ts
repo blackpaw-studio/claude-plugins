@@ -4,7 +4,7 @@ import { type Line, mergeRuns, type Span, span } from '../line'
 import { CATEGORY_COLORS, COLORS } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
 import type { ViewOptions } from '../view-options'
-import { categoryBar, clamp, contextFigure, diffSpans, limitFigure, resetLabel } from './parts'
+import { categoryBar, FILLED_CELL, clamp, contextFigure, diffSpans, limitFigure, resetLabel } from './parts'
 
 const LABEL_WIDTH = 8
 const BAR_WIDTH = 60
@@ -34,7 +34,7 @@ const whereRow = (s: Snapshot, o: ViewOptions): Line =>
 
 const contextRow = (s: Snapshot, o: ViewOptions): Line => {
   const width = clamp(o.columns - CTX_ROW_CHROME, MIN_BAR_WIDTH, BAR_WIDTH)
-  const bar = categoryBar(s, width, { fill: '█', empty: '░', emptyColor: COLORS.empty })
+  const bar = categoryBar(s, width, { fill: FILLED_CELL, empty: '░', emptyColor: COLORS.empty })
   return [label('context'), ...bar, span('  '), contextFigure(s, 1)]
 }
 
