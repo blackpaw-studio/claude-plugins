@@ -22,7 +22,7 @@ export type RichStatuslineGit = {
   root: string | null
   /** Current branch (short sha when detached); null outside a repository. */
   branch: string | null
-  /** Uncommitted changes against HEAD; null when clean or unknown. */
+  /** Uncommitted changes against HEAD ((+0,-0) when clean); null outside a repo or before a first commit. */
   diff: RichStatuslineDiff | null
 }
 
@@ -65,10 +65,10 @@ export type RichStatuslineCategory = { key: RichStatuslineCategoryKey; tokens: n
 export type RichStatuslineBreakdown = {
   /** The five folded categories, in display order. */
   categories: RichStatuslineCategory[]
-  /** The window the breakdown measures against. */
+  /** The compaction window the breakdown measures against (not the bar's window). */
   rawMaxTokens: number
-  /** Auto-compact threshold as a fraction of rawMaxTokens; absent when off. */
-  compactFraction?: number
+  /** Tokens at which auto-compaction runs; absent when it is off. */
+  compactThreshold?: number
 }
 
 declare module 'claude-code' {

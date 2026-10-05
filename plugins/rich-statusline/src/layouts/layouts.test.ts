@@ -217,10 +217,43 @@ describe('git, diff stats, PR and cost', () => {
     expect(textOf(lines[1]).startsWith('Opus 5.5·med  ~/.l/workspace  main (+12,-3) · #123')).toBe(true)
     expect(textOf(lines[2]).trimStart()).toBe('$1.23   5h 10% ↻1h11m   wk 75% ↻1d12h')
   })
+  test('a clean repository shows (+0,-0)', () => {
+    const clean = buildSnapshot({ ...FIXTURE, git: { root: '/repo', branch: 'main', diff: { insertions: 0, deletions: 0 } } })
+    expect(textOf(draw('1a', 120, DEFAULT_SETTINGS, clean)[0])).toBe('◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ main (+0,-0)  no PR')
+  })
   test('toggles hide diff, PR and cost', () => {
     const settings = { ...DEFAULT_SETTINGS, showDiff: false, showPr: false, showCost: false }
     const [row] = draw('1a', 120, settings, snap)
     expect(textOf(row)).toBe('◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ main')
+  })
+})
+
+describe('a 1M window with a smaller compaction window', () => {
+  const snap = buildSnapshot({
+    ...FIXTURE,
+    usage: { ...FIXTURE.usage!, tokens: 218_000, window: 1_000_000 },
+    breakdown: {
+      categories: [
+        { key: 'system', tokens: 20_000 },
+        { key: 'tools', tokens: 40_000 },
+        { key: 'mcp', tokens: 10_000 },
+        { key: 'memory', tokens: 10_000 },
+        { key: 'chat', tokens: 138_000 },
+      ],
+      rawMaxTokens: 420_000,
+      compactThreshold: 386_000,
+    },
+  })
+  const lines = draw('1a', 120, DEFAULT_SETTINGS, snap)
+  test('the bar fills as the label reads, marker at the threshold of the whole window', () => {
+    const bar = textOf(lines[1]).slice(5, 65)
+    expect(textOf(lines[1]).endsWith('21.8% 218k/1M')).toBe(true)
+    expect([...bar].filter(cell => cell === '█').length).toBe(Math.round(0.218 * 60))
+    expect([...bar].indexOf('┊')).toBe(Math.round(0.386 * 60))
+  })
+  test('the legend and 1b free measure against the whole window', () => {
+    expect(textOf(lines[2]).endsWith('┊ compact 39%')).toBe(true)
+    expect(textOf(draw('1b', 120, DEFAULT_SETTINGS, snap)[3]).endsWith('· 782k free')).toBe(true)
   })
 })
 

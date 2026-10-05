@@ -28,17 +28,14 @@ export const toUsage = (measured: MeasuredUsage): RichStatuslineUsage => ({
   ...(measured.cost === undefined ? {} : { costUsd: measured.cost.usd }),
 })
 
-const compactFractionOf = (breakdown: MeasuredBreakdown): number | undefined => {
-  const { autoCompactThreshold, isAutoCompactEnabled, rawMaxTokens } = breakdown
-  if (!isAutoCompactEnabled || autoCompactThreshold === undefined || rawMaxTokens <= 0) return undefined
-  return autoCompactThreshold / rawMaxTokens
-}
+const compactThresholdOf = ({ autoCompactThreshold, isAutoCompactEnabled }: MeasuredBreakdown): number | undefined =>
+  isAutoCompactEnabled && autoCompactThreshold !== undefined && autoCompactThreshold > 0 ? autoCompactThreshold : undefined
 
 export const toBreakdown = (measured: MeasuredBreakdown): RichStatuslineBreakdown => {
-  const compactFraction = compactFractionOf(measured)
+  const compactThreshold = compactThresholdOf(measured)
   return {
     categories: foldCategories(measured.categories),
     rawMaxTokens: measured.rawMaxTokens,
-    ...(compactFraction === undefined ? {} : { compactFraction }),
+    ...(compactThreshold === undefined ? {} : { compactThreshold }),
   }
 }

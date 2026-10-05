@@ -94,8 +94,12 @@ export const buildSnapshot = ({ identity, git, pr, usage, breakdown, settings, n
     pr: prFor(git, pr),
     context,
     categories,
-    barWindow: breakdown?.rawMaxTokens ?? context.window,
-    ...(breakdown?.compactFraction === undefined ? {} : { compactFraction: breakdown.compactFraction }),
+    // Bar, marker and legend all measure against the window the label reads
+    // (`context.window`), never the breakdown's smaller compaction window.
+    barWindow: context.window,
+    ...(breakdown?.compactThreshold === undefined || context.window <= 0
+      ? {}
+      : { compactFraction: breakdown.compactThreshold / context.window }),
     freeTokens: Math.max(0, context.window - usedTokens(context, categories)),
     ...(fiveHour === undefined ? {} : { fiveHour }),
     ...(week === undefined ? {} : { week }),

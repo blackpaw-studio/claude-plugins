@@ -44,7 +44,7 @@ export const BREAKDOWN: RichStatuslineBreakdown = {
     { key: 'chat', tokens: 8_800 },
   ],
   rawMaxTokens: 200_000,
-  compactFraction: 0.85,
+  compactThreshold: 170_000,
 }
 
 export const FIXTURE: SnapshotInputs = {

@@ -42,11 +42,11 @@ describe('toBreakdown', () => {
   test('folds categories and turns the threshold into a fraction', () => {
     const breakdown = toBreakdown(base)
     expect(breakdown.rawMaxTokens).toBe(200_000)
-    expect(breakdown.compactFraction).toBe(0.85)
+    expect(breakdown.compactThreshold).toBe(170_000)
     expect(breakdown.categories[0]).toEqual({ key: 'system', tokens: 6_400 })
   })
   test('no marker when auto-compact is off', () => {
-    expect(toBreakdown({ ...base, isAutoCompactEnabled: false }).compactFraction).toBeUndefined()
-    expect(toBreakdown({ ...base, autoCompactThreshold: undefined }).compactFraction).toBeUndefined()
+    expect(toBreakdown({ ...base, isAutoCompactEnabled: false }).compactThreshold).toBeUndefined()
+    expect(toBreakdown({ ...base, autoCompactThreshold: undefined }).compactThreshold).toBeUndefined()
   })
 })
