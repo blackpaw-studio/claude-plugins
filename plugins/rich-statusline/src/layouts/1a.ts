@@ -1,6 +1,6 @@
 // Layout 1a: grouped rows — identity, context bar, legend, limits.
 import { formatCost, formatDuration, formatTokens } from '../format'
-import { firstFitting, GAP, joinGroups, type Line, type Span, span, widthOf } from '../line'
+import { firstFitting, fitOrTruncate, GAP, joinGroups, type Line, type Span, span, widthOf } from '../line'
 import { CATEGORY_COLORS, COLORS } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
 import type { ViewOptions } from '../view-options'
@@ -40,14 +40,14 @@ const identityLine = (s: Snapshot, { isCostShown, isPrShown, isDiffShown, isWork
     isCostShown && s.cost !== undefined ? [span(formatCost(s.cost), COLORS.muted)] : [],
   ])
 
-/** Drops cost, then PR, then diff stats, then the worktree until the row fits. */
+/** Drops cost, then PR, then diff stats, then the worktree until the row fits; else cuts its end. */
 const identityRow = (s: Snapshot, o: ViewOptions): Line => {
   const all = { isCostShown: o.showCost, isPrShown: o.showPr, isDiffShown: o.showDiff, isWorktreeShown: o.showWorktree }
   const noCost = { ...all, isCostShown: false }
   const noPr = { ...noCost, isPrShown: false }
   const noDiff = { ...noPr, isDiffShown: false }
   const bare = { ...noDiff, isWorktreeShown: false }
-  return firstFitting([all, noCost, noPr, noDiff, bare].map(parts => identityLine(s, parts)), o.columns)
+  return fitOrTruncate([all, noCost, noPr, noDiff, bare].map(parts => identityLine(s, parts)), o.columns)
 }
 
 const contextFigures = (s: Snapshot): Span[] =>

@@ -1,6 +1,6 @@
 // Layout 1b: labeled grid — model, where, context, legend, limits.
 import { formatCost, formatDuration, formatTokens } from '../format'
-import { firstFitting, type Line, mergeRuns, type Span, span, widthOf } from '../line'
+import { firstFitting, fitOrTruncate, type Line, mergeRuns, type Span, span, widthOf } from '../line'
 import { CATEGORY_COLORS, COLORS } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
 import type { ViewOptions } from '../view-options'
@@ -49,13 +49,13 @@ const whereLine = (s: Snapshot, { isPrShown, isDiffShown, isWorktreeShown }: Whe
   ])
 }
 
-/** Drops the PR, then the diff stats, then the worktree, until the row fits. */
+/** Drops the PR, then the diff stats, then the worktree, until the row fits; else cuts its end. */
 const whereRow = (s: Snapshot, o: ViewOptions): Line => {
   const all = { isPrShown: o.showPr, isDiffShown: o.showDiff, isWorktreeShown: o.showWorktree }
   const noPr = { ...all, isPrShown: false }
   const noDiff = { ...noPr, isDiffShown: false }
   const bare = { ...noDiff, isWorktreeShown: false }
-  return firstFitting([all, noPr, noDiff, bare].map(parts => whereLine(s, parts)), o.columns)
+  return fitOrTruncate([all, noPr, noDiff, bare].map(parts => whereLine(s, parts)), o.columns)
 }
 
 const contextRow = (s: Snapshot, o: ViewOptions): Line => {

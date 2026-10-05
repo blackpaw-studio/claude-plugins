@@ -95,7 +95,8 @@ Diff stats placement (not in designs): right after the branch — 1a `⎇ main (
 Worktree (Evan, 2026-10-05): in a linked worktree, right before the branch, `wt <name>` with `wt` muted and the name in
 `#c3a5f9` — 1a `~/.l/x  wt feat-x  ⎇ branch (+1,-0)`, 1b `where` row `~/.l/x  ·  wt feat-x  ·  branch (+1,-0)`,
 1c `wt feat-x branch (+1,-0)`. Toggle "show worktree" (default on). On overflow the identity/where row drops cost
-(1a), then PR, then diff stats, then the worktree.
+(1a), then PR, then diff stats, then the worktree (1c: within the width left of `ctx N%`); if still too wide,
+its end (branch, then path) is cut with `…`. Every row in every layout stays within `bodyColumns`.
 
 Cost placement: 1a end of identity row `$1.23` muted; 1b appended to `limits` row `  ·  $1.23`; 1c before `5h`.
 

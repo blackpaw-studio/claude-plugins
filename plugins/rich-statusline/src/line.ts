@@ -43,3 +43,25 @@ export const mergeRuns = (spans: readonly Span[]): Span[] =>
 /** The first candidate that fits `width` cells, else the last (the leanest). */
 export const firstFitting = (candidates: readonly Line[], width: number): Line =>
   candidates.find(line => widthOf(line) <= width) ?? candidates[candidates.length - 1] ?? []
+
+const ELLIPSIS = '…'
+
+/** The line cut to `width` cells, its last cell an ellipsis; as is when it fits. */
+export const truncateLine = (line: Line, width: number): Line => {
+  if (widthOf(line) <= width) return line
+  if (width < 1) return []
+  const { kept } = line.reduce<{ kept: Span[]; room: number }>(
+    ({ kept, room }, next) => {
+      if (room <= 0) return { kept, room }
+      const cells = [...next.text]
+      if (cells.length < room) return { kept: [...kept, next], room: room - cells.length }
+      return { kept: [...kept, { ...next, text: cells.slice(0, room - 1).join('') + ELLIPSIS }], room: 0 }
+    },
+    { kept: [], room: width },
+  )
+  return kept
+}
+
+/** firstFitting, the leanest candidate cut to `width` when none fits. */
+export const fitOrTruncate = (candidates: readonly Line[], width: number): Line =>
+  truncateLine(firstFitting(candidates, width), width)

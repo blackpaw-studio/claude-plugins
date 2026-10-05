@@ -1,6 +1,6 @@
 // Layout 1c: compact — a full-width bar, then two justified rows.
 import { formatCost, formatDurationCompact, shortEffort } from '../format'
-import { joinGroups, justify, type Line, mergeRuns, type Span, span, widthOf } from '../line'
+import { fitOrTruncate, joinGroups, justify, type Line, mergeRuns, type Span, span, widthOf } from '../line'
 import { CATEGORY_COLORS, COLORS } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
 import type { ViewOptions } from '../view-options'
@@ -12,17 +12,28 @@ const MIN_GAP = 2
 const barRow = (s: Snapshot, o: ViewOptions): Line =>
   categoryBar(s, o.columns, { fill: '▀', empty: '▀', emptyColor: COLORS.empty1c })
 
-const identitySpans = (s: Snapshot, o: ViewOptions): Span[] =>
+type IdentityParts = { isPrShown: boolean; isDiffShown: boolean; isWorktreeShown: boolean }
+
+const identitySpans = (s: Snapshot, { isPrShown, isDiffShown, isWorktreeShown }: IdentityParts): Span[] =>
   mergeRuns([
     span(s.model, COLORS.model, true),
     span(`${s.effort === undefined ? '' : `·${shortEffort(s.effort)}`}${s.cwd === '' ? '' : '  '}`, COLORS.muted),
     span(s.cwd, COLORS.system),
-    ...(s.worktree === null || !o.showWorktree
+    ...(s.worktree === null || !isWorktreeShown
       ? [span(`  ${s.branch ?? 'no git'}`, COLORS.dim)]
       : [span('  '), ...worktreeSpans(s.worktree, true), span(` ${s.branch ?? 'no git'}`, COLORS.dim)]),
-    ...diffSpans(s.diff, o.showDiff),
-    ...(o.showPr ? [span(` · ${s.pr ?? 'no PR'}`, COLORS.dim)] : []),
+    ...diffSpans(s.diff, isDiffShown),
+    ...(isPrShown ? [span(` · ${s.pr ?? 'no PR'}`, COLORS.dim)] : []),
   ])
+
+/** Drops the PR, then the diff stats, then the worktree, until `width` holds it; else cuts its end. */
+const identityFitting = (s: Snapshot, o: ViewOptions, width: number): Line => {
+  const all = { isPrShown: o.showPr, isDiffShown: o.showDiff, isWorktreeShown: o.showWorktree }
+  const noPr = { ...all, isPrShown: false }
+  const noDiff = { ...noPr, isDiffShown: false }
+  const bare = { ...noDiff, isWorktreeShown: false }
+  return fitOrTruncate([all, noPr, noDiff, bare].map(parts => identitySpans(s, parts)), width)
+}
 
 const categoryNames = (s: Snapshot): Span[] =>
   s.categories === null
@@ -30,8 +41,8 @@ const categoryNames = (s: Snapshot): Span[] =>
     : [span('  '), ...joinGroups(s.categories.map(({ key }) => [span(NAMES[key], CATEGORY_COLORS[key])]), [span(' ')])]
 
 const contextRow = (s: Snapshot, o: ViewOptions): Line => {
-  const left = identitySpans(s, o)
   const figure = [span('ctx ', COLORS.muted), contextFigure(s, 0)]
+  const left = identityFitting(s, o, o.columns - MIN_GAP - widthOf(figure))
   const withNames = [...figure, ...categoryNames(s)]
   const fits = widthOf(left) + MIN_GAP + widthOf(withNames) <= o.columns
   return justify(left, fits ? withNames : figure, o.columns)

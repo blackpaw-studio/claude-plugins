@@ -377,13 +377,54 @@ describe('extrapolated states', () => {
         compactThreshold: 900_000,
       },
     })
-    for (const columns of [60, 70, 79, 80, 85, 90, 99, 100, 110, 120]) {
-      for (const layout of ['1a', '1b'] as const) {
-        const rows = rowsOf(draw(layout, columns, DEFAULT_SETTINGS, heavy))
-        const over = rows.filter(row => [...row].length > columns)
-        expect(over, `${layout} at ${columns}`).toEqual([])
-      }
-    }
+    const worktrees = [
+      { root: '/repo', worktree: null, branch: 'main' },
+      { root: '/w/rich-statusline', worktree: 'rich-statusline', branch: 'feat/rich-statusline' },
+      { root: `/w/${'w'.repeat(50)}`, worktree: 'w'.repeat(50), branch: `feat/${'b'.repeat(60)}` },
+    ]
+    const snaps = [
+      heavy,
+      ...worktrees.map(git =>
+        buildSnapshot({
+          ...FIXTURE,
+          git: { ...git, diff: { insertions: 120, deletions: 30 } },
+          pr: { label: '#12345', root: git.root, branch: git.branch },
+          usage: { ...FIXTURE.usage!, costUsd: 123.45 },
+        }),
+      ),
+    ]
+    const columnsSwept = [60, 61, 65, 70, 75, 79, 80, 85, 90, 99, 100, 110, 120, 140, 160, 200]
+    const over = snaps.flatMap((snap, index) =>
+      columnsSwept.flatMap(columns =>
+        (['1a', '1b', '1c'] as const).flatMap(layout =>
+          rowsOf(draw(layout, columns, DEFAULT_SETTINGS, snap))
+            .filter(row => [...row].length > columns)
+            .map(row => `${layout} #${index} at ${columns}: ${[...row].length} ${row}`),
+        ),
+      ),
+    )
+    expect(over).toEqual([])
+  })
+  test('the 1c identity drops PR, then diff, then worktree, then truncates', () => {
+    const snap = buildSnapshot({
+      ...FIXTURE,
+      git: { root: '/w/rich-statusline', worktree: 'rich-statusline', branch: 'feat/rich-statusline', diff: { insertions: 120, deletions: 30 } },
+      pr: { label: '#12345', root: '/w/rich-statusline', branch: 'feat/rich-statusline' },
+    })
+    const row = (columns: number) => textOf(draw('1c', columns, DEFAULT_SETTINGS, snap)[1])
+    const leftOf = (text: string) => text.replace(/ {2,}ctx \d+%.*$/, '')
+    for (const columns of [97, 80, 60, 55]) expect([...row(columns)].length).toBe(columns)
+    expect(leftOf(row(98))).toBe('Opus 5.5·med  ~/.l/workspace  wt rich-statusline feat/rich-statusline (+120,-30) · #12345')
+    expect(leftOf(row(97))).toBe('Opus 5.5·med  ~/.l/workspace  wt rich-statusline feat/rich-statusline (+120,-30)')
+    expect(leftOf(row(80))).toBe('Opus 5.5·med  ~/.l/workspace  wt rich-statusline feat/rich-statusline')
+    expect(leftOf(row(60))).toBe('Opus 5.5·med  ~/.l/workspace  feat/rich-statusline')
+    expect(row(55)).toBe('Opus 5.5·med  ~/.l/workspace  feat/rich-statu…  ctx 14%')
+  })
+  test('the 1a context row fits 60 columns with the heaviest figures', () => {
+    const snap = buildSnapshot({ ...FIXTURE, usage: { ...FIXTURE.usage!, tokens: 1_050_000, window: 1_000_000 } })
+    const rows = rowsOf(draw('1a', 60, DEFAULT_SETTINGS, snap))
+    expect([...(rows[1] ?? '')].length).toBeLessThanOrEqual(60)
+    expect(rows[1]?.startsWith('ctx  ')).toBe(true)
   })
   test('under 60 columns forces 1c', () => {
     const lines = draw('1a', 59)
