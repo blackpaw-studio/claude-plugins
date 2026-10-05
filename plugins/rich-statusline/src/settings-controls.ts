@@ -5,7 +5,7 @@ export type ControlOption = { value: string; label: string }
 
 export type Control = { key: keyof Settings; label: string; value: string; options: ControlOption[] }
 
-const LAYOUT_LABELS = { '1a': '1a grouped rows', '1b': '1b labeled grid', '1c': '1c compact' } as const
+const LAYOUT_LABELS = { '1a': 'Grouped rows', '1b': 'Labeled grid', '1c': 'Compact' } as const
 
 const ON_OFF: ControlOption[] = [
   { value: 'on', label: 'on' },

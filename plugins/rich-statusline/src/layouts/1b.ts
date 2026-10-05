@@ -1,4 +1,4 @@
-// Layout 1b: labeled grid — model, where, context, legend, limits, rule.
+// Layout 1b: labeled grid — model, where, context, legend, limits.
 import { formatCost, formatDuration, formatTokens } from '../format'
 import { firstFitting, type Line, mergeRuns, type Span, span, widthOf } from '../line'
 import { CATEGORY_COLORS, COLORS } from '../palette'
@@ -94,8 +94,6 @@ const limitsRow = (s: Snapshot, o: ViewOptions): Line | null => {
   )
 }
 
-const ruleRow = (o: ViewOptions): Line => [span('─'.repeat(o.columns), COLORS.rule)]
-
 export const layout1b = (s: Snapshot, o: ViewOptions): Line[] => {
   const legend = legendRow(s, o)
   const limits = limitsRow(s, o)
@@ -105,6 +103,5 @@ export const layout1b = (s: Snapshot, o: ViewOptions): Line[] => {
     contextRow(s, o),
     ...(legend === null ? [] : [legend]),
     ...(limits === null ? [] : [limits]),
-    ruleRow(o),
   ]
 }

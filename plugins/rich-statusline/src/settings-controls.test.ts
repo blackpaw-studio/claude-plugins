@@ -6,7 +6,7 @@ describe('settingsControls', () => {
   test('one control per setting, in menu order, showing current values', () => {
     const controls = settingsControls(DEFAULT_SETTINGS)
     expect(controls.map(c => `${c.key}=${c.value}`)).toEqual([
-      'layout=1a',
+      'layout=1b',
       'showCost=on',
       'showPr=on',
       'showDiff=on',
@@ -15,6 +15,14 @@ describe('settingsControls', () => {
       'redPercent=90',
       'gitRefreshSeconds=10',
       'prRefreshSeconds=60',
+    ])
+  })
+  test('layout options read as plain names over the stored codes', () => {
+    const layout = settingsControls(DEFAULT_SETTINGS).find(c => c.key === 'layout')!
+    expect(layout.options).toEqual([
+      { value: '1a', label: 'Grouped rows' },
+      { value: '1b', label: 'Labeled grid' },
+      { value: '1c', label: 'Compact' },
     ])
   })
   test('threshold choices never cross each other', () => {

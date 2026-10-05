@@ -8,11 +8,11 @@ session's cost.
 
 Three layouts, switchable live:
 
-- **1a — grouped rows** (default): identity, a 60-cell context bar with the
+- **Grouped rows** (1a): identity, a 60-cell context bar with the
   auto-compact marker, a category legend, and the limits.
-- **1b — labeled grid**: `model` / `where` / `context` / `limits` columns and a
-  rule under the grid.
-- **1c — compact**: a full-width bar and two justified rows.
+- **Labeled grid** (1b, default): `model` / `where` / `context` / `limits`
+  columns.
+- **Compact** (1c): a full-width bar and two justified rows.
 
 Claude Code's own permission-mode line and its hint text (`? for shortcuts`,
 `esc to interrupt`, task pills) stay exactly as the engine draws them.
@@ -43,7 +43,7 @@ in some terminal setups (Claude Code inside tmux, for one).
 
 | Setting | Default | |
 |---|---|---|
-| Layout | 1a | 1a, 1b or 1c |
+| Layout | Labeled grid | Grouped rows, Labeled grid or Compact |
 | Show cost | on | 1a: end of the first row; 1b: limits row; 1c: before `5h` |
 | Show PR | on | `#123` from `gh pr view`; `no PR` when there is none or `gh` is missing |
 | Show diff stats | on | `(+12,-3)` from `git diff HEAD --shortstat`, after the branch |

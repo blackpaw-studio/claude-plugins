@@ -10,7 +10,6 @@ export const COLORS = {
   separator: '#3f4348',
   empty: '#303338',
   empty1c: '#2b2e33',
-  rule: '#24272a',
   system: '#82baff',
   tools: '#3bcfcf',
   mcp: '#c3a5f9',

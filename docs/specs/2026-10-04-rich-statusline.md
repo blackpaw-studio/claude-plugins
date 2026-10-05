@@ -6,7 +6,8 @@ multi-row status layouts from the Claude Design artifact
 
 ## Goals
 - Match the three designs exactly (glyphs, spacing, colours, wording) on a dark terminal at ≥100 cols.
-- All three layouts ship; default `1a`. Chosen in the settings menu, persisted in `$.store`.
+- All three layouts ship; default `1b` (Evan, 2026-10-05). The layout picker shows plain names (Grouped rows,
+  Labeled grid, Compact); stored values stay `1a`/`1b`/`1c`. Chosen in the settings menu, persisted in `$.store`.
 - Add session cost (not in designs).
 - Settings menu (keyboard-navigable, in the band above the prompt).
 - The permission-mode line is Claude Code's own and is left untouched; the designs' mode row
@@ -64,7 +65,7 @@ segments (buffer becomes the `┊` marker). Unknown future categories → tools.
 
 ## Rendering (exact)
 Colours (hex from the design's oklch): text `#e3e5e8`, muted `#7d8086`, dim `#606369`, faint `#52555b`,
-separator `#3f4348`, empty cell `#303338` (1c: `#2b2e33`), rule `#24272a`, system `#82baff`, tools `#3bcfcf`,
+separator `#3f4348`, empty cell `#303338` (1c: `#2b2e33`), system `#82baff`, tools `#3bcfcf`,
 mcp + model `#c3a5f9`, memory `#ee97c9`, chat/ok `#8dca80`, amber `#f3ae58`.
 
 Deviation: in 1a and 1b, filled cells use ▆ for row spacing (limit bars in whole cells, no ▌: rounded, but any use shows at least one cell and anything under 100 % leaves at least one empty); 1c keeps ▀. Evan-approved 2026-10-05.
@@ -76,8 +77,9 @@ legend indented 5 cols `■ system 6.4k  ■ tools 8.2k …  ┊ compact 85%` /
 `5h  <10-cell bar, ▌ half-cell>  10%  ↻ 1h 11m  │  week <bar> 75%  ↻ 1d 12h 11m`. Gaps between spans: 2 spaces (design gap 14px ≈ 2 cells).
 
 **1b** — 8-col label column (`model`, `where`, `context`, `limits`): rows per design with `░` empty cells
-(51-cell bar), legend row with short names (`sys tools mcp mem chat · 172k free`), `limits` row, then a `─`
-rule separating our grid from the engine's line below.
+(51-cell bar), legend row with short names (`sys tools mcp mem chat · 172k free`), `limits` row. No bottom `─` rule
+(it separated the grid from the old mode footer, which now sits above the block; Evan, 2026-10-05); the bottom
+padding row stays.
 
 **1c** — full-width `▀` bar (width = `bodyColumns`), then two justified rows:
 `Opus 5.5·med  ~/.l/workspace  no git · no PR` | `ctx 14%  sys tools mcp mem chat` and a second row

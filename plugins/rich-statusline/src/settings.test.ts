@@ -5,7 +5,7 @@ describe('parseSettings', () => {
   test('nothing stored gives the defaults', () => {
     expect(parseSettings(undefined)).toEqual(DEFAULT_SETTINGS)
     expect(parseSettings('junk')).toEqual(DEFAULT_SETTINGS)
-    expect(DEFAULT_SETTINGS.layout).toBe('1a')
+    expect(DEFAULT_SETTINGS.layout).toBe('1b')
     expect(DEFAULT_SETTINGS.showDiff).toBe(true)
   })
   test('keeps valid fields', () => {

@@ -6,7 +6,7 @@ export type Settings = RichStatuslineSettings
 export const LAYOUTS: readonly RichStatuslineLayout[] = ['1a', '1b', '1c']
 
 export const DEFAULT_SETTINGS: Settings = Object.freeze({
-  layout: '1a',
+  layout: '1b',
   showCost: true,
   showPr: true,
   showDiff: true,

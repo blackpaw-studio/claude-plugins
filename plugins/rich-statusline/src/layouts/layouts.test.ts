@@ -14,7 +14,6 @@ const C = {
   separator: '#3f4348',
   empty: '#303338',
   empty1c: '#2b2e33',
-  rule: '#24272a',
   system: '#82baff',
   tools: '#3bcfcf',
   mcp: '#c3a5f9',
@@ -109,7 +108,6 @@ describe('1b labeled grid, design fixture at 120 columns', () => {
       `context ${'▆'.repeat(9)}${'░'.repeat(51)}  14.0%`,
       '        sys 6.4k  tools 8.2k  mcp 3.0k  mem 1.6k  chat 8.8k  · 172k free',
       'limits  session 10% resets 1h 11m    weekly 75% resets 1d 12h 11m',
-      '─'.repeat(120),
     ])
   })
   test('colours', () => {
@@ -137,7 +135,7 @@ describe('1b labeled grid, design fixture at 120 columns', () => {
       `75%@${C.amber}`,
       ` resets 1d 12h 11m@${C.muted}`,
     ])
-    expect(runsOf(lines[5])).toEqual([`${'─'.repeat(120)}@${C.rule}`])
+    expect(lines).toHaveLength(5)
   })
 })
 

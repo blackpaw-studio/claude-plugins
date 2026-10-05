@@ -15,8 +15,11 @@ const mountHint = ($: Engine, columns = 120) =>
   $.ui.mount({ plugin: PLUGIN, surface: 'terminal', ...PROMPT_HINT, viewport: { columns, rows: 40 } })
 
 describe('the status rows under the prompt', () => {
+  // These rows are drawn in 1a (grouped rows); the default layout is 1b.
+  const GROUPED = { settings: { layout: '1a' } }
+
   test('draws 1a from the session and keeps the engine line last, unchanged', async ($, on) => {
-    const world = installWorld(on, { branch: 'main' })
+    const world = installWorld(on, { stored: GROUPED, branch: 'main' })
     const ui = await mountHint($)
     await world.clock.settle()
     const rows = rowsOfTree(await ui.drawn())
@@ -39,7 +42,7 @@ describe('the status rows under the prompt', () => {
   })
 
   test('outside a repository: no git, no PR, gh never asked', async ($, on) => {
-    const world = installWorld(on)
+    const world = installWorld(on, { stored: GROUPED })
     const ui = await mountHint($)
     await world.clock.settle()
     expect(textOfNode(rowsOfTree(await ui.drawn())[1])).toBe('◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ no git  no PR')
@@ -47,7 +50,7 @@ describe('the status rows under the prompt', () => {
   })
 
   test('a failing usage read still starts git and the clock', async ($, on) => {
-    const world = installWorld(on, { branch: 'main', isUsageBroken: true })
+    const world = installWorld(on, { stored: GROUPED, branch: 'main', isUsageBroken: true })
     const ui = await mountHint($)
     await world.clock.settle()
     expect(textOfNode(rowsOfTree(await ui.drawn())[1])).toBe(
@@ -59,7 +62,7 @@ describe('the status rows under the prompt', () => {
   })
 
   test('a session start (resume) reads git again', async ($, on) => {
-    const world = installWorld(on, { branch: 'main' })
+    const world = installWorld(on, { stored: GROUPED, branch: 'main' })
     await mountHint($)
     await world.clock.settle()
     const before = world.runs.filter(run => run.includes('--show-toplevel')).length
@@ -75,7 +78,7 @@ describe('the status rows under the prompt', () => {
   })
 
   test('a refresh that finds nothing new does not redraw', async ($, on) => {
-    const world = installWorld(on, { branch: 'main' })
+    const world = installWorld(on, { stored: GROUPED, branch: 'main' })
     await mountHint($)
     await world.clock.settle()
     const draws = world.hintDraws()
@@ -91,7 +94,7 @@ describe('the status rows under the prompt', () => {
   })
 
   test('a measurement updates cost and asks for a debounced breakdown', async ($, on) => {
-    const world = installWorld(on)
+    const world = installWorld(on, { stored: GROUPED })
     const ui = await mountHint($)
     await world.clock.settle()
     const before = world.usageCalls()
@@ -110,7 +113,7 @@ describe('the status rows under the prompt', () => {
   })
 
   test('reset countdowns tick with the clock', async ($, on) => {
-    const world = installWorld(on)
+    const world = installWorld(on, { stored: GROUPED })
     const ui = await mountHint($)
     await world.clock.settle()
     await world.clock.set(NOW + 60_000)
@@ -177,7 +180,7 @@ describe('the settings menu in the band above the prompt', () => {
       'gitRefreshSeconds',
       'prRefreshSeconds',
     ])
-    expect(selects[0]?.props.value).toBe('1a')
+    expect(selects[0]?.props.value).toBe('1b')
     expect((await band.find({ type: 'Button', key: 'done' }))?.props).toMatchObject({ hotkey: 'd', role: 'dismiss' })
     expect(await band.find({ type: 'Button', key: 'reset' })).toBeDefined()
   })
@@ -211,7 +214,7 @@ describe('the settings menu in the band above the prompt', () => {
     expect((await band.find({ type: 'Select', key: 'layout' }))?.props.value).toBe('1c')
     expect(world.stores[world.stores.length - 1]).toMatchObject({ key: 'settings', value: { layout: '1c' } })
     await band.press({ key: 'reset' })
-    expect((await band.find({ type: 'Select', key: 'layout' }))?.props.value).toBe('1a')
+    expect((await band.find({ type: 'Select', key: 'layout' }))?.props.value).toBe('1b')
   })
 
   test('quick picks persist in order, each over the last', async ($, on) => {
