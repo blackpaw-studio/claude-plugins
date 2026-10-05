@@ -49,15 +49,61 @@ export type World = {
   usageCalls: () => number
   hintDraws: () => number
   stores: unknown[]
+  storeReads: () => number
+  /** Empties the session's `$.state` with no event, as a /clear leaves it (isStateScoped). */
+  wipeState: () => void
 }
 
-export type WorldOptions = { branch?: string | null; stored?: Record<string, unknown>; isUsageBroken?: boolean }
+export type WorldOptions = {
+  branch?: string | null
+  stored?: Record<string, unknown>
+  isUsageBroken?: boolean
+  /**
+   * `$.state` held per session, as the engine holds it: a /clear's
+   * `session.end` empties it. Nothing redraws on a write then: mount again to read.
+   */
+  isStateScoped?: boolean
+  /** With isStateScoped: every write of the settings value is denied. */
+  isSettingsRefused?: boolean
+}
+
+type Held = { value: unknown; version: number }
+
+/** A session's `$.state`, answered beneath the plugin; `wipe` starts an empty one. */
+const scopeState = (on: On, isSettingsRefused: boolean): (() => void) => {
+  let held = new Map<string, Held>()
+  const heldAt = (e: { plugin: string; key: string; id?: string }): [string, Held] => {
+    const name = `${e.plugin}/${e.key}/${e.id ?? ''}`
+    return [name, held.get(name) ?? { value: undefined, version: 0 }]
+  }
+  on('state.get', (_$, e) => ({ value: heldAt(e)[1] }) as never)
+  on('state.set', (_$, e) => {
+    if (isSettingsRefused && e.key === 'settings') return { deny: 'settings refused' }
+    const [name, now] = heldAt(e)
+    if (e.ifVersion !== undefined && e.ifVersion !== now.version) return { value: { isSet: false, version: now.version } } as never
+    held.set(name, { value: e.value, version: now.version + 1 })
+    return { value: { isSet: true, version: now.version + 1 } } as never
+  })
+  const wipe = () => {
+    held = new Map()
+  }
+  on('session.end', (_$, e) => {
+    if (e.reason === 'clear') wipe()
+    return { sessionId: e.sessionId }
+  })
+  return wipe
+}
 
 /** Installs the session beneath the plugin; returns what the test reads back. */
-export const installWorld = (on: On, { branch = null, stored = {}, isUsageBroken = false }: WorldOptions = {}): World => {
+export const installWorld = (
+  on: On,
+  { branch = null, stored = {}, isUsageBroken = false, isStateScoped = false, isSettingsRefused = false }: WorldOptions = {},
+): World => {
+  const wipeState = isStateScoped ? scopeState(on, isSettingsRefused) : () => undefined
   const stores: unknown[] = []
+  let storeReads = 0
   const memory = new Map<string, unknown>(Object.entries(stored))
-  on('store.get', (_$, e) => ({ value: memory.get(e.key) }))
+  on('store.get', (_$, e) => ((storeReads += 1), { value: memory.get(e.key) }))
   on('store.set', (_$, e) => {
     stores.push(e)
     memory.set(e.key, e.value)
@@ -111,7 +157,7 @@ export const installWorld = (on: On, { branch = null, stored = {}, isUsageBroken
     const { Text } = $.ui.resolve(e)
     return <Text dimColor>{e.props.hint}</Text>
   })
-  return { clock, runs, stores, usageCalls: () => usageCount, hintDraws: () => hintDraws }
+  return { clock, runs, stores, usageCalls: () => usageCount, hintDraws: () => hintDraws, storeReads: () => storeReads, wipeState }
 }
 
 export const PROMPT_HINT = {

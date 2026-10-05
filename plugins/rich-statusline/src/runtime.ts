@@ -61,6 +61,20 @@ export type Runtime = {
   setSettings: (settings: Settings) => Promise<boolean>
   /** A new or resumed session: identity, cwd, git and the breakdown again. */
   sessionStarted: () => Promise<void>
+  /**
+   * A /clear emptied the session's state under this live runtime: seeds it
+   * again from a timer, refresh timers left running. A seed asked while one
+   * runs folds into one rerun; nothing before attach.
+   */
+  sessionCleared: () => void
+  /**
+   * A draw found the state empty (a clear the event missed): as
+   * sessionCleared, but at most once per TICK_MS since the last seed began, so
+   * a write that keeps failing cannot turn every redraw into a reseed. A
+   * failed clock lifts the bound: the reseed then runs per draw, as no seed
+   * that failed its write draws again by itself.
+   */
+  stateMissing: () => void
   /** Restarts the refresh timers when their intervals changed. */
   retime: (settings: Settings) => void
 }
@@ -119,6 +133,12 @@ export const createRuntime = (): Runtime => {
   let work: ReturnType<typeof collectors> | null = null
   let timers: Timer[] = []
   let pendingBreakdown: Timer | null = null
+  // Set at attach, each coalesced (one at a time, a burst folds into one rerun):
+  // the seed itself, and the draw-asked one that first checks the bound.
+  let seeding: (() => Promise<void>) | null = null
+  let seedingIfStale: (() => Promise<void>) | null = null
+  // When the last seed began; a clock that failed reads as long ago.
+  let lastSeedAt: Promise<number> | null = null
 
   const background = (what: string, task: () => Promise<void>): void => {
     task().catch(error => ports?.log(`rich-statusline: ${what} failed: ${describeError(error)}`))
@@ -133,15 +153,33 @@ export const createRuntime = (): Runtime => {
     ]
   }
 
-  /** Settings, then timers, then each first read, each guarded: no failure stops the rest. */
-  const start = async (p: Ports, w: ReturnType<typeof collectors>): Promise<void> => {
-    const settings = parseSettings(await p.storedSettings().catch(() => undefined))
-    await p.settings.set(settings).catch(error => p.log(`rich-statusline: settings failed: ${describeError(error)}`))
+  /** Starts the refresh timers unless running; a failed start is retried by the next seed. */
+  const ensureTimers = (p: Ports, w: ReturnType<typeof collectors>, settings: Settings): void => {
+    if (timers.length > 0) return
     try {
       startTimers(p, w, settings)
     } catch (error) {
       p.log(`rich-statusline: timers failed: ${describeError(error)}`)
     }
+  }
+
+  /**
+   * Settings, then the timers (the first seed starts them), then each first
+   * read, each guarded: no failure stops the rest. Without the settings
+   * written nothing draws, so the reads are skipped: their writes would only
+   * redraw an empty line, which asks for another seed.
+   */
+  const seed = async (p: Ports, w: ReturnType<typeof collectors>): Promise<void> => {
+    lastSeedAt = p.now().catch(() => Number.NEGATIVE_INFINITY)
+    const settings = parseSettings(await p.storedSettings().catch(() => undefined))
+    const isWritten = await p.settings.set(settings).then(
+      () => true,
+      error => (p.log(`rich-statusline: settings failed: ${describeError(error)}`), false),
+    )
+    ensureTimers(p, w, settings)
+    if (!isWritten) return
+    // Again on a reseed: a command is declared per session, and a second
+    // register replaces the first.
     background('command', async () => {
       await p.registerCommand()
     })
@@ -149,6 +187,26 @@ export const createRuntime = (): Runtime => {
     background('tick', w.tick)
     background('breakdown', w.loadBreakdown)
     background('git', w.refreshGit)
+    background('pr', w.refreshPr)
+  }
+
+  /**
+   * Whether the last seed began at least a tick ago (or none has). A failed
+   * clock reads as stale; a seed begun while this waited reads as fresh.
+   */
+  const isSeedStale = async (p: Ports): Promise<boolean> => {
+    const last = lastSeedAt
+    if (last === null) return true
+    const [now, then] = await Promise.all([p.now().catch(() => Number.POSITIVE_INFINITY), last])
+    return lastSeedAt === last && now - then >= TICK_MS
+  }
+
+  /**
+   * Each ask gets its own timer (a render hook must not write state), so no
+   * flag waits on a callback the engine may refuse to run.
+   */
+  const later = (p: Ports, what: string, task: () => Promise<void>): void => {
+    p.after(0, () => background(what, task))
   }
 
   return {
@@ -157,8 +215,12 @@ export const createRuntime = (): Runtime => {
       ports = next
       const w = collectors(next, background)
       work = w
-      // From a timer: the attaching render hook must not write state itself.
-      next.after(0, () => background('start', () => start(next, w)))
+      const run = coalesce(() => seed(next, w))
+      seeding = run
+      seedingIfStale = coalesce(async () => {
+        if (await isSeedStale(next)) await run()
+      })
+      later(next, 'start', run)
     },
     isAttached: () => ports !== null,
     contextChanged: () => {
@@ -187,6 +249,12 @@ export const createRuntime = (): Runtime => {
       await w.loadIdentity().catch(error => ports?.log(`rich-statusline: identity failed: ${describeError(error)}`))
       background('breakdown', w.loadBreakdown)
       background('git', w.refreshGit)
+    },
+    sessionCleared: () => {
+      if (ports !== null && seeding !== null) later(ports, 'reseed', seeding)
+    },
+    stateMissing: () => {
+      if (ports !== null && seedingIfStale !== null) later(ports, 'reseed', seedingIfStale)
     },
     updateIdentity: async change => {
       if (ports === null) return false

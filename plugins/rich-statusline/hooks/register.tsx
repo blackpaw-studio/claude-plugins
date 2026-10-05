@@ -77,7 +77,12 @@ export const register: Register = on => {
       read($, nowAtom),
     ])
     // Until the stored settings load, the engine's line alone: no flash of 1a.
-    if (settings === null) return engine
+    // Null once loaded means the session's state was emptied (a /clear the
+    // session.end hook missed): ask for a reseed, which the runtime bounds.
+    if (settings === null) {
+      runtime.stateMissing()
+      return engine
+    }
     const inputs = { settings: parseSettings(settings), git, pr, identity, usage, breakdown, now }
     return statusTree($.ui.resolve(e), statusLines(inputs, layoutColumns(e.viewport?.columns ?? DEFAULT_COLUMNS)), engine)
   })
@@ -87,6 +92,14 @@ export const register: Register = on => {
     const started = await next(e)
     runtime.sessionStarted().catch(error => $.ui.log(`rich-statusline: session: ${describeError(error)}`, { to: 'debug' }))
     return started
+  })
+
+  // A /clear empties the session's state and no session.start follows: seed it
+  // again once the engine's end step has run (scheduling only: the end is bounded).
+  on('session.end', async (_$, e, next) => {
+    const ended = await next(e)
+    if (e.reason === 'clear') runtime.sessionCleared()
+    return ended
   })
 
   on('session.measure', async ($, e, next) => {

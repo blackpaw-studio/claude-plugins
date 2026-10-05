@@ -31,7 +31,10 @@ export type FakeWorld = {
   identity: () => RichStatuslineIdentity | null
   everyCount: () => number
   fireAfter: () => void
+  /** Drops the pending `after` callbacks unrun, as a refused `clock.after` does. */
+  dropAfter: () => void
   setCwd: (cwd: string) => void
+  setNow: (now: number) => void
 }
 
 /** Answers git for a repo rooted at the cwd on branch `main`, gh with #1. */
@@ -50,6 +53,7 @@ export type FakeOptions = {
 
 export const fakeWorld = ({ hold = [], overrides = {} }: FakeOptions = {}): FakeWorld => {
   let cwd = '/a'
+  let now = 1
   let identity: RichStatuslineIdentity | null = null
   let git: RichStatuslineGit | null = null
   let everyCount = 0
@@ -71,7 +75,7 @@ export const fakeWorld = ({ hold = [], overrides = {} }: FakeOptions = {}): Fake
     home: async () => '/h',
     configuredEffort: async () => 'medium',
     usage: async () => ({ context: { window: 200_000 }, rateLimits: [] }),
-    now: async () => 1,
+    now: async () => now,
     every: () => {
       everyCount += 1
       return timer
@@ -115,8 +119,14 @@ export const fakeWorld = ({ hold = [], overrides = {} }: FakeOptions = {}): Fake
       afters = []
       due.forEach(fn => fn())
     },
+    dropAfter: () => {
+      afters = []
+    },
     setCwd: next => {
       cwd = next
+    },
+    setNow: next => {
+      now = next
     },
   }
 }

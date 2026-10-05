@@ -28,7 +28,7 @@
       "name": "rich-statusline",
       "source": "./plugins/rich-statusline",
       "description": "Multi-row status dashboard under the prompt: model and effort, path, git branch with diff stats and PR, context window by category, 5-hour and weekly limits, and cost, in three layouts with a settings menu above the prompt.",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "category": "ui",
       "keywords": [
         "statusline",
