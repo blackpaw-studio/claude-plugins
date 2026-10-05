@@ -1,0 +1,93 @@
+import { describe, expect, test } from 'claude-code/testing'
+import { buildSnapshot } from './snapshot'
+import { FIXTURE, NOW } from './testing/fixture'
+
+describe('buildSnapshot', () => {
+  test('the design fixture', () => {
+    const snapshot = buildSnapshot(FIXTURE)
+    expect(snapshot.model).toBe('Opus 5.5')
+    expect(snapshot.effort).toBe('medium')
+    expect(snapshot.cwd).toBe('~/.l/workspace')
+    expect(snapshot.branch).toBeNull()
+    expect(snapshot.worktree).toBeNull()
+    expect(snapshot.pr).toBeNull()
+    expect(snapshot.context).toEqual({ tokens: 28_000, window: 200_000, percent: 14, level: 'ok' })
+    expect(snapshot.freeTokens).toBe(172_000)
+    expect(snapshot.fiveHour).toEqual({ percent: 10, level: 'ok', resetInMs: 71 * 60_000 + 30_000 })
+    expect(snapshot.week?.level).toBe('amber')
+    expect(snapshot.cost).toBeUndefined()
+  })
+  test('a linked worktree carries its name through', () => {
+    const git = { root: '/work/feat-x', worktree: 'feat-x', branch: 'feat/x', diff: null }
+    expect(buildSnapshot({ ...FIXTURE, git }).worktree).toBe('feat-x')
+  })
+  test('a limit level follows the rounded figure it is shown as', () => {
+    const snapshot = buildSnapshot({
+      ...FIXTURE,
+      usage: { ...FIXTURE.usage!, rateLimits: [{ kind: 'five_hour', percentUsed: 69.6 }] },
+    })
+    expect(snapshot.fiveHour).toEqual({ percent: 69.6, level: 'amber' })
+  })
+  test('a reset exactly now is not stale', () => {
+    const snapshot = buildSnapshot({
+      ...FIXTURE,
+      usage: { ...FIXTURE.usage!, rateLimits: [{ kind: 'five_hour', percentUsed: 5, resetsAt: NOW }] },
+    })
+    expect(snapshot.fiveHour).toEqual({ percent: 5, level: 'ok', resetInMs: 0 })
+  })
+  test('a PR read for another branch is not shown', () => {
+    const snapshot = buildSnapshot({
+      ...FIXTURE,
+      git: { root: '/repo', worktree: null, branch: 'main', diff: null },
+      pr: { label: '#9', root: '/repo', branch: 'old' },
+    })
+    expect(snapshot.pr).toBeNull()
+  })
+  test('a PR read for the same branch of another repository is not shown', () => {
+    const snapshot = buildSnapshot({
+      ...FIXTURE,
+      git: { root: '/repo-b', worktree: null, branch: 'main', diff: null },
+      pr: { label: '#9', root: '/repo-a', branch: 'main' },
+    })
+    expect(snapshot.pr).toBeNull()
+    expect(buildSnapshot({ ...FIXTURE, git: { root: '/repo-a', worktree: null, branch: 'main', diff: null }, pr: { label: '#9', root: '/repo-a', branch: 'main' } }).pr).toBe('#9')
+  })
+  test('nothing collected yet', () => {
+    const snapshot = buildSnapshot({
+      ...FIXTURE,
+      identity: null,
+      git: null,
+      pr: null,
+      usage: null,
+      breakdown: null,
+    })
+    expect(snapshot.context.tokens).toBeUndefined()
+    expect(snapshot.categories).toBeNull()
+    expect(snapshot.fiveHour).toBeUndefined()
+    expect(snapshot.branch).toBeNull()
+  })
+  test('red at the red threshold and resets never negative', () => {
+    const snapshot = buildSnapshot({
+      ...FIXTURE,
+      usage: {
+        tokens: 190_000,
+        window: 200_000,
+        rateLimits: [{ kind: 'five_hour', percentUsed: 92, resetsAt: NOW - 5_000 }],
+        costUsd: 2,
+      },
+    })
+    expect(snapshot.context.level).toBe('red')
+    expect(snapshot.fiveHour).toEqual({ percent: 92, level: 'red', isStale: true })
+    expect(snapshot.cost).toBe(2)
+  })
+})
+
+test('reset countdowns wait for the first clock reading', () => {
+  const snapshot = buildSnapshot({ ...FIXTURE, now: 0 })
+  expect(snapshot.fiveHour).toEqual({ percent: 10, level: 'ok' })
+})
+
+test('an identity known only from a model step has no path yet', () => {
+  const snapshot = buildSnapshot({ ...FIXTURE, identity: { model: 'claude-opus-5-5', cwd: '' } })
+  expect(snapshot.cwd).toBe('')
+})
