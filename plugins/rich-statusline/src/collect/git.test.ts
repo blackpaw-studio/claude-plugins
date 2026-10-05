@@ -37,9 +37,9 @@ describe('parseShortstat', () => {
   test('deletions only', () => {
     expect(parseShortstat(' 2 files changed, 7 deletions(-)\n')).toEqual({ insertions: 0, deletions: 7 })
   })
-  test('empty output is a clean tree', () => {
-    expect(parseShortstat('')).toBeNull()
-    expect(parseShortstat('\n')).toBeNull()
+  test('empty output is a clean tree: zero both ways', () => {
+    expect(parseShortstat('')).toEqual({ insertions: 0, deletions: 0 })
+    expect(parseShortstat('\n')).toEqual({ insertions: 0, deletions: 0 })
   })
 })
 
@@ -90,6 +90,6 @@ describe('collectGit', () => {
       [SHORT]: ok('a1b2c3d\n'),
       [DIFF]: ok(''),
     })
-    expect(await collectGit(run, '/repo')).toEqual({ root: '/repo', branch: 'a1b2c3d', diff: null })
+    expect(await collectGit(run, '/repo')).toEqual({ root: '/repo', branch: 'a1b2c3d', diff: { insertions: 0, deletions: 0 } })
   })
 })

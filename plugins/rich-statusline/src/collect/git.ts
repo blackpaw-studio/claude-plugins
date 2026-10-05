@@ -24,10 +24,9 @@ const countOf = (text: string, pattern: RegExp): number => {
   return match?.[1] === undefined ? 0 : Number.parseInt(match[1], 10)
 }
 
-/** `git diff --shortstat` output to counts; empty output is a clean tree. */
-export const parseShortstat = (stdout: string): RichStatuslineDiff | null => {
+/** `git diff --shortstat` output to counts; empty output is a clean tree (+0,-0). */
+export const parseShortstat = (stdout: string): RichStatuslineDiff => {
   const text = stdout.trim()
-  if (text === '') return null
   return {
     insertions: countOf(text, /(\d+) insertions?\(\+\)/),
     deletions: countOf(text, /(\d+) deletions?\(-\)/),
