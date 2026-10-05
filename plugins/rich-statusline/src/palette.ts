@@ -23,6 +23,7 @@ export const COLORS = {
   separator: DIM,
   empty: { ...slot('gray'), ...DIM },
   empty1c: { ...slot('gray'), ...DIM },
+  rule: { ...slot('gray'), ...DIM },
   system: slot('blue'),
   tools: slot('cyan'),
   mcp: slot('magenta'),

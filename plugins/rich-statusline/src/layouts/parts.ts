@@ -1,7 +1,7 @@
 // Pieces the three layouts share: the category bar, limit bars, figures.
 import type { RichStatuslineDiff } from '../../types'
 import { allocateCells, markerIndex, wholeCells } from '../bar'
-import { type Span, span, type Tone } from '../line'
+import { type Line, type Span, span, type Tone } from '../line'
 import { barColor, CATEGORY_COLORS, COLORS, figureColor } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
 import { levelFor } from '../thresholds'
@@ -92,5 +92,8 @@ export const diffSpans = (diff: RichStatuslineDiff | null, isShown: boolean): Sp
         span(`-${diff.deletions}`, COLORS.red),
         span(')', COLORS.muted),
       ]
+
+/** The block's last row in every layout: a full-width rule. */
+export const ruleRow = (columns: number): Line => [span('─'.repeat(Math.max(0, columns)), COLORS.rule)]
 
 export const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value))

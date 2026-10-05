@@ -74,8 +74,9 @@ gray and dimColor. Slots are written `ansi256(n)` (n < 16 is the theme's own ent
 `ansi:<name>` (no `:` in a colour) and the renderer drops a bare `red` as an unknown theme key.
 
 Deviation: in 1a and 1b, filled cells use ▆ for row spacing (limit bars in whole cells, no ▌: rounded, but any use shows at least one cell and anything under 100 % leaves at least one empty); 1c keeps ▀. Evan-approved 2026-10-05.
-Padding: one blank row above the block, none below (the engine hint line, when present, follows our last row
-directly); 2-space gaps; Evan-approved 2026-10-05.
+Padding: one blank row above the block, none below; 2-space gaps; Evan-approved 2026-10-05.
+Bottom rule: every layout (1a, 1b, 1c) ends in a full-width `─` row, gray + `dimColor`, built once in the shared
+layout picker; the engine hint line, when present, follows it directly. Evan, 2026-10-05.
 
 **1a** — rows: `◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ <branch>  <PR>` /
 `ctx  <60-cell bar █ filled, · empty, ┊ at compact threshold>  14.0% 28k/200k` /
@@ -83,8 +84,7 @@ legend indented 5 cols `■ system 6.4k  ■ tools 8.2k …  ┊ compact 85%` /
 `5h  <10-cell bar, ▌ half-cell>  10%  ↻ 1h 11m  │  week <bar> 75%  ↻ 1d 12h 11m`. Gaps between spans: 2 spaces (design gap 14px ≈ 2 cells).
 
 **1b** — 8-col label column (`model`, `where`, `context`, `limits`): rows per design with `░` empty cells
-(51-cell bar), legend row with short names (`sys tools mcp mem chat · 172k free`), `limits` row. No bottom `─` rule
-(it separated the grid from the old mode footer, which now sits above the block; Evan, 2026-10-05).
+(51-cell bar), legend row with short names (`sys tools mcp mem chat · 172k free`), `limits` row, then the shared bottom rule.
 
 **1c** — full-width `▀` bar (width = `bodyColumns`), then two justified rows:
 `Opus 5.5·med  ~/.l/workspace  no git · no PR` | `ctx 14%  sys tools mcp mem chat` and a second row

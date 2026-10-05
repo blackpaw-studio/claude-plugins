@@ -15,6 +15,7 @@ const C = {
   separator: 'fg+dim',
   empty: 'ansi256(8)+dim',
   empty1c: 'ansi256(8)+dim',
+  rule: 'ansi256(8)+dim',
   system: 'ansi256(4)',
   tools: 'ansi256(6)',
   mcp: 'ansi256(5)',
@@ -38,7 +39,9 @@ describe('1a grouped rows, design fixture at 120 columns', () => {
       `ctx  ${CTX_1A}  14.0% 28k/200k`,
       '     ■ system 6.4k  ■ tools 8.2k  ■ mcp 3.0k  ■ memory 1.6k  ■ chat 8.8k  ┊ compact 85%',
       '5h   ▆·········  10%  ↻ 1h 11m  │  week  ▆▆▆▆▆▆▆▆··  75%  ↻ 1d 12h 11m',
+      '─'.repeat(120),
     ])
+    expect(runsOf(lines[4])).toEqual([`${'─'.repeat(120)}@${C.rule}`])
   })
   test('identity colours', () => {
     expect(spanOf(lines[0], '◆ Opus 5.5')).toEqual({ text: '◆ Opus 5.5', color: C.mcp, bold: true })
@@ -109,6 +112,7 @@ describe('1b labeled grid, design fixture at 120 columns', () => {
       `context ${'▆'.repeat(9)}${'░'.repeat(51)}  14.0%`,
       '        sys 6.4k  tools 8.2k  mcp 3.0k  mem 1.6k  chat 8.8k  · 172k free',
       'limits  session 10% resets 1h 11m    weekly 75% resets 1d 12h 11m',
+      '─'.repeat(120),
     ])
   })
   test('colours', () => {
@@ -136,7 +140,7 @@ describe('1b labeled grid, design fixture at 120 columns', () => {
       `75%@${C.amber}`,
       ` resets 1d 12h 11m@${C.muted}`,
     ])
-    expect(lines).toHaveLength(5)
+    expect(runsOf(lines[5])).toEqual([`${'─'.repeat(120)}@${C.rule}`])
   })
 })
 
@@ -150,7 +154,9 @@ describe('1c compact, design fixture at 100 columns', () => {
       '▀'.repeat(100),
       `${left}${' '.repeat(100 - left.length - right.length)}${right}`,
       `${' '.repeat(100 - limits.length)}${limits}`,
+      '─'.repeat(100),
     ])
+    expect(runsOf(lines[3])).toEqual([`${'─'.repeat(100)}@${C.rule}`])
   })
   test('colours', () => {
     expect(runsOf(lines[0])).toEqual([
@@ -298,9 +304,9 @@ describe('a 1M window with a smaller compaction window', () => {
 describe('extrapolated states', () => {
   test('no rate limits hides the limits rows', () => {
     const snap = buildSnapshot({ ...FIXTURE, usage: { ...FIXTURE.usage!, rateLimits: [] } })
-    expect(draw('1a', 120, DEFAULT_SETTINGS, snap)).toHaveLength(3)
+    expect(draw('1a', 120, DEFAULT_SETTINGS, snap)).toHaveLength(4)
     expect(rowsOf(draw('1b', 120, DEFAULT_SETTINGS, snap)).some(row => row.startsWith('limits'))).toBe(false)
-    expect(draw('1c', 100, DEFAULT_SETTINGS, snap)).toHaveLength(2)
+    expect(draw('1c', 100, DEFAULT_SETTINGS, snap)).toHaveLength(3)
   })
   test('no context reading shows a dash over an empty bar', () => {
     const snap = buildSnapshot({ ...FIXTURE, usage: null, breakdown: null })
@@ -344,7 +350,7 @@ describe('extrapolated states', () => {
     expect(rowsOf(draw('1b', 99)).some(row => row.includes('free'))).toBe(false)
   })
   test('legend toggle', () => {
-    expect(draw('1a', 120, { ...DEFAULT_SETTINGS, showLegend: false })).toHaveLength(3)
+    expect(draw('1a', 120, { ...DEFAULT_SETTINGS, showLegend: false })).toHaveLength(4)
   })
   test('under 80 columns resets and PR go and the bar fits', () => {
     const rows = rowsOf(draw('1a', 79))

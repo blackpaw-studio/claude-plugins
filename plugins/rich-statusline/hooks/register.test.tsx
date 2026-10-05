@@ -29,6 +29,7 @@ describe('the status rows under the prompt', () => {
       `ctx  ${CTX_1A}  14.0% 28k/200k`,
       '     ■ system 6.4k  ■ tools 8.2k  ■ mcp 3.0k  ■ memory 1.6k  ■ chat 8.8k  ┊ compact 85%',
       '5h   ▆·········  10%  ↻ 1h 11m  │  week  ▆▆▆▆▆▆▆▆··  75%  ↻ 1d 12h 11m',
+      '─'.repeat(120),
       ENGINE_HINT,
     ])
     expect(rows[rows.length - 1]).toEqual({ type: 'Text', props: { dimColor: true }, children: [ENGINE_HINT] })
@@ -243,6 +244,9 @@ describe('the settings menu in the band above the prompt', () => {
     const world = installWorld(on, { stored: { settings: { layout: '1b', redPercent: 'very' } } })
     const ui = await mountHint($)
     await world.clock.settle()
-    expect(textOfNode(rowsOfTree(await ui.drawn())[1])).toBe('model   Opus 5.5  ·  thinking medium')
+    const rows = rowsOfTree(await ui.drawn()).map(textOfNode)
+    expect(rows[1]).toBe('model   Opus 5.5  ·  thinking medium')
+    // The block ends in its rule; the engine's hint line follows it directly.
+    expect(rows.slice(-2)).toEqual(['─'.repeat(120), ENGINE_HINT])
   })
 })
