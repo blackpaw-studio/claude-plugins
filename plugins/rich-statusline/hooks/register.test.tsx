@@ -32,6 +32,10 @@ describe('the status rows under the prompt', () => {
       ENGINE_HINT,
     ])
     expect(rows[rows.length - 1]).toEqual({ type: 'Text', props: { dimColor: true }, children: [ENGINE_HINT] })
+    // Theme palette slots and dimColor only, never hex.
+    const spans = (rows[1] as { children: unknown[] }).children
+    expect(spans[0]).toEqual({ type: 'Text', props: { color: 'ansi256(5)', bold: true }, children: ['◆ Opus 5.5'] })
+    expect(spans).toContainEqual({ type: 'Text', props: { dimColor: true }, children: ['│'] })
     expect(world.runs).toEqual([
       'git rev-parse --show-toplevel',
       'git rev-parse --path-format=absolute --git-dir --git-common-dir',

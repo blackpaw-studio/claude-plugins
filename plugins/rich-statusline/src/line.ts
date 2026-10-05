@@ -1,12 +1,16 @@
 // A layout's output: rows of styled spans, independent of any surface.
 
-export type Span = { readonly text: string; readonly color?: string; readonly bold?: boolean }
+/** How a span is tinted: a named terminal colour (absent: the default fg), dimmed or not. */
+export type Tone = { readonly color?: string; readonly dim?: true }
+
+export type Span = { readonly text: string; readonly color?: string; readonly dim?: true; readonly bold?: boolean }
 
 export type Line = readonly Span[]
 
-export const span = (text: string, color?: string, bold?: boolean): Span => ({
+export const span = (text: string, tone: Tone = {}, bold?: boolean): Span => ({
   text,
-  ...(color === undefined ? {} : { color }),
+  ...(tone.color === undefined ? {} : { color: tone.color }),
+  ...(tone.dim === true ? { dim: true as const } : {}),
   ...(bold === true ? { bold } : {}),
 })
 
@@ -35,7 +39,7 @@ export const mergeRuns = (spans: readonly Span[]): Span[] =>
   spans.reduce<Span[]>((merged, next) => {
     if (next.text === '') return merged
     const last = merged[merged.length - 1]
-    return last !== undefined && last.color === next.color && last.bold === next.bold
+    return last !== undefined && last.color === next.color && last.dim === next.dim && last.bold === next.bold
       ? [...merged.slice(0, -1), { ...last, text: last.text + next.text }]
       : [...merged, next]
   }, [])

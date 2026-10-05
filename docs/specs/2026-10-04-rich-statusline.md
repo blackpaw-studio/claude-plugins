@@ -65,9 +65,13 @@ Category folding: `System prompt` → system; `System tools`, `Skills`, `Custom 
 segments (buffer becomes the `┊` marker). Unknown future categories → tools.
 
 ## Rendering (exact)
-Colours (hex from the design's oklch): text `#e3e5e8`, muted `#7d8086`, dim `#606369`, faint `#52555b`,
-separator `#3f4348`, empty cell `#303338` (1c: `#2b2e33`), system `#82baff`, tools `#3bcfcf`,
-mcp + model `#c3a5f9`, memory `#ee97c9`, chat/ok `#8dca80`, amber `#f3ae58`.
+Colours: the terminal theme palette, normal slots; Evan-approved 2026-10-05. No hex anywhere, so the rows follow
+the person's theme (light or dark). text = default fg; muted = gray (bright black, slot 8, the one exception: no
+normal slot is gray); dim, faint and separator = default fg + `dimColor`; empty cells = gray + `dimColor`;
+system = blue, tools = cyan, mcp = magenta, memory = red, chat = green; model name = magenta, cwd = blue;
+ok = green, amber level = yellow, red level = red. The design's three greys (muted/dim/faint) collapse to two tiers:
+gray and dimColor. Slots are written `ansi256(n)` (n < 16 is the theme's own entry): the plugin API refuses
+`ansi:<name>` (no `:` in a colour) and the renderer drops a bare `red` as an unknown theme key.
 
 Deviation: in 1a and 1b, filled cells use ▆ for row spacing (limit bars in whole cells, no ▌: rounded, but any use shows at least one cell and anything under 100 % leaves at least one empty); 1c keeps ▀. Evan-approved 2026-10-05.
 Padding: one blank row above the block, none below (the engine hint line, when present, follows our last row
@@ -90,10 +94,10 @@ Bar math: cells = round(tokens / window × width) per category, minimum 1 cell f
 if the total passes the width, trim one cell at a time from the largest category. Fixture at 60 cells → 2,2,1,1,3 = 9
 (matches the design). Compact marker at round(threshold × width). Window = `context.window` (the model window shown in the label; scales for 1M). The compaction window (`rawMaxTokens`) is not used, so bar, label and marker agree.
 
-Diff stats placement (not in designs): right after the branch — 1a `⎇ main (+12,-3)`, 1b `where` row `· main (+12,-3)`, 1c `main (+12,-3)`; `+N` in `#8dca80`, `-N` in `#f97770`, parens muted. Toggle in settings (default on).
+Diff stats placement (not in designs): right after the branch — 1a `⎇ main (+12,-3)`, 1b `where` row `· main (+12,-3)`, 1c `main (+12,-3)`; `+N` green, `-N` red, parens muted. Toggle in settings (default on).
 
 Worktree (Evan, 2026-10-05): in a linked worktree, right before the branch, `wt <name>` with `wt` muted and the name in
-`#c3a5f9` — 1a `~/.l/x  wt feat-x  ⎇ branch (+1,-0)`, 1b `where` row `~/.l/x  ·  wt feat-x  ·  branch (+1,-0)`,
+magenta — 1a `~/.l/x  wt feat-x  ⎇ branch (+1,-0)`, 1b `where` row `~/.l/x  ·  wt feat-x  ·  branch (+1,-0)`,
 1c `wt feat-x branch (+1,-0)`. Toggle "show worktree" (default on). On overflow the identity/where row drops cost
 (1a), then PR, then diff stats, then the worktree (1c: within the width left of `ctx N%`); if still too wide,
 its end (branch, then path) is cut with `…`. Every row in every layout stays within `bodyColumns`.
@@ -101,7 +105,7 @@ its end (branch, then path) is cut with `…`. Every row in every layout stays w
 Cost placement: 1a end of identity row `$1.23` muted; 1b appended to `limits` row `  ·  $1.23`; 1c before `5h`.
 
 ## Extrapolated states (veto any)
-- Amber at ≥70 %, red `#f97770` at ≥90 % — applies to context % and each limit (number + bar).
+- Amber at ≥70 %, red at ≥90 % — applies to context % and each limit (number + bar).
 - No rate limits (API key / gateway): limits row (1a/1b) hidden; 1c right side shows `ctx` only.
 - No context reading yet: `ctx —` with an all-empty bar.
 - Narrow terminals (by `bodyColumns`): <100 drop 1a/1b legend; <80 drop reset times and PR; <60 force 1c.

@@ -9,11 +9,15 @@ export const DEFAULT_COLUMNS = 120
 
 export type StatusElements = Pick<Elements['terminal'], 'Box' | 'Text'>
 
-const spanNode = (Text: StatusElements['Text'], { text, color, bold }: Span) =>
-  color === undefined && bold !== true ? (
+const spanNode = (Text: StatusElements['Text'], { text, color, dim, bold }: Span) =>
+  color === undefined && dim !== true && bold !== true ? (
     text
   ) : (
-    <Text {...(color === undefined ? {} : { color })} {...(bold === true ? { bold } : {})}>
+    <Text
+      {...(color === undefined ? {} : { color })}
+      {...(dim === true ? { dimColor: true } : {})}
+      {...(bold === true ? { bold } : {})}
+    >
       {text}
     </Text>
   )

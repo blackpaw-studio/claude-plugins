@@ -2,25 +2,26 @@ import { describe, expect, test } from 'claude-code/testing'
 import { DEFAULT_SETTINGS } from '../settings'
 import { buildSnapshot } from '../snapshot'
 import { FIXTURE } from '../testing/fixture'
-import { rowsOf, runsOf, spanOf, textOf } from '../testing/lines'
+import { rowsOf, runsOf, spanOf, textOf, toneOf } from '../testing/lines'
 import { viewOptions } from '../view-options'
 import { renderLayout } from './index'
 
+/** The terminal theme's normal slots by index; gray (slot 8) is the one exception. */
 const C = {
-  text: '#e3e5e8',
-  muted: '#7d8086',
-  dim: '#606369',
-  faint: '#52555b',
-  separator: '#3f4348',
-  empty: '#303338',
-  empty1c: '#2b2e33',
-  system: '#82baff',
-  tools: '#3bcfcf',
-  mcp: '#c3a5f9',
-  memory: '#ee97c9',
-  ok: '#8dca80',
-  amber: '#f3ae58',
-  red: '#f97770',
+  text: 'fg',
+  muted: 'ansi256(8)',
+  dim: 'fg+dim',
+  faint: 'fg+dim',
+  separator: 'fg+dim',
+  empty: 'ansi256(8)+dim',
+  empty1c: 'ansi256(8)+dim',
+  system: 'ansi256(4)',
+  tools: 'ansi256(6)',
+  mcp: 'ansi256(5)',
+  memory: 'ansi256(1)',
+  ok: 'ansi256(2)',
+  amber: 'ansi256(3)',
+  red: 'ansi256(1)',
 }
 
 const snapshot = buildSnapshot(FIXTURE)
@@ -113,7 +114,7 @@ describe('1b labeled grid, design fixture at 120 columns', () => {
   test('colours', () => {
     expect(runsOf(lines[0])).toEqual([`model   @${C.dim}`, `Opus 5.5@${C.mcp}`, `  ·  thinking @${C.muted}`, `medium@${C.text}`])
     expect(runsOf(lines[1])).toEqual([`where   @${C.dim}`, `~/.l/workspace@${C.system}`, `  ·  no git  ·  no PR@${C.muted}`])
-    expect(spanOf(lines[2], '░'.repeat(51))?.color).toBe(C.empty)
+    expect(toneOf(spanOf(lines[2], '░'.repeat(51)))).toBe(C.empty)
     expect(runsOf(lines[3])).toEqual([
       `sys@${C.system}`,
       ` 6.4k  @${C.muted}`,
@@ -227,7 +228,7 @@ describe('git, diff stats, PR and cost', () => {
 })
 
 describe('a linked worktree, right before the branch', () => {
-  const WORKTREE = '#c3a5f9'
+  const WORKTREE = 'ansi256(5)'
   const inWorktree = (diff = { insertions: 1, deletions: 0 }) =>
     buildSnapshot({ ...FIXTURE, git: { root: '/work/feat-x', worktree: 'feat-x', branch: 'feat/x', diff } })
   const snap = inWorktree()
@@ -235,19 +236,19 @@ describe('a linked worktree, right before the branch', () => {
   test('1a', () => {
     const [row] = draw('1a', 120, DEFAULT_SETTINGS, snap)
     expect(textOf(row)).toBe('◆ Opus 5.5  thinking medium  │  ~/.l/workspace  wt feat-x  ⎇ feat/x (+1,-0)  no PR')
-    expect(spanOf(row, 'feat-x')?.color).toBe(WORKTREE)
+    expect(toneOf(spanOf(row, 'feat-x'))).toBe(WORKTREE)
     expect(isWtMuted(row)).toBe(true)
   })
   test('1b', () => {
     const row = draw('1b', 120, DEFAULT_SETTINGS, snap)[1]
     expect(textOf(row)).toBe('where   ~/.l/workspace  ·  wt feat-x  ·  feat/x (+1,-0)  ·  no PR')
-    expect(spanOf(row, 'feat-x')?.color).toBe(WORKTREE)
+    expect(toneOf(spanOf(row, 'feat-x'))).toBe(WORKTREE)
     expect(isWtMuted(row)).toBe(true)
   })
   test('1c', () => {
     const row = draw('1c', 100, DEFAULT_SETTINGS, snap)[1]
     expect(textOf(row).startsWith('Opus 5.5·med  ~/.l/workspace  wt feat-x feat/x (+1,-0) · no PR')).toBe(true)
-    expect(spanOf(row, 'feat-x')?.color).toBe(WORKTREE)
+    expect(toneOf(spanOf(row, 'feat-x'))).toBe(WORKTREE)
     expect(isWtMuted(row)).toBe(true)
   })
   test('the main working tree and the toggle show none', () => {
@@ -309,13 +310,13 @@ describe('extrapolated states', () => {
   })
   test('red context percent at the red threshold', () => {
     const snap = buildSnapshot({ ...FIXTURE, usage: { ...FIXTURE.usage!, tokens: 182_000 } })
-    expect(spanOf(draw('1a', 120, DEFAULT_SETTINGS, snap)[1], '91.0%')?.color).toBe(C.red)
+    expect(toneOf(spanOf(draw('1a', 120, DEFAULT_SETTINGS, snap)[1], '91.0%'))).toBe(C.red)
   })
   test('the context colour follows the figure as shown', () => {
     const near = (tokens: number) => buildSnapshot({ ...FIXTURE, usage: { ...FIXTURE.usage!, tokens } })
-    expect(spanOf(draw('1a', 120, DEFAULT_SETTINGS, near(139_920))[1], '70.0%')?.color).toBe(C.amber)
-    expect(spanOf(draw('1a', 120, DEFAULT_SETTINGS, near(139_000))[1], '69.5%')?.color).toBe(C.text)
-    expect(spanOf(draw('1c', 100, DEFAULT_SETTINGS, near(139_000))[1], '70%')?.color).toBe(C.amber)
+    expect(toneOf(spanOf(draw('1a', 120, DEFAULT_SETTINGS, near(139_920))[1], '70.0%'))).toBe(C.amber)
+    expect(toneOf(spanOf(draw('1a', 120, DEFAULT_SETTINGS, near(139_000))[1], '69.5%'))).toBe(C.text)
+    expect(toneOf(spanOf(draw('1c', 100, DEFAULT_SETTINGS, near(139_000))[1], '70%'))).toBe(C.amber)
   })
   test('a limit whose window has passed reads stale: dim figure, reset now', () => {
     const snap = buildSnapshot({
@@ -324,7 +325,7 @@ describe('extrapolated states', () => {
     })
     const row = draw('1a', 120, DEFAULT_SETTINGS, snap)[3]
     expect(textOf(row)).toBe('5h   ▆▆▆▆······  40%  ↻ now')
-    expect(spanOf(row, '40%')?.color).toBe(C.dim)
+    expect(toneOf(spanOf(row, '40%'))).toBe(C.dim)
     expect(textOf(draw('1b', 120, DEFAULT_SETTINGS, snap)[4])).toBe('limits  session 40% resets now')
     expect(textOf(draw('1c', 100, DEFAULT_SETTINGS, snap)[2]).trimStart()).toBe('5h 40% ↻now')
   })

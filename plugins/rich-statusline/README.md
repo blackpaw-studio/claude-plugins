@@ -71,9 +71,13 @@ bind only the engine's own keybinding actions, not a plugin-defined one.
 - `git` and `gh` run through the host with a timeout; a render never waits on
   them. Outside a repository the row reads `no git` and `gh` is not asked.
 
+## Colours
+
+The rows use your terminal theme's own palette (its normal colour slots, plus
+gray), so they follow light and dark themes alike.
+
 ## Limitations
 
-- **Light themes are not designed for.** The palette is the dark design's.
 - Column widths count characters, not display cells: a path or branch with
   wide characters (CJK, emoji) can push a 1c row past the edge, where it is
   cut off.

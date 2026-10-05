@@ -1,14 +1,14 @@
 // Pieces the three layouts share: the category bar, limit bars, figures.
 import type { RichStatuslineDiff } from '../../types'
 import { allocateCells, markerIndex, wholeCells } from '../bar'
-import { type Span, span } from '../line'
+import { type Span, span, type Tone } from '../line'
 import { barColor, CATEGORY_COLORS, COLORS, figureColor } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
 import { levelFor } from '../thresholds'
 
-export type BarGlyphs = { fill: string; empty: string; emptyColor: string; marker?: string }
+export type BarGlyphs = { fill: string; empty: string; emptyColor: Tone; marker?: string }
 
-type Segment = { tokens: number; color: string }
+type Segment = { tokens: number; color: Tone }
 
 const segmentsOf = (snapshot: Snapshot): Segment[] => {
   if (snapshot.categories !== null) {
