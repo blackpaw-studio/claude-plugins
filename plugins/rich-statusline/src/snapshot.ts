@@ -84,7 +84,7 @@ export const buildSnapshot = ({ identity, git, pr, usage, breakdown, settings, n
   return {
     model: identity === null ? FALLBACK_MODEL : displayModel(identity.model),
     ...(identity?.effort === undefined ? {} : { effort: identity.effort }),
-    cwd: identity === null ? '' : abbreviatePath(identity.cwd, identity.home),
+    cwd: identity === null || identity.cwd === '' ? '' : abbreviatePath(identity.cwd, identity.home),
     branch: git?.branch ?? null,
     diff: git?.diff ?? null,
     pr: prFor(git, pr),

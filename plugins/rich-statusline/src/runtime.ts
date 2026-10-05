@@ -119,13 +119,18 @@ export const createRuntime = (): Runtime => {
     ]
   }
 
+  /** Each first read on its own: one failing never keeps the timers from starting. */
   const start = async (p: Ports, w: ReturnType<typeof collectors>): Promise<void> => {
-    await p.registerCommand()
-    const settings = parseSettings(await p.storedSettings())
+    background('command', async () => {
+      await p.registerCommand()
+    })
+    const settings = parseSettings(await p.storedSettings().catch(() => undefined))
     await p.settings.set(settings)
-    await Promise.all([w.loadIdentity(), w.tick(), w.loadBreakdown()])
     startTimers(p, w, settings)
-    await w.refreshGit()
+    background('identity', w.loadIdentity)
+    background('tick', w.tick)
+    background('breakdown', w.loadBreakdown)
+    background('git', w.refreshGit)
   }
 
   return {
@@ -134,7 +139,8 @@ export const createRuntime = (): Runtime => {
       ports = next
       const w = collectors(next)
       work = w
-      background('start', () => start(next, w))
+      // From a timer: the attaching render hook must not write state itself.
+      next.after(0, () => background('start', () => start(next, w)))
     },
     isAttached: () => ports !== null,
     contextChanged: () => {

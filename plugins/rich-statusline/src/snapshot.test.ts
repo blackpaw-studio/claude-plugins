@@ -58,3 +58,8 @@ test('reset countdowns wait for the first clock reading', () => {
   const snapshot = buildSnapshot({ ...FIXTURE, now: 0 })
   expect(snapshot.fiveHour).toEqual({ percent: 10, level: 'ok' })
 })
+
+test('an identity known only from a model step has no path yet', () => {
+  const snapshot = buildSnapshot({ ...FIXTURE, identity: { model: 'claude-opus-5-5', cwd: '' } })
+  expect(snapshot.cwd).toBe('')
+})

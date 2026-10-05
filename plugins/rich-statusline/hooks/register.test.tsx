@@ -43,6 +43,18 @@ describe('the status rows under the prompt', () => {
     expect(world.runs.some(run => run.startsWith('gh'))).toBe(false)
   })
 
+  test('a failing usage read still starts git and the clock', async ($, on) => {
+    const world = installWorld(on, { branch: 'main', isUsageBroken: true })
+    const ui = await mountHint($)
+    await world.clock.settle()
+    expect(textOfNode(rowsOfTree(await ui.drawn())[0])).toBe(
+      '◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ main (+12,-3)  #123',
+    )
+    const before = world.runs.length
+    await world.clock.advance(10_000)
+    expect(world.runs.length).toBeGreaterThan(before)
+  })
+
   test('other surfaces get the engine line alone', async ($, on) => {
     installWorld(on)
     const ui = await $.ui.mount({ plugin: PLUGIN, surface: 'desktop', ...PROMPT_HINT })

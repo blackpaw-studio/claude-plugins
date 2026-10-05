@@ -49,10 +49,10 @@ export type World = {
   stores: unknown[]
 }
 
-export type WorldOptions = { branch?: string | null; stored?: Record<string, unknown> }
+export type WorldOptions = { branch?: string | null; stored?: Record<string, unknown>; isUsageBroken?: boolean }
 
 /** Installs the session beneath the plugin; returns what the test reads back. */
-export const installWorld = (on: On, { branch = null, stored = {} }: WorldOptions = {}): World => {
+export const installWorld = (on: On, { branch = null, stored = {}, isUsageBroken = false }: WorldOptions = {}): World => {
   const stores: unknown[] = []
   const memory = new Map<string, unknown>(Object.entries(stored))
   on('store.get', (_$, e) => ({ value: memory.get(e.key) }))
@@ -79,6 +79,7 @@ export const installWorld = (on: On, { branch = null, stored = {} }: WorldOption
   on('session.measure', (_$, e) => ({ changed: e.changed }))
   on('session.usage', () => {
     usageCount += 1
+    if (isUsageBroken) return { deny: 'no session bound' }
     return {
       value: {
         startedAt: NOW,
