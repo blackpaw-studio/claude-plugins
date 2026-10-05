@@ -120,6 +120,10 @@ describe('the status rows under the prompt', () => {
 })
 
 describe('the settings menu in the band above the prompt', () => {
+  type Drawn = { type?: string; props?: { key?: string }; children?: unknown[] }
+  const buttonsOf = (row: unknown): (string | undefined)[] =>
+    ((row as Drawn).children ?? []).filter(node => (node as Drawn).type === 'Button').map(node => (node as Drawn).props?.key)
+
   const mountBand = ($: Engine, props: Partial<typeof SETTINGS_BAND.props> = {}) =>
     $.ui.mount({ plugin: PLUGIN, surface: 'terminal', ...SETTINGS_BAND, props: { ...SETTINGS_BAND.props, ...props } })
 
@@ -157,9 +161,10 @@ describe('the settings menu in the band above the prompt', () => {
     await ready($, on)
     await $.command.run(run(''))
     const band = await mountBand($)
-    expect((await band.find({ type: 'Text', text: /^rich-statusline settings/ }))?.text).toBe(
-      'rich-statusline settings  ctrl+x tab to focus · ↑↓/tab move · enter change',
-    )
+    const [title, hint] = rowsOfTree(await band.drawn())
+    expect(textOfNode(title)).toBe('rich-statusline settings')
+    expect(buttonsOf(title)).toEqual(['done', 'reset'])
+    expect(textOfNode(hint)).toBe('ctrl+x tab to focus · ↑↓/tab move · enter change')
     const selects = await band.findAll({ type: 'Select' })
     expect(selects.map(select => select.key)).toEqual([
       'layout',
@@ -175,6 +180,17 @@ describe('the settings menu in the band above the prompt', () => {
     expect(selects[0]?.props.value).toBe('1a')
     expect((await band.find({ type: 'Button', key: 'done' }))?.props).toMatchObject({ hotkey: 'd', role: 'dismiss' })
     expect(await band.find({ type: 'Button', key: 'reset' })).toBeDefined()
+  })
+
+  test('a short band keeps Done and Reset on the title row and drops the hint', async ($, on) => {
+    await ready($, on)
+    await $.command.run(run(''))
+    const band = await mountBand($, { maxRows: 5, scroll: { offset: 0, bodyRows: 4 } })
+    const [title, ...rest] = rowsOfTree(await band.drawn())
+    expect(textOfNode(title)).toBe('rich-statusline settings')
+    expect(buttonsOf(title)).toEqual(['done', 'reset'])
+    expect(rest.map(textOfNode).join('\n')).not.toContain('ctrl+x tab')
+    expect(await band.findAll({ type: 'Select' })).toHaveLength(9)
   })
 
   test('Done closes the menu', async ($, on) => {

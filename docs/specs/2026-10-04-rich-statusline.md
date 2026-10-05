@@ -32,9 +32,11 @@ multi-row status layouts from the Claude Design artifact
   while the band draws, focuses and takes keys. Changed 2026-10-05, Evan-approved.
 - `/rich-statusline` (or `/rich-statusline settings`) toggles a `settingsOpen` state value; no output row, no
   pane. A keybinding action is not supported by the plugin API (Button `action` accepts engine actions only).
-- While open (and no survey holds the band): a bold `rich-statusline settings` header with a dim
-  `ctrl+x tab to focus · ↑↓/tab move · enter change`, the controls two to a row from 72 `bodyColumns`, and a
-  footer with `Done` (hotkey `d`, closes the menu) and `Reset to defaults` (`r`). Taller than `maxRows`, the
+- While open (and no survey holds the band): a title row with the bold `rich-statusline settings` and the
+  `Done` (hotkey `d`, closes the menu) and `Reset to defaults` (`r`) buttons, so they are always visible; a dim
+  hint row `ctrl+x tab to focus · ↑↓/tab move · enter change`; then the controls two to a row once
+  `bodyColumns` fits two cells of (longest label + longest option + 4 Select chrome), else one, so no cell
+  wraps. Over `maxRows` the hint row goes first, then three to a row when the width allows; still taller, the
   engine scrolls it.
 - Controls: layout (1a/1b/1c `Select`), show cost, show PR, show legend (1a/1b), amber threshold, red
   threshold, git refresh seconds, PR refresh seconds. Changes apply live and persist in `$.store`.
@@ -65,7 +67,7 @@ Colours (hex from the design's oklch): text `#e3e5e8`, muted `#7d8086`, dim `#60
 separator `#3f4348`, empty cell `#303338` (1c: `#2b2e33`), rule `#24272a`, system `#82baff`, tools `#3bcfcf`,
 mcp + model `#c3a5f9`, memory `#ee97c9`, chat/ok `#8dca80`, amber `#f3ae58`.
 
-Deviation: in 1a and 1b, filled cells use ▆ for row spacing (limit bars in whole cells, no ▌); 1c keeps ▀. Evan-approved 2026-10-05.
+Deviation: in 1a and 1b, filled cells use ▆ for row spacing (limit bars in whole cells, no ▌: rounded, but any use shows at least one cell and anything under 100 % leaves at least one empty); 1c keeps ▀. Evan-approved 2026-10-05.
 Padding: one blank row above/below the block; 2-space gaps; Evan-approved 2026-10-05.
 
 **1a** — rows: `◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ <branch>  <PR>` /
@@ -110,6 +112,7 @@ Cost placement: 1a end of identity row `$1.23` muted; 1b appended to `limits` ro
 ## Testing
 - Unit (TDD): bar allocation sums, compact marker position, formatters, path abbrev, category folding, thresholds, settings parsing.
 - Render tests per layout against the design's fixture (Opus 5.5, medium, 28k/200k split 6.4/8.2/3.0/1.6/8.8, 5h 10 % ↻1h11m, week 75 % ↻1d12h11m) asserting exact row strings and colours, and that the engine's line is the last child unchanged.
-- Settings pane UI test (mount, arrow/Tab navigation, select layout → layout re-renders), looped over terminal.
+- Settings menu UI test (band mount, Done/Reset on the title row under a short `maxRows`, select layout → layout
+  re-renders), looped over terminal.
 - `claude plugin validate`, `tsc`, `claude plugin test`.
 - Done = live in this session, screenshot of each layout compared against the artifact.

@@ -1,4 +1,4 @@
-// rich-statusline: wiring only. Collectors, layouts and the panel live in src/.
+// rich-statusline: wiring only. Collectors, layouts and the settings menu live in src/.
 // `$` is only ever spelled at its call sites here; src/ gets closures (Ports).
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
@@ -142,7 +142,7 @@ export const register: Register = on => {
       applying = applying.then(() => applyNow(change)).catch(fail)
       return applying
     }
-    return settingsBand($.ui.resolve(e), settings, e.props.bodyColumns, {
+    return settingsBand($.ui.resolve(e), settings, e.props, {
       onPick: (key, value) => void apply(held => applyPick(held, key, value)),
       onReset: () => void apply(() => DEFAULT_SETTINGS),
       onDone: () => void update($, settingsOpenAtom, () => false).catch(fail),

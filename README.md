@@ -21,7 +21,7 @@ The repository slug is `blackpaw-studio/claude-plugins`; the marketplace identif
 | Plugin | Description |
 | --- | --- |
 | [`blackpaw-telegram`](plugins/blackpaw-telegram) | Telegram channel — pairing, allowlists, groups with mention-triggers, Forum Topics, photo inbox, voice transcription (Groq/Deepgram/OpenAI/whisper-cli chain), document ingest (PDF/DOCX/CSV/TXT/JSON), inline-keyboard `ask_user`, SQLite history + search, scheduled reminders, ElevenLabs voice_reply, and permission relay. Fork of the official Anthropic plugin extended with non-daemon features from claude-telegram-supercharged. |
-| [`rich-statusline`](plugins/rich-statusline) | Multi-row status dashboard under the prompt (Claude Code mod): model and effort, path, git branch with diff stats and PR, context window by category, 5-hour and weekly limits, and cost. Three layouts and a `/rich-statusline` settings panel. |
+| [`rich-statusline`](plugins/rich-statusline) | Multi-row status dashboard under the prompt (Claude Code mod): model and effort, path, git branch with diff stats and PR, context window by category, 5-hour and weekly limits, and cost. Three layouts and a `/rich-statusline` settings menu. |
 
 ## Channel plugins and the research preview
 

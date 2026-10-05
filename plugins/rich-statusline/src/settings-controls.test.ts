@@ -3,7 +3,7 @@ import { DEFAULT_SETTINGS, parseSettings } from './settings'
 import { applyPick, settingsControls } from './settings-controls'
 
 describe('settingsControls', () => {
-  test('one control per setting, in panel order, showing current values', () => {
+  test('one control per setting, in menu order, showing current values', () => {
     const controls = settingsControls(DEFAULT_SETTINGS)
     expect(controls.map(c => `${c.key}=${c.value}`)).toEqual([
       'layout=1a',

@@ -1,4 +1,4 @@
-// The settings panel's controls as plain data: one Select per setting. Pure.
+// The settings menu's controls as plain data: one Select per setting. Pure.
 import { LAYOUTS, type Settings } from './settings'
 
 export type ControlOption = { value: string; label: string }
