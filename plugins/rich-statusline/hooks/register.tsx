@@ -2,6 +2,7 @@
 // `$` is only ever spelled at its call sites here; src/ gets closures (Ports).
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
+import { changeOnly, isSame, updateOnly } from '../src/change-only'
 import { withStep } from '../src/identity'
 import { toUsage } from '../src/collect/usage'
 import { DEFAULT_COLUMNS, statusLines, statusTree } from '../src/render'
@@ -26,19 +27,6 @@ const isRetimed = (a: Settings, b: Settings): boolean =>
   a.gitRefreshSeconds !== b.gitRefreshSeconds || a.prRefreshSeconds !== b.prRefreshSeconds
 
 const describeError = (error: unknown): string => (error instanceof Error ? error.message : String(error))
-
-const isSame = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
-
-/**
- * A setter that skips a write equal to what is held: `$.state` redraws every
- * reader on any write, equal or not. Takes closures, so each `read`/`update`
- * names its atom literally at the call site, as the engine's scan requires.
- */
-const changeOnly =
-  <T,>(get: () => Promise<T>, write: (value: T) => Promise<unknown>) =>
-  async (value: T): Promise<void> => {
-    if (!isSame(await get(), value)) await write(value)
-  }
 
 export const register: Register = on => {
   const runtime = createRuntime()
@@ -69,10 +57,7 @@ export const register: Register = on => {
         pr: { set: changeOnly(() => read($, prAtom), value => update($, prAtom, () => value)) },
         identity: {
           get: () => read($, identityAtom),
-          update: async change => {
-            const held = await read($, identityAtom)
-            if (!isSame(held, change(held))) await update($, identityAtom, change)
-          },
+          update: updateOnly(() => read($, identityAtom), change => update($, identityAtom, change)),
         },
         usageState: { set: changeOnly(() => read($, usageAtom), value => update($, usageAtom, () => value)) },
         breakdown: { set: changeOnly(() => read($, breakdownAtom), value => update($, breakdownAtom, () => value)) },
