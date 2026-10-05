@@ -91,7 +91,7 @@ legend indented 5 cols `■ system 6.4k  ■ tools 8.2k …  ┊ compact 85%` /
 **1b** — 8-col label column (`model`, `where`, `context`, `limits`): rows per design, empty cells `▆` in the
 empty tone (gray + dimColor) so the bar keeps one cell height (the design's `░` is full height; Evan, 2026-10-05)
 (60-cell bar, clamped to 10–60 by width; no compact marker: Evan, 2026-10-05), legend row with short names
-(`sys tools mcp mem chat · 172k free  · compact 85%`, the compact note dim; hidden when auto-compact is off; on overflow the note drops before the legend; Evan, 2026-10-05), `limits` row, then the shared bottom rule.
+(`sys tools mcp mem chat · 172k free  · compact 85%`, the compact note dim; hidden when auto-compact is off; shown whenever it fits the row: on overflow the compact note drops, then the free note, then the legend; Evan, 2026-10-05), `limits` row, then the shared bottom rule.
 
 **1c** — full-width `▀` bar (width = `bodyColumns`), then two justified rows:
 `Opus 5.5·med  ~/.l/workspace  no git · no PR` | `ctx 14%  sys tools mcp mem chat` and a second row
@@ -115,7 +115,7 @@ Cost placement: 1a end of identity row `$1.23` muted; 1b appended to `limits` ro
 - Amber at ≥70 %, red at ≥90 % — applies to context % and each limit (number + bar).
 - No rate limits (API key / gateway): limits row (1a/1b) hidden; 1c right side shows `ctx` only.
 - No context reading yet: `ctx —` with an all-empty bar.
-- Narrow terminals (by row width = viewport − 4 padding): <100 drop 1a/1b legend; <80 drop reset times and PR; <60 force 1c.
+- Narrow terminals (by row width = viewport − 4 padding): 1a/1b legends show whenever they fit, shedding notes first (1b: compact, then free; 1a: compact) and hiding only when the bare legend overflows; <80 drop reset times and PR; <60 force 1c.
 - Effort unknown (model without effort): `thinking …` omitted.
 - Light theme: not designed; v1 uses the same palette (documented limitation).
 

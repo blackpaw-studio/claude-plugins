@@ -1,7 +1,7 @@
 // Pieces the three layouts share: the category bar, limit bars, figures.
 import type { RichStatuslineCategory, RichStatuslineDiff } from '../../types'
 import { allocateCells, markerIndex, wholeCells } from '../bar'
-import { firstFitting, type Line, type Span, span, type Tone, widthOf } from '../line'
+import { type Line, type Span, span, type Tone, widthOf } from '../line'
 import { barColor, CATEGORY_COLORS, COLORS, figureColor } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
 import { levelFor } from '../thresholds'
@@ -105,14 +105,15 @@ export const legendCategories = (snapshot: Snapshot): RichStatuslineCategory[] =
 export const compactNote = (snapshot: Snapshot): string | undefined =>
   snapshot.compactFraction === undefined ? undefined : `compact ${Math.round(snapshot.compactFraction * 100)}%`
 
-/** A layout's legend line, with or without its compact note. */
-export type LegendLine = (snapshot: Snapshot, isCompactShown: boolean) => Line
+/** A layout's legend lines, fullest first, each shedding one more note. */
+export type LegendLines = (snapshot: Snapshot) => readonly Line[]
 
-/** The legend, without its compact note if that is what overflows; else none. */
-export const legendRow = (snapshot: Snapshot, options: ViewOptions, legendLine: LegendLine): Line | null => {
+const hasText = (line: Line): boolean => line.some(({ text }) => text.trim() !== '')
+
+/** The fullest legend that fits the row; none when even the leanest overflows or it is off. */
+export const legendRow = (snapshot: Snapshot, options: ViewOptions, legendLines: LegendLines): Line | null => {
   if (!options.showLegend || snapshot.categories === null) return null
-  const row = firstFitting([legendLine(snapshot, true), legendLine(snapshot, false)], options.columns)
-  return widthOf(row) <= options.columns ? row : null
+  return legendLines(snapshot).find(line => hasText(line) && widthOf(line) <= options.columns) ?? null
 }
 
 export const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value))

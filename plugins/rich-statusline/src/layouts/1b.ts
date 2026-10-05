@@ -1,6 +1,6 @@
 // Layout 1b: labeled grid — model, where, context, legend, limits.
 import { formatCost, formatDuration, formatTokens } from '../format'
-import { firstFitting, fitOrTruncate, type Line, mergeRuns, type Span, span } from '../line'
+import { firstFitting, fitOrTruncate, joinGroups, type Line, mergeRuns, type Span, span } from '../line'
 import { CATEGORY_COLORS, COLORS } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
 import type { ViewOptions } from '../view-options'
@@ -68,20 +68,31 @@ const contextRow = (s: Snapshot, o: ViewOptions): Line => {
   return [label('context'), ...bar, span(FIGURE_GAP), contextFigure(s, 1)]
 }
 
-const legendLine = (s: Snapshot, isCompactShown: boolean): Line => {
-  const items = legendCategories(s).flatMap(({ key, tokens }) => [
+type LegendParts = { isFreeShown: boolean; isCompactShown: boolean }
+
+const legendLine = (s: Snapshot, { isFreeShown, isCompactShown }: LegendParts): Line => {
+  const items = legendCategories(s).map(({ key, tokens }) => [
     span(NAMES[key], CATEGORY_COLORS[key]),
-    span(` ${formatTokens(tokens)}${ITEM_GAP}`, COLORS.muted),
+    span(` ${formatTokens(tokens)}`, COLORS.muted),
   ])
   const note = isCompactShown ? compactNote(s) : undefined
-  const compact = note === undefined ? [] : [span(`${ITEM_GAP}· ${note}`, COLORS.dim)]
-  return mergeRuns([
-    span(' '.repeat(LABEL_WIDTH)),
-    ...items,
-    span(`· ${formatTokens(s.freeTokens)} free`, COLORS.faint),
-    ...compact,
-  ])
+  const notes = joinGroups(
+    [
+      isFreeShown ? [span(`· ${formatTokens(s.freeTokens)} free`, COLORS.faint)] : [],
+      note === undefined ? [] : [span(`· ${note}`, COLORS.dim)],
+    ],
+    [span(ITEM_GAP, COLORS.dim)],
+  )
+  return mergeRuns([span(' '.repeat(LABEL_WIDTH)), ...joinGroups([...items, notes], [span(ITEM_GAP, COLORS.muted)])])
 }
+
+/** Sheds the compact note, then the free note. */
+const legendLines = (s: Snapshot): Line[] =>
+  [
+    { isFreeShown: true, isCompactShown: true },
+    { isFreeShown: true, isCompactShown: false },
+    { isFreeShown: false, isCompactShown: false },
+  ].map(parts => legendLine(s, parts))
 
 const limitSpans = (name: string, limit: LimitView | undefined, isResetShown: boolean): Span[] => {
   if (limit === undefined) return []
@@ -116,7 +127,7 @@ const limitsRow = (s: Snapshot, o: ViewOptions): Line | null => {
 }
 
 export const layout1b = (s: Snapshot, o: ViewOptions): Line[] => {
-  const legend = legendRow(s, o, legendLine)
+  const legend = legendRow(s, o, legendLines)
   const limits = limitsRow(s, o)
   return [
     modelRow(s),

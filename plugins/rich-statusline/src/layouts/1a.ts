@@ -78,6 +78,9 @@ const legendLine = (s: Snapshot, isCompactShown: boolean): Line => {
   return [span(LEGEND_INDENT), ...join([...items, compact])]
 }
 
+/** Sheds the compact note first. */
+const legendLines = (s: Snapshot): Line[] => [legendLine(s, true), legendLine(s, false)]
+
 const limitGroup = (label: string, limit: LimitView | undefined, isResetShown: boolean): Span[] => {
   if (limit === undefined) return []
   const reset = isResetShown ? resetLabel(limit, formatDuration) : undefined
@@ -103,7 +106,7 @@ const limitsRow = (s: Snapshot, o: ViewOptions): Line | null => {
 }
 
 export const layout1a = (s: Snapshot, o: ViewOptions): Line[] => {
-  const legend = legendRow(s, o, legendLine)
+  const legend = legendRow(s, o, legendLines)
   const limits = limitsRow(s, o)
   return [
     identityRow(s, o),
