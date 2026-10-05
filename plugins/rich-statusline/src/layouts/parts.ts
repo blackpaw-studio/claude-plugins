@@ -1,5 +1,5 @@
 // Pieces the three layouts share: the category bar, limit bars, figures.
-import type { RichStatuslineDiff } from '../../types'
+import type { RichStatuslineCategory, RichStatuslineDiff } from '../../types'
 import { allocateCells, markerIndex, wholeCells } from '../bar'
 import { type Line, type Span, span, type Tone } from '../line'
 import { barColor, CATEGORY_COLORS, COLORS, figureColor } from '../palette'
@@ -95,5 +95,9 @@ export const diffSpans = (diff: RichStatuslineDiff | null, isShown: boolean): Sp
 
 /** The block's last row in every layout: a full-width rule. */
 export const ruleRow = (columns: number): Line => [span('─'.repeat(Math.max(0, columns)), COLORS.rule)]
+
+/** The categories a legend names: those with tokens, in order (the bar gives the rest no cells). */
+export const legendCategories = (snapshot: Snapshot): RichStatuslineCategory[] =>
+  (snapshot.categories ?? []).filter(category => category.tokens > 0)
 
 export const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value))

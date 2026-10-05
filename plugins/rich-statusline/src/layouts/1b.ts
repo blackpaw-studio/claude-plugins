@@ -10,6 +10,7 @@ import {
   contextFigure,
   diffSpans,
   FILLED_CELL,
+  legendCategories,
   limitFigure,
   resetLabel,
   worktreeSpans,
@@ -66,7 +67,7 @@ const contextRow = (s: Snapshot, o: ViewOptions): Line => {
 
 const legendRow = (s: Snapshot, o: ViewOptions): Line | null => {
   if (!o.showLegend || s.categories === null) return null
-  const items = s.categories.flatMap(({ key, tokens }) => [
+  const items = legendCategories(s).flatMap(({ key, tokens }) => [
     span(NAMES[key], CATEGORY_COLORS[key]),
     span(` ${formatTokens(tokens)}${ITEM_GAP}`, COLORS.muted),
   ])

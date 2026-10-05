@@ -10,6 +10,7 @@ import {
   contextFigure,
   diffSpans,
   FILLED_CELL,
+  legendCategories,
   limitBar,
   limitFigure,
   resetLabel,
@@ -66,7 +67,7 @@ const contextRow = (s: Snapshot, o: ViewOptions): Line => {
 }
 
 const legendLine = (s: Snapshot, isCompactShown: boolean): Line => {
-  const items = (s.categories ?? []).map(({ key, tokens }) => [
+  const items = legendCategories(s).map(({ key, tokens }) => [
     span('■', CATEGORY_COLORS[key]),
     span(` ${NAMES[key]} ${formatTokens(tokens)}`, COLORS.muted),
   ])

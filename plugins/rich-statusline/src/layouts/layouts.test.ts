@@ -301,6 +301,24 @@ describe('a 1M window with a smaller compaction window', () => {
   })
 })
 
+describe('zero categories', () => {
+  // MCP tools loaded through tool search are deferred, outside the window: mcp is often 0.
+  const snap = buildSnapshot({
+    ...FIXTURE,
+    breakdown: {
+      ...FIXTURE.breakdown!,
+      categories: FIXTURE.breakdown!.categories.map(category => (category.key === 'mcp' ? { ...category, tokens: 0 } : category)),
+    },
+  })
+  test('every legend leaves them out, the rest in order', () => {
+    expect(textOf(draw('1a', 120, DEFAULT_SETTINGS, snap)[2])).toBe(
+      '     ■ system 6.4k  ■ tools 8.2k  ■ memory 1.6k  ■ chat 8.8k  ┊ compact 85%',
+    )
+    expect(textOf(draw('1b', 120, DEFAULT_SETTINGS, snap)[3])).toBe('        sys 6.4k  tools 8.2k  mem 1.6k  chat 8.8k  · 172k free')
+    expect(textOf(draw('1c', 100, DEFAULT_SETTINGS, snap)[1]).endsWith('ctx 14%  sys tools mem chat')).toBe(true)
+  })
+})
+
 describe('extrapolated states', () => {
   test('no rate limits hides the limits rows', () => {
     const snap = buildSnapshot({ ...FIXTURE, usage: { ...FIXTURE.usage!, rateLimits: [] } })

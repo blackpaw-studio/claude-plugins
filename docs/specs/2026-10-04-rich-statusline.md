@@ -75,6 +75,9 @@ gray and dimColor. Slots are written `ansi256(n)` (n < 16 is the theme's own ent
 
 Deviation: in 1a and 1b, filled cells use ▆ for row spacing (limit bars in whole cells, no ▌: rounded, but any use shows at least one cell and anything under 100 % leaves at least one empty); 1c keeps ▀. Evan-approved 2026-10-05.
 Padding: one blank row above the block, none below; 2-space gaps; Evan-approved 2026-10-05.
+Legends (1a and 1b legend rows, 1c category names) leave out categories with 0 tokens, the rest in order; the bar
+gives them no cells either. mcp is often 0: MCP tools loaded through tool search are `deferred`, outside the window,
+and only `kind === 'used'` rows are folded. Evan, 2026-10-05.
 Bottom rule: every layout (1a, 1b, 1c) ends in a full-width `─` row, gray + `dimColor`, built once in the shared
 layout picker; the engine hint line, when present, follows it directly. Evan, 2026-10-05.
 

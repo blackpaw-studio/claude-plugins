@@ -18,6 +18,11 @@ const BY_NAME: Readonly<Record<string, RichStatuslineCategoryKey>> = {
 
 const keyFor = (name: string): RichStatuslineCategoryKey => BY_NAME[name] ?? 'tools'
 
+/**
+ * Only `kind === 'used'` rows count (the API: branch on kind, never on name).
+ * MCP tools loaded through tool search are `deferred`, outside the window,
+ * which is why mcp is often 0; the legends then leave it out.
+ */
 export const foldCategories = (rows: readonly BreakdownRow[]): RichStatuslineCategory[] => {
   const used = rows.filter(row => row.kind === 'used')
   return CATEGORY_ORDER.map(key => ({

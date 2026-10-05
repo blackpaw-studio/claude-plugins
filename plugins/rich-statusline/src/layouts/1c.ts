@@ -4,7 +4,15 @@ import { fitOrTruncate, joinGroups, justify, type Line, mergeRuns, type Span, sp
 import { CATEGORY_COLORS, COLORS } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
 import type { ViewOptions } from '../view-options'
-import { categoryBar, contextFigure, diffSpans, limitFigure, resetLabel, worktreeSpans } from './parts'
+import {
+  categoryBar,
+  contextFigure,
+  diffSpans,
+  legendCategories,
+  limitFigure,
+  resetLabel,
+  worktreeSpans,
+} from './parts'
 
 const NAMES = { system: 'sys', tools: 'tools', mcp: 'mcp', memory: 'mem', chat: 'chat' } as const
 const MIN_GAP = 2
@@ -38,7 +46,7 @@ const identityFitting = (s: Snapshot, o: ViewOptions, width: number): Line => {
 const categoryNames = (s: Snapshot): Span[] =>
   s.categories === null
     ? []
-    : [span('  '), ...joinGroups(s.categories.map(({ key }) => [span(NAMES[key], CATEGORY_COLORS[key])]), [span(' ')])]
+    : [span('  '), ...joinGroups(legendCategories(s).map(({ key }) => [span(NAMES[key], CATEGORY_COLORS[key])]), [span(' ')])]
 
 const contextRow = (s: Snapshot, o: ViewOptions): Line => {
   const figure = [span('ctx ', COLORS.muted), contextFigure(s, 0)]
