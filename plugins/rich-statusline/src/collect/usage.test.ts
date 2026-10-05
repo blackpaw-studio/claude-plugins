@@ -4,7 +4,7 @@ import { toBreakdown, toUsage } from './usage'
 describe('toUsage', () => {
   test('keeps context, limits with epoch resets, and cost', () => {
     const usage = toUsage({
-      context: { tokens: 28_000, window: 200_000, percent: 14 },
+      context: { tokens: 28_000, window: 200_000 },
       rateLimits: [
         { kind: 'five_hour', percentUsed: 10, resetsAt: '2027-01-15T08:00:00.000Z' },
         { kind: 'seven_day', percentUsed: 75 },
