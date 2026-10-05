@@ -31,6 +31,31 @@ describe('changeOnly', () => {
     expect(held).toBe('x')
   })
 
+  test('a rejecting read or write fails that call alone; the next call still works', async () => {
+    let held = 'x'
+    let failures = ['get', 'write']
+    const set = changeOnly(
+      async () => {
+        if (failures[0] === 'get') {
+          failures = failures.slice(1)
+          throw new Error('read failed')
+        }
+        return held
+      },
+      async (value: string) => {
+        if (failures[0] === 'write') {
+          failures = failures.slice(1)
+          throw new Error('write failed')
+        }
+        held = value
+      },
+    )
+    await expect(set('y')).rejects.toThrow('read failed')
+    await expect(set('y')).rejects.toThrow('write failed')
+    await set('z')
+    expect(held).toBe('z')
+  })
+
   test('the updater form skips a change that leaves the value as held', async () => {
     let held = 1
     let writes = 0

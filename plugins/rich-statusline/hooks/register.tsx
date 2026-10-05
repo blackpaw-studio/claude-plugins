@@ -89,8 +89,10 @@ export const register: Register = on => {
   })
 
   on('session.measure', async ($, e, next) => {
+    // One writer per atom: the runtime's serialized port once attached.
     const usage = toUsage(e)
-    if (!isSame(await read($, usageAtom), usage)) await update($, usageAtom, () => usage)
+    const isWritten = await runtime.setUsage(usage)
+    if (!isWritten && !isSame(await read($, usageAtom), usage)) await update($, usageAtom, () => usage)
     if (e.changed.includes('context')) runtime.contextChanged()
     return next(e)
   })
@@ -129,8 +131,9 @@ export const register: Register = on => {
     const fail = (error: unknown) => $.ui.log(`rich-statusline: settings: ${describeError(error)}`, { to: 'debug' })
     const applyNow = async (change: (held: Settings) => unknown): Promise<void> => {
       const before = parseSettings(await read($, settingsAtom))
-      const saved = await update($, settingsAtom, held => parseSettings(change(parseSettings(held))))
-      const after = parseSettings(saved)
+      const after = parseSettings(change(before))
+      // One writer per atom: the runtime's serialized port once attached.
+      if (!(await runtime.setSettings(after))) await update($, settingsAtom, () => after)
       await $.store.set(STORE_KEY, after)
       if (isRetimed(before, after)) runtime.retime(after)
     }

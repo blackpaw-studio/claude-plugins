@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import { createRuntime } from './runtime'
+import { DEFAULT_SETTINGS } from './settings'
 import { answerFor, fakeWorld, flush } from './testing/ports'
 
 /** Attaches and runs the deferred start. */
@@ -116,6 +117,24 @@ describe('runtime', () => {
     await runtime.updateIdentity(held => (held === null ? held : { ...held, model: 'claude-sonnet-4-5' }))
     expect(changes.length).toBe(before + 1)
     expect(world.identity()?.model).toBe('claude-sonnet-4-5')
+  })
+
+  test('usage and settings from outside go through their ports', async () => {
+    const written: string[] = []
+    const world = fakeWorld()
+    const runtime = await started({
+      ...world,
+      ports: {
+        ...world.ports,
+        usageState: { set: async () => void written.push('usage') },
+        settings: { set: async () => void written.push('settings') },
+      },
+    })
+    written.length = 0
+    expect(await runtime.setUsage({ window: 200_000, rateLimits: [] })).toBe(true)
+    expect(await runtime.setSettings(DEFAULT_SETTINGS)).toBe(true)
+    expect(written).toEqual(['usage', 'settings'])
+    expect(await createRuntime().setUsage({ window: 1, rateLimits: [] })).toBe(false)
   })
 
   test('a new session refreshes identity and git', async () => {

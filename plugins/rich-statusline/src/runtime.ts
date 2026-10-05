@@ -55,6 +55,10 @@ export type Runtime = {
    * false before attach (nothing else writes identity then).
    */
   updateIdentity: (change: (held: RichStatuslineIdentity | null) => RichStatuslineIdentity | null) => Promise<boolean>
+  /** Writes usage through the attached port; false before attach. */
+  setUsage: (usage: RichStatuslineUsage) => Promise<boolean>
+  /** Writes settings through the attached port; false before attach. */
+  setSettings: (settings: Settings) => Promise<boolean>
   /** A new or resumed session: identity, cwd, git and the breakdown again. */
   sessionStarted: () => Promise<void>
   /** Restarts the refresh timers when their intervals changed. */
@@ -187,6 +191,16 @@ export const createRuntime = (): Runtime => {
     updateIdentity: async change => {
       if (ports === null) return false
       await ports.identity.update(change)
+      return true
+    },
+    setUsage: async usage => {
+      if (ports === null) return false
+      await ports.usageState.set(usage)
+      return true
+    },
+    setSettings: async settings => {
+      if (ports === null) return false
+      await ports.settings.set(settings)
       return true
     },
     retime: settings => {
