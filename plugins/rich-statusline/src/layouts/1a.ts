@@ -78,7 +78,6 @@ const legendLine = (s: Snapshot, isCompactShown: boolean): Line => {
   return [span(LEGEND_INDENT), ...join([...items, compact])]
 }
 
-
 const limitGroup = (label: string, limit: LimitView | undefined, isResetShown: boolean): Span[] => {
   if (limit === undefined) return []
   const reset = isResetShown ? resetLabel(limit, formatDuration) : undefined

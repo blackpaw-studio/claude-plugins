@@ -83,7 +83,6 @@ const legendLine = (s: Snapshot, isCompactShown: boolean): Line => {
   ])
 }
 
-
 const limitSpans = (name: string, limit: LimitView | undefined, isResetShown: boolean): Span[] => {
   if (limit === undefined) return []
   const reset = isResetShown ? resetLabel(limit, formatDuration) : undefined

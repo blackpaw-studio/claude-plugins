@@ -4,8 +4,8 @@ import { allocateCells, markerIndex, wholeCells } from '../bar'
 import { firstFitting, type Line, type Span, span, type Tone, widthOf } from '../line'
 import { barColor, CATEGORY_COLORS, COLORS, figureColor } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
-import type { ViewOptions } from '../view-options'
 import { levelFor } from '../thresholds'
+import type { ViewOptions } from '../view-options'
 
 export type BarGlyphs = { fill: string; empty: string; emptyColor: Tone; marker?: string }
 
