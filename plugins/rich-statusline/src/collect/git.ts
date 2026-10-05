@@ -12,9 +12,11 @@ const NO_GIT: RichStatuslineGit = { root: null, branch: null, diff: null }
 /** What one git call told us: an answer, a definite no, or nothing to go on. */
 type Reading = { kind: 'value'; text: string } | { kind: 'no' } | { kind: 'unknown' }
 
+/** A failure counts as a definite no only when git said why (not killed, not locked). */
 const readingOf = (result: RunResult | null): Reading => {
   if (result === null || LOCK_PATTERN.test(result.stderr)) return { kind: 'unknown' }
-  return result.exitCode === 0 ? { kind: 'value', text: result.stdout.trim() } : { kind: 'no' }
+  if (result.exitCode === 0) return { kind: 'value', text: result.stdout.trim() }
+  return result.stderr.trim() === '' ? { kind: 'unknown' } : { kind: 'no' }
 }
 
 const countOf = (text: string, pattern: RegExp): number => {

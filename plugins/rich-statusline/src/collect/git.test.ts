@@ -62,6 +62,10 @@ describe('collectGit', () => {
     const { run } = scripted({ [TOPLEVEL]: new Error('timed out') })
     expect(await collectGit(run, '/repo')).toBeUndefined()
   })
+  test('a non-zero exit with nothing on stderr (killed by a signal) keeps the cache', async () => {
+    const { run } = scripted({ [TOPLEVEL]: exit(137) })
+    expect(await collectGit(run, '/repo')).toBeUndefined()
+  })
   test('a lock error keeps the cache', async () => {
     const { run } = scripted({
       [TOPLEVEL]: ok('/repo\n'),

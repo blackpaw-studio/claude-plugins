@@ -94,7 +94,7 @@ export const installWorld = (on: On, { branch = null, stored = {}, isUsageBroken
   on('process.run', (_$, e) => {
     runs.push(e.argv.join(' '))
     const done = { stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
-    if (branch === null) return { value: { ...done, exitCode: 128, stdout: '' } }
+    if (branch === null) return { value: { ...done, exitCode: 128, stdout: '', stderr: 'fatal: not a git repository' } }
     const command = e.argv.join(' ')
     const stdout = command.includes('--show-toplevel')
       ? '/Users/evan/.leo/workspace\n'
