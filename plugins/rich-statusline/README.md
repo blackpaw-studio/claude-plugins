@@ -79,11 +79,11 @@ bind only the engine's own keybinding actions, not a plugin-defined one.
   the engine draws it.
 - **Width:** the rows fill the terminal less the 4 columns the engine pads
   the hint line by (2 each side), and the breakpoints below count that same width.
-- **Narrow terminals:** the context bar shrinks to fit; under 100 columns of
-  row (a 104-column terminal) the legend goes; under 80 the reset countdowns
-  and the PR go; under 60 the
-  compact layout is used whatever is chosen. When a row still overflows, 1b's
-  `· compact N%` note is the first thing its legend drops.
+- **Narrow terminals:** the context bar shrinks to fit; the 1a and 1b legends
+  show whenever they fit the row, shedding notes first (1b: the `· compact N%`
+  note, then `· N free`; 1a: the `┊ compact N%` note) and hiding only when
+  even the bare legend overflows; under 80 columns of row the reset countdowns
+  and the PR go; under 60 the compact layout is used whatever is chosen.
 - **No rate limits** (API key, gateway): the limits row is hidden.
 - **Before the first response:** `—` replaces the context percentage, over an
   empty bar.
