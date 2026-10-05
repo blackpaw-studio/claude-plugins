@@ -72,15 +72,18 @@ const describeError = (error: unknown): string => (error instanceof Error ? erro
 const collectors = (ports: Ports) => {
   const cwdOf = async (): Promise<string> => (await ports.identity.get())?.cwd || (await ports.cwd())
   const refreshPr = singleFlight(async () => {
-    const branch = (await ports.git.get())?.branch ?? null
+    const git = await ports.git.get()
+    const branch = git?.branch ?? null
+    const root = git?.root ?? null
     const label = branch === null ? null : await collectPr(ports.run, await cwdOf())
-    await ports.pr.set({ label, branch })
+    if (label !== undefined) await ports.pr.set({ label, root, branch })
   })
   const refreshGit = singleFlight(async () => {
-    const before = (await ports.git.get())?.branch
+    const before = await ports.git.get()
     const git = await collectGit(ports.run, await cwdOf())
+    if (git === undefined) return
     await ports.git.set(git)
-    if (git.branch !== before) await refreshPr()
+    if (git.branch !== before?.branch || git.root !== before?.root) await refreshPr()
   })
   const loadBreakdown = async (): Promise<void> => {
     const usage = await ports.usage()

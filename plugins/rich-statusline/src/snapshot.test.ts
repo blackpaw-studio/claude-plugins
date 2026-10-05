@@ -19,10 +19,19 @@ describe('buildSnapshot', () => {
   test('a PR read for another branch is not shown', () => {
     const snapshot = buildSnapshot({
       ...FIXTURE,
-      git: { branch: 'main', diff: null },
-      pr: { label: '#9', branch: 'old' },
+      git: { root: '/repo', branch: 'main', diff: null },
+      pr: { label: '#9', root: '/repo', branch: 'old' },
     })
     expect(snapshot.pr).toBeNull()
+  })
+  test('a PR read for the same branch of another repository is not shown', () => {
+    const snapshot = buildSnapshot({
+      ...FIXTURE,
+      git: { root: '/repo-b', branch: 'main', diff: null },
+      pr: { label: '#9', root: '/repo-a', branch: 'main' },
+    })
+    expect(snapshot.pr).toBeNull()
+    expect(buildSnapshot({ ...FIXTURE, git: { root: '/repo-a', branch: 'main', diff: null }, pr: { label: '#9', root: '/repo-a', branch: 'main' } }).pr).toBe('#9')
   })
   test('nothing collected yet', () => {
     const snapshot = buildSnapshot({

@@ -90,14 +90,16 @@ export const installWorld = (on: On, { branch = null, stored = {}, isUsageBroken
   })
   on('process.run', (_$, e) => {
     runs.push(e.argv.join(' '))
-    const isBranch = e.argv.includes('rev-parse')
     const done = { stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
     if (branch === null) return { value: { ...done, exitCode: 128, stdout: '' } }
-    const stdout = isBranch
-      ? `${branch}\n`
-      : e.argv[0] === 'gh'
-        ? '{"number":123,"state":"OPEN"}'
-        : ' 2 files changed, 12 insertions(+), 3 deletions(-)\n'
+    const command = e.argv.join(' ')
+    const stdout = command.includes('--show-toplevel')
+      ? '/Users/evan/.leo/workspace\n'
+      : command.includes('--abbrev-ref')
+        ? `${branch}\n`
+        : e.argv[0] === 'gh'
+          ? '{"number":123,"state":"OPEN"}'
+          : ' 2 files changed, 12 insertions(+), 3 deletions(-)\n'
     return { value: { ...done, exitCode: 0, stdout } }
   })
   on('ui.render', { component: 'PromptHint' }, ($, e) => {

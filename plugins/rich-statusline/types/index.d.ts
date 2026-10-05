@@ -18,7 +18,9 @@ export type RichStatuslineSettings = {
 export type RichStatuslineDiff = { insertions: number; deletions: number }
 
 export type RichStatuslineGit = {
-  /** Current branch; null when the cwd is not inside a git repository. */
+  /** The repository's top-level folder; null outside a repository. */
+  root: string | null
+  /** Current branch (short sha when detached); null outside a repository. */
   branch: string | null
   /** Uncommitted changes against HEAD; null when clean or unknown. */
   diff: RichStatuslineDiff | null
@@ -27,7 +29,8 @@ export type RichStatuslineGit = {
 export type RichStatuslinePr = {
   /** `#123` style label; null when there is no PR or gh is unavailable. */
   label: string | null
-  /** The branch the label was read for. */
+  /** The repository root and branch the label was read for. */
+  root: string | null
   branch: string | null
 }
 

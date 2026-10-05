@@ -29,6 +29,7 @@ describe('the status rows under the prompt', () => {
     ])
     expect(rows[rows.length - 1]).toEqual({ type: 'Text', props: { dimColor: true }, children: [ENGINE_HINT] })
     expect(world.runs).toEqual([
+      'git rev-parse --show-toplevel',
       'git rev-parse --abbrev-ref HEAD',
       'git diff HEAD --shortstat',
       'gh pr view --json number,state',

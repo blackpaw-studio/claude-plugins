@@ -1,13 +1,20 @@
-// Git branch and uncommitted diff stats through an injected process runner.
+// Git root, branch and uncommitted diff stats through an injected runner.
+// `undefined` from collectGit means "could not tell": keep the cached value.
 import type { RichStatuslineDiff, RichStatuslineGit } from '../../types'
-import { type Run, type RunResult, tryRun } from './run'
+import { type Run, type RunInit, type RunResult, tryRun } from './run'
 
 const GIT_TIMEOUT_MS = 5_000
+/** git reads only: never refresh the index (no index.lock fights with commits). */
+const GIT_ENV = { GIT_OPTIONAL_LOCKS: '0' }
+const LOCK_PATTERN = /\.lock\b/
+const NO_GIT: RichStatuslineGit = { root: null, branch: null, diff: null }
 
-export const parseBranch = (result: RunResult | null): string | null => {
-  if (result === null || result.exitCode !== 0) return null
-  const branch = result.stdout.trim()
-  return branch === '' ? null : branch
+/** What one git call told us: an answer, a definite no, or nothing to go on. */
+type Reading = { kind: 'value'; text: string } | { kind: 'no' } | { kind: 'unknown' }
+
+const readingOf = (result: RunResult | null): Reading => {
+  if (result === null || LOCK_PATTERN.test(result.stderr)) return { kind: 'unknown' }
+  return result.exitCode === 0 ? { kind: 'value', text: result.stdout.trim() } : { kind: 'no' }
 }
 
 const countOf = (text: string, pattern: RegExp): number => {
@@ -25,9 +32,30 @@ export const parseShortstat = (stdout: string): RichStatuslineDiff | null => {
   }
 }
 
-export const collectGit = async (run: Run, cwd: string): Promise<RichStatuslineGit> => {
-  const branch = parseBranch(await tryRun(run, ['git', 'rev-parse', '--abbrev-ref', 'HEAD'], cwd, GIT_TIMEOUT_MS))
-  if (branch === null) return { branch: null, diff: null }
-  const diff = await tryRun(run, ['git', 'diff', 'HEAD', '--shortstat'], cwd, GIT_TIMEOUT_MS)
-  return { branch, diff: diff !== null && diff.exitCode === 0 ? parseShortstat(diff.stdout) : null }
+const gitIn = (run: Run, cwd: string) => {
+  const init: RunInit = { cwd, timeoutMs: GIT_TIMEOUT_MS, env: GIT_ENV }
+  return async (...args: string[]): Promise<Reading> => readingOf(await tryRun(run, ['git', ...args], init))
+}
+
+/** The branch; an unborn one from symbolic-ref, a detached HEAD as its short sha. */
+const branchOf = async (git: ReturnType<typeof gitIn>): Promise<Reading> => {
+  const abbrev = await git('rev-parse', '--abbrev-ref', 'HEAD')
+  if (abbrev.kind === 'unknown') return abbrev
+  if (abbrev.kind === 'no') return git('symbolic-ref', '--short', 'HEAD')
+  return abbrev.text === 'HEAD' ? git('rev-parse', '--short', 'HEAD') : abbrev
+}
+
+export const collectGit = async (run: Run, cwd: string): Promise<RichStatuslineGit | undefined> => {
+  const git = gitIn(run, cwd)
+  const root = await git('rev-parse', '--show-toplevel')
+  if (root.kind !== 'value') return root.kind === 'no' ? NO_GIT : undefined
+  const branch = await branchOf(git)
+  if (branch.kind === 'unknown') return undefined
+  const diff = await git('diff', 'HEAD', '--shortstat')
+  if (diff.kind === 'unknown') return undefined
+  return {
+    root: root.text,
+    branch: branch.kind === 'value' && branch.text !== '' ? branch.text : null,
+    diff: diff.kind === 'value' ? parseShortstat(diff.text) : null,
+  }
 }

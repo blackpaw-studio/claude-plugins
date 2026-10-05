@@ -69,8 +69,9 @@ const limitView = (
   return isTimed ? { ...view, resetInMs: Math.max(0, (limit.resetsAt ?? now) - now) } : view
 }
 
+/** The PR only when it was read for this repository and branch. */
 const prFor = (git: RichStatuslineGit | null, pr: RichStatuslinePr | null): string | null =>
-  git?.branch != null && pr?.label != null && pr.branch === git.branch ? pr.label : null
+  git?.branch != null && pr?.label != null && pr.branch === git.branch && pr.root === git.root ? pr.label : null
 
 const usedTokens = (context: ContextView, categories: RichStatuslineCategory[] | null): number =>
   context.tokens ?? (categories ?? []).reduce((total, category) => total + category.tokens, 0)

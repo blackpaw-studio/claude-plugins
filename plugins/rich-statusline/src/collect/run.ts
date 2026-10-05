@@ -2,12 +2,14 @@
 
 export type RunResult = { exitCode: number; stdout: string; stderr: string }
 
-export type Run = (argv: readonly string[], init?: { cwd?: string; timeoutMs?: number }) => Promise<RunResult>
+export type RunInit = { cwd?: string; timeoutMs?: number; env?: Record<string, string> }
 
-/** Runs and never rejects: a command that cannot start reads as null. */
-export const tryRun = async (run: Run, argv: readonly string[], cwd: string, timeoutMs: number): Promise<RunResult | null> => {
+export type Run = (argv: readonly string[], init?: RunInit) => Promise<RunResult>
+
+/** Runs and never rejects: a run that times out or cannot start reads as null. */
+export const tryRun = async (run: Run, argv: readonly string[], init: RunInit): Promise<RunResult | null> => {
   try {
-    return await run(argv, { cwd, timeoutMs })
+    return await run(argv, init)
   } catch {
     return null
   }

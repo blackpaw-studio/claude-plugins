@@ -189,8 +189,8 @@ describe('1c compact, design fixture at 100 columns', () => {
 describe('git, diff stats, PR and cost', () => {
   const snap = buildSnapshot({
     ...FIXTURE,
-    git: { branch: 'main', diff: { insertions: 12, deletions: 3 } },
-    pr: { label: '#123', branch: 'main' },
+    git: { root: '/repo', branch: 'main', diff: { insertions: 12, deletions: 3 } },
+    pr: { label: '#123', root: '/repo', branch: 'main' },
     usage: { ...FIXTURE.usage!, costUsd: 1.234 },
   })
   test('1a identity row', () => {
