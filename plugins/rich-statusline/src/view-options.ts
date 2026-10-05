@@ -13,14 +13,13 @@ export type ViewOptions = {
   showCost: boolean
 }
 
-export const LEGEND_MIN_COLUMNS = 100
 export const DETAIL_MIN_COLUMNS = 80
 export const FULL_LAYOUT_MIN_COLUMNS = 60
 
 export const viewOptions = (settings: Settings, columns: number): ViewOptions => ({
   layout: columns < FULL_LAYOUT_MIN_COLUMNS ? '1c' : settings.layout,
   columns,
-  showLegend: settings.showLegend && columns >= LEGEND_MIN_COLUMNS,
+  showLegend: settings.showLegend,
   showResets: columns >= DETAIL_MIN_COLUMNS,
   showPr: settings.showPr && columns >= DETAIL_MIN_COLUMNS,
   showDiff: settings.showDiff,

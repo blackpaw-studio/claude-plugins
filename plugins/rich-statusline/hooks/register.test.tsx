@@ -143,10 +143,10 @@ describe('the status rows under the prompt', () => {
     const world = installWorld(on, { stored: GROUPED, branch: 'main' })
     await mountHint($)
     await world.clock.settle()
-    // Viewport 103 is a 99-column row: under 100, so the 1a legend goes.
+    // Viewport 83 is a 79-column row: under 80, so the reset countdowns go.
     const rowsAt = async (columns: number) => rowsOfTree(await (await mountHint($, columns)).drawn()).map(textOfNode)
-    expect((await rowsAt(104)).some(row => row.includes('■ system'))).toBe(true)
-    expect((await rowsAt(103)).some(row => row.includes('■ system'))).toBe(false)
+    expect((await rowsAt(84)).some(row => row.includes('↻'))).toBe(true)
+    expect((await rowsAt(83)).some(row => row.includes('↻'))).toBe(false)
   })
 
   test('reset countdowns tick with the clock', async ($, on) => {

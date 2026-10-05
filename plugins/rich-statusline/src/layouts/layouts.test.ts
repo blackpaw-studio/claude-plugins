@@ -374,9 +374,40 @@ describe('extrapolated states', () => {
     expect(textOf(draw('1b', 120, DEFAULT_SETTINGS, snap)[0])).toBe('model   Opus 5.5')
     expect(textOf(draw('1c', 100, DEFAULT_SETTINGS, snap)[1]).startsWith('Opus 5.5  ~/.l/workspace')).toBe(true)
   })
-  test('under 100 columns the legend goes', () => {
-    expect(rowsOf(draw('1a', 99)).some(row => row.includes('■'))).toBe(false)
-    expect(rowsOf(draw('1b', 99)).some(row => row.includes('free'))).toBe(false)
+  test('a legend that fits shows under 100 columns', () => {
+    expect(rowsOf(draw('1a', 98))[2]).toBe('     ■ system 6.4k  ■ tools 8.2k  ■ mcp 3.0k  ■ memory 1.6k  ■ chat 8.8k  ┊ compact 85%')
+    expect(rowsOf(draw('1b', 98))[3]).toBe('        sys 6.4k  tools 8.2k  mcp 3.0k  mem 1.6k  chat 8.8k  · 172k free  · compact 85%')
+  })
+  test('narrowing 1a drops the compact note, then the legend', () => {
+    const legendAt = (columns: number) => rowsOf(draw('1a', columns)).find(row => row.includes('■'))
+    const items = '     ■ system 6.4k  ■ tools 8.2k  ■ mcp 3.0k  ■ memory 1.6k  ■ chat 8.8k'
+    expect(legendAt(87)).toBe(`${items}  ┊ compact 85%`)
+    expect(legendAt(86)).toBe(items)
+    expect(legendAt(72)).toBe(items)
+    expect(legendAt(71)).toBeUndefined()
+    expect(draw('1a', 71)).toHaveLength(4)
+  })
+  test('narrowing 1b drops the compact note, then free, then the legend', () => {
+    const legendAt = (columns: number) => rowsOf(renderLayout(snapshot, { ...viewOptions({ ...DEFAULT_SETTINGS, layout: '1b' }, 120), columns }))[3]
+    const items = '        sys 6.4k  tools 8.2k  mcp 3.0k  mem 1.6k  chat 8.8k'
+    expect(legendAt(87)).toBe(`${items}  · 172k free  · compact 85%`)
+    expect(legendAt(86)).toBe(`${items}  · 172k free`)
+    expect(legendAt(72)).toBe(`${items}  · 172k free`)
+    expect(legendAt(71)).toBe(items)
+    expect(legendAt(59)).toBe(items)
+    // Below 60 columns 1b only draws when asked for directly; the legend still goes once it cannot fit.
+    expect(legendAt(58)?.startsWith('limits')).toBe(true)
+  })
+  test('a legend with no categories and no notes is not drawn', () => {
+    const snap = buildSnapshot({
+      ...FIXTURE,
+      breakdown: {
+        ...FIXTURE.breakdown!,
+        categories: FIXTURE.breakdown!.categories.map(category => ({ ...category, tokens: 0 })),
+        compactThreshold: undefined,
+      },
+    })
+    expect(rowsOf(draw('1a', 120, DEFAULT_SETTINGS, snap)).some(row => row.trim() === '')).toBe(false)
   })
   test('legend toggle', () => {
     expect(draw('1a', 120, { ...DEFAULT_SETTINGS, showLegend: false })).toHaveLength(4)
@@ -384,7 +415,7 @@ describe('extrapolated states', () => {
   test('under 80 columns resets and PR go and the bar fits', () => {
     const rows = rowsOf(draw('1a', 79))
     expect(rows[0]).toBe('◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ no git')
-    expect(rows[2]).toBe('5h   ▆·········  10%  │  week  ▆▆▆▆▆▆▆▆··  75%')
+    expect(rows[3]).toBe('5h   ▆·········  10%  │  week  ▆▆▆▆▆▆▆▆··  75%')
     expect(rows.every(row => row.length <= 79)).toBe(true)
   })
   test('rows stay inside the width at every breakpoint, with heavy figures', () => {
@@ -429,7 +460,7 @@ describe('extrapolated states', () => {
         }),
       ),
     ]
-    const columnsSwept = [60, 61, 65, 70, 75, 79, 80, 85, 90, 99, 100, 110, 120, 140, 160, 200]
+    const columnsSwept = [60, 61, 65, 70, 71, 72, 75, 79, 80, 85, 86, 87, 90, 98, 99, 100, 110, 120, 140, 160, 200]
     const over = snaps.flatMap((snap, index) =>
       columnsSwept.flatMap(columns =>
         (['1a', '1b', '1c'] as const).flatMap(layout =>
