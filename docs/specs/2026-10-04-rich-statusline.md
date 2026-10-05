@@ -86,7 +86,8 @@ layout picker; the engine hint line, when present, follows it directly. Evan, 20
 legend indented 5 cols `■ system 6.4k  ■ tools 8.2k …  ┊ compact 85%` /
 `5h  <10-cell bar, ▌ half-cell>  10%  ↻ 1h 11m  │  week <bar> 75%  ↻ 1d 12h 11m`. Gaps between spans: 2 spaces (design gap 14px ≈ 2 cells).
 
-**1b** — 8-col label column (`model`, `where`, `context`, `limits`): rows per design with `░` empty cells
+**1b** — 8-col label column (`model`, `where`, `context`, `limits`): rows per design, empty cells `▆` in the
+empty tone (gray + dimColor) so the bar keeps one cell height (the design's `░` is full height; Evan, 2026-10-05)
 (51-cell bar, no compact marker: Evan, 2026-10-05), legend row with short names
 (`sys tools mcp mem chat · 172k free  · compact 85%`, the compact note dim; hidden when auto-compact is off; on overflow the note drops before the legend; Evan, 2026-10-05), `limits` row, then the shared bottom rule.
 

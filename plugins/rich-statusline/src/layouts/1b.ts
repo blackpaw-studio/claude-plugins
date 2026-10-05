@@ -61,7 +61,8 @@ const whereRow = (s: Snapshot, o: ViewOptions): Line => {
 
 const contextRow = (s: Snapshot, o: ViewOptions): Line => {
   const width = clamp(o.columns - CTX_ROW_CHROME, MIN_BAR_WIDTH, BAR_WIDTH)
-  const bar = categoryBar(s, width, { fill: FILLED_CELL, empty: '░', emptyColor: COLORS.empty })
+  // Empties share the filled glyph (in the empty tone) so the bar keeps one cell height.
+  const bar = categoryBar(s, width, { fill: FILLED_CELL, empty: FILLED_CELL, emptyColor: COLORS.empty })
   return [label('context'), ...bar, span(FIGURE_GAP), contextFigure(s, 1)]
 }
 

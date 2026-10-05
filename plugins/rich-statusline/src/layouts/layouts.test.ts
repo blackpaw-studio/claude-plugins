@@ -109,7 +109,7 @@ describe('1b labeled grid, design fixture at 120 columns', () => {
     expect(rowsOf(lines)).toEqual([
       'model   Opus 5.5  ·  thinking medium',
       'where   ~/.l/workspace  ·  no git  ·  no PR',
-      `context ${'▆'.repeat(9)}${'░'.repeat(51)}  14.0%`,
+      `context ${'▆'.repeat(60)}  14.0%`,
       '        sys 6.4k  tools 8.2k  mcp 3.0k  mem 1.6k  chat 8.8k  · 172k free  · compact 85%',
       'limits  session 10% resets 1h 11m    weekly 75% resets 1d 12h 11m',
       '─'.repeat(120),
@@ -118,7 +118,9 @@ describe('1b labeled grid, design fixture at 120 columns', () => {
   test('colours', () => {
     expect(runsOf(lines[0])).toEqual([`model   @${C.dim}`, `Opus 5.5@${C.mcp}`, `  ·  thinking @${C.muted}`, `medium@${C.text}`])
     expect(runsOf(lines[1])).toEqual([`where   @${C.dim}`, `~/.l/workspace@${C.system}`, `  ·  no git  ·  no PR@${C.muted}`])
-    expect(toneOf(spanOf(lines[2], '░'.repeat(51)))).toBe(C.empty)
+    // One cell height across the bar: empties are ▆ too, in the empty tone.
+    expect(toneOf(spanOf(lines[2], '▆'.repeat(51)))).toBe(C.empty)
+    expect(textOf(lines[2])).not.toContain('░')
     expect(textOf(lines[2])).not.toContain('┊')
     expect(runsOf(lines[3])).toEqual([
       `sys@${C.system}`,
@@ -305,7 +307,7 @@ describe('a 1M window with a smaller compaction window', () => {
   test('auto-compact off: no 1b compact note', () => {
     const off = buildSnapshot({ ...FIXTURE, breakdown: { ...FIXTURE.breakdown!, compactThreshold: undefined } })
     const grid = rowsOf(draw('1b', 120, DEFAULT_SETTINGS, off))
-    expect(grid[2]).toBe(`context ${'▆'.repeat(9)}${'░'.repeat(51)}  14.0%`)
+    expect(grid[2]).toBe(`context ${'▆'.repeat(60)}  14.0%`)
     expect(grid[3]).toBe('        sys 6.4k  tools 8.2k  mcp 3.0k  mem 1.6k  chat 8.8k  · 172k free')
   })
 })
