@@ -66,6 +66,22 @@ describe('the status rows under the prompt', () => {
     expect(world.runs.filter(run => run.includes('--show-toplevel')).length).toBe(before + 1)
   })
 
+  test('nothing but the engine line until the stored settings have loaded', async ($, on) => {
+    installWorld(on, { stored: { settings: { layout: '1c' } } })
+    const ui = await mountHint($)
+    expect(rowsOfTree(await ui.drawn()).map(textOfNode)).toEqual([ENGINE_HINT])
+  })
+
+  test('a refresh that finds nothing new does not redraw', async ($, on) => {
+    const world = installWorld(on, { branch: 'main' })
+    await mountHint($)
+    await world.clock.settle()
+    const draws = world.hintDraws()
+    await world.clock.advance(10_000)
+    expect(world.runs.filter(run => run.includes('--show-toplevel')).length).toBe(2)
+    expect(world.hintDraws()).toBe(draws)
+  })
+
   test('other surfaces get the engine line alone', async ($, on) => {
     installWorld(on)
     const ui = await $.ui.mount({ plugin: PLUGIN, surface: 'desktop', ...PROMPT_HINT })
@@ -146,6 +162,24 @@ describe('the settings panel', () => {
       await pane.press({ key: 'done' })
     })
   }
+
+  test('quick picks persist in order, each over the last', async ($, on) => {
+    const world = installWorld(on)
+    await mountHint($)
+    await world.clock.settle()
+    const pane = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', ...SETTINGS_PANE })
+    await Promise.all([
+      pane.select({ key: 'layout', value: '1c' }),
+      pane.select({ key: 'showCost', value: 'off' }),
+      pane.select({ key: 'showPr', value: 'off' }),
+    ])
+    const values = world.stores.map(write => (write as { value: Record<string, unknown> }).value)
+    expect(values.map(v => [v.layout, v.showCost, v.showPr])).toEqual([
+      ['1c', true, true],
+      ['1c', false, true],
+      ['1c', false, false],
+    ])
+  })
 
   test('stored settings load at start; junk falls back to defaults', async ($, on) => {
     const world = installWorld(on, { stored: { settings: { layout: '1b', redPercent: 'very' } } })

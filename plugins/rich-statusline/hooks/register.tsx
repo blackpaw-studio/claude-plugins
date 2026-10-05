@@ -27,8 +27,23 @@ const isRetimed = (a: Settings, b: Settings): boolean =>
 
 const describeError = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
+const isSame = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
+
+/**
+ * A setter that skips a write equal to what is held: `$.state` redraws every
+ * reader on any write, equal or not. Takes closures, so each `read`/`update`
+ * names its atom literally at the call site, as the engine's scan requires.
+ */
+const changeOnly =
+  <T,>(get: () => Promise<T>, write: (value: T) => Promise<unknown>) =>
+  async (value: T): Promise<void> => {
+    if (!isSame(await get(), value)) await write(value)
+  }
+
 export const register: Register = on => {
   const runtime = createRuntime()
+  // Settings changes apply one after another, so the store sees them in order.
+  let applying: Promise<void> = Promise.resolve()
 
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     if (e.surface !== 'terminal') return next(e)
@@ -47,13 +62,22 @@ export const register: Register = on => {
         storedSettings: () => $.store.get(STORE_KEY),
         registerCommand: () => $.command.register(COMMAND),
         log: text => $.ui.log(text, { to: 'debug' }),
-        git: { get: () => read($, gitAtom), set: value => update($, gitAtom, () => value) },
-        pr: { set: value => update($, prAtom, () => value) },
-        identity: { get: () => read($, identityAtom), update: change => update($, identityAtom, change) },
-        usageState: { set: value => update($, usageAtom, () => value) },
-        breakdown: { set: value => update($, breakdownAtom, () => value) },
-        clockState: { set: value => update($, nowAtom, () => value) },
-        settings: { set: value => update($, settingsAtom, () => value) },
+        git: {
+          get: () => read($, gitAtom),
+          set: changeOnly(() => read($, gitAtom), value => update($, gitAtom, () => value)),
+        },
+        pr: { set: changeOnly(() => read($, prAtom), value => update($, prAtom, () => value)) },
+        identity: {
+          get: () => read($, identityAtom),
+          update: async change => {
+            const held = await read($, identityAtom)
+            if (!isSame(held, change(held))) await update($, identityAtom, change)
+          },
+        },
+        usageState: { set: changeOnly(() => read($, usageAtom), value => update($, usageAtom, () => value)) },
+        breakdown: { set: changeOnly(() => read($, breakdownAtom), value => update($, breakdownAtom, () => value)) },
+        clockState: { set: changeOnly(() => read($, nowAtom), value => update($, nowAtom, () => value)) },
+        settings: { set: changeOnly(() => read($, settingsAtom), value => update($, settingsAtom, () => value)) },
       })
     }
     const [engine, settings, git, pr, identity, usage, breakdown, now] = await Promise.all([
@@ -66,6 +90,8 @@ export const register: Register = on => {
       read($, breakdownAtom),
       read($, nowAtom),
     ])
+    // Until the stored settings load, the engine's line alone: no flash of 1a.
+    if (settings === null) return engine
     const inputs = { settings: parseSettings(settings), git, pr, identity, usage, breakdown, now }
     return statusTree($.ui.resolve(e), statusLines(inputs, e.viewport?.columns ?? DEFAULT_COLUMNS), engine)
   })
@@ -78,7 +104,8 @@ export const register: Register = on => {
   })
 
   on('session.measure', async ($, e, next) => {
-    await update($, usageAtom, () => toUsage(e))
+    const usage = toUsage(e)
+    if (!isSame(await read($, usageAtom), usage)) await update($, usageAtom, () => usage)
     if (e.changed.includes('context')) runtime.contextChanged()
     return next(e)
   })
@@ -108,17 +135,21 @@ export const register: Register = on => {
       const { Text } = $.ui.resolve(e)
       return <Text dimColor>Open /{COMMAND_NAME} in a terminal to change these settings.</Text>
     }
-    const apply = async (change: (held: Settings) => unknown): Promise<void> => {
+    const fail = (error: unknown) => $.ui.log(`rich-statusline: settings: ${describeError(error)}`, { to: 'debug' })
+    const applyNow = async (change: (held: Settings) => unknown): Promise<void> => {
       const before = parseSettings(await read($, settingsAtom))
       const saved = await update($, settingsAtom, held => parseSettings(change(parseSettings(held))))
       const after = parseSettings(saved)
       await $.store.set(STORE_KEY, after)
       if (isRetimed(before, after)) runtime.retime(after)
     }
-    const fail = (error: unknown) => $.ui.log(`rich-statusline: settings: ${describeError(error)}`, { to: 'debug' })
+    const apply = (change: (held: Settings) => unknown): Promise<void> => {
+      applying = applying.then(() => applyNow(change)).catch(fail)
+      return applying
+    }
     return settingsPane($.ui.resolve(e), settings, {
-      onPick: (key, value) => void apply(held => applyPick(held, key, value)).catch(fail),
-      onReset: () => void apply(() => DEFAULT_SETTINGS).catch(fail),
+      onPick: (key, value) => void apply(held => applyPick(held, key, value)),
+      onReset: () => void apply(() => DEFAULT_SETTINGS),
       onClose: () => void $.ui.close({ id: PANE_ID }).catch(fail),
     })
   })

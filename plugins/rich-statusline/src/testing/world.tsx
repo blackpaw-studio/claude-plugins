@@ -46,6 +46,7 @@ export type World = {
   runs: string[]
   opened: unknown[]
   usageCalls: () => number
+  hintDraws: () => number
   stores: unknown[]
 }
 
@@ -66,6 +67,7 @@ export const installWorld = (on: On, { branch = null, stored = {}, isUsageBroken
   const runs: string[] = []
   const opened: unknown[] = []
   let usageCount = 0
+  let hintDraws = 0
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.cwd', () => ({ value: '/Users/evan/.leo/workspace' }))
   on('settings.read', () => ({ value: { effortLevel: 'medium' } }))
@@ -104,10 +106,11 @@ export const installWorld = (on: On, { branch = null, stored = {}, isUsageBroken
     return { value: { ...done, exitCode: 0, stdout } }
   })
   on('ui.render', { component: 'PromptHint' }, ($, e) => {
+    hintDraws += 1
     const { Text } = $.ui.resolve(e)
     return <Text dimColor>{e.props.hint}</Text>
   })
-  return { clock, runs, opened, stores, usageCalls: () => usageCount }
+  return { clock, runs, opened, stores, usageCalls: () => usageCount, hintDraws: () => hintDraws }
 }
 
 export const PROMPT_HINT = {
