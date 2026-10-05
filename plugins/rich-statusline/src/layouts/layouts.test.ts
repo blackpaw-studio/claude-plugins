@@ -109,8 +109,8 @@ describe('1b labeled grid, design fixture at 120 columns', () => {
     expect(rowsOf(lines)).toEqual([
       'model   Opus 5.5  ·  thinking medium',
       'where   ~/.l/workspace  ·  no git  ·  no PR',
-      `context ${'▆'.repeat(9)}${'░'.repeat(51)}  14.0%`,
-      '        sys 6.4k  tools 8.2k  mcp 3.0k  mem 1.6k  chat 8.8k  · 172k free',
+      `context ${'▆'.repeat(9)}${'░'.repeat(42)}┊${'░'.repeat(8)}  14.0%`,
+      '        sys 6.4k  tools 8.2k  mcp 3.0k  mem 1.6k  chat 8.8k  · 172k free  · compact 85%',
       'limits  session 10% resets 1h 11m    weekly 75% resets 1d 12h 11m',
       '─'.repeat(120),
     ])
@@ -118,7 +118,8 @@ describe('1b labeled grid, design fixture at 120 columns', () => {
   test('colours', () => {
     expect(runsOf(lines[0])).toEqual([`model   @${C.dim}`, `Opus 5.5@${C.mcp}`, `  ·  thinking @${C.muted}`, `medium@${C.text}`])
     expect(runsOf(lines[1])).toEqual([`where   @${C.dim}`, `~/.l/workspace@${C.system}`, `  ·  no git  ·  no PR@${C.muted}`])
-    expect(toneOf(spanOf(lines[2], '░'.repeat(51)))).toBe(C.empty)
+    expect(toneOf(spanOf(lines[2], '░'.repeat(42)))).toBe(C.empty)
+    expect(toneOf(spanOf(lines[2], '┊'))).toBe(C.muted)
     expect(runsOf(lines[3])).toEqual([
       `sys@${C.system}`,
       ` 6.4k  @${C.muted}`,
@@ -130,7 +131,7 @@ describe('1b labeled grid, design fixture at 120 columns', () => {
       ` 1.6k  @${C.muted}`,
       `chat@${C.ok}`,
       ` 8.8k  @${C.muted}`,
-      `· 172k free@${C.faint}`,
+      `· 172k free  · compact 85%@${C.dim}`,
     ])
     expect(runsOf(lines[4])).toEqual([
       `limits  @${C.dim}`,
@@ -297,7 +298,15 @@ describe('a 1M window with a smaller compaction window', () => {
   })
   test('the legend and 1b free measure against the whole window', () => {
     expect(textOf(lines[2]).endsWith('┊ compact 39%')).toBe(true)
-    expect(textOf(draw('1b', 120, DEFAULT_SETTINGS, snap)[3]).endsWith('· 782k free')).toBe(true)
+    const grid = draw('1b', 120, DEFAULT_SETTINGS, snap)
+    expect(textOf(grid[3]).endsWith('· 782k free  · compact 39%')).toBe(true)
+    expect([...textOf(grid[2]).slice(8, 68)].indexOf('┊')).toBe(Math.round(0.386 * 60))
+  })
+  test('auto-compact off: no 1b marker or note', () => {
+    const off = buildSnapshot({ ...FIXTURE, breakdown: { ...FIXTURE.breakdown!, compactThreshold: undefined } })
+    const grid = rowsOf(draw('1b', 120, DEFAULT_SETTINGS, off))
+    expect(grid[2]).toBe(`context ${'▆'.repeat(9)}${'░'.repeat(51)}  14.0%`)
+    expect(grid[3]).toBe('        sys 6.4k  tools 8.2k  mcp 3.0k  mem 1.6k  chat 8.8k  · 172k free')
   })
 })
 
@@ -314,7 +323,9 @@ describe('zero categories', () => {
     expect(textOf(draw('1a', 120, DEFAULT_SETTINGS, snap)[2])).toBe(
       '     ■ system 6.4k  ■ tools 8.2k  ■ memory 1.6k  ■ chat 8.8k  ┊ compact 85%',
     )
-    expect(textOf(draw('1b', 120, DEFAULT_SETTINGS, snap)[3])).toBe('        sys 6.4k  tools 8.2k  mem 1.6k  chat 8.8k  · 172k free')
+    expect(textOf(draw('1b', 120, DEFAULT_SETTINGS, snap)[3])).toBe(
+      '        sys 6.4k  tools 8.2k  mem 1.6k  chat 8.8k  · 172k free  · compact 85%',
+    )
     expect(textOf(draw('1c', 100, DEFAULT_SETTINGS, snap)[1]).endsWith('ctx 14%  sys tools mem chat')).toBe(true)
   })
 })

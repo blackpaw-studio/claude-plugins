@@ -87,7 +87,9 @@ legend indented 5 cols `■ system 6.4k  ■ tools 8.2k …  ┊ compact 85%` /
 `5h  <10-cell bar, ▌ half-cell>  10%  ↻ 1h 11m  │  week <bar> 75%  ↻ 1d 12h 11m`. Gaps between spans: 2 spaces (design gap 14px ≈ 2 cells).
 
 **1b** — 8-col label column (`model`, `where`, `context`, `limits`): rows per design with `░` empty cells
-(51-cell bar), legend row with short names (`sys tools mcp mem chat · 172k free`), `limits` row, then the shared bottom rule.
+(51-cell bar) and a gray `┊` at the compact-threshold cell as in 1a, legend row with short names
+(`sys tools mcp mem chat · 172k free  · compact 85%`, the compact note dim; marker and note hidden when auto-compact
+is off; on overflow the note drops before the legend; Evan, 2026-10-05), `limits` row, then the shared bottom rule.
 
 **1c** — full-width `▀` bar (width = `bodyColumns`), then two justified rows:
 `Opus 5.5·med  ~/.l/workspace  no git · no PR` | `ctx 14%  sys tools mcp mem chat` and a second row

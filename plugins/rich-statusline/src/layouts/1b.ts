@@ -61,21 +61,31 @@ const whereRow = (s: Snapshot, o: ViewOptions): Line => {
 
 const contextRow = (s: Snapshot, o: ViewOptions): Line => {
   const width = clamp(o.columns - CTX_ROW_CHROME, MIN_BAR_WIDTH, BAR_WIDTH)
-  const bar = categoryBar(s, width, { fill: FILLED_CELL, empty: '░', emptyColor: COLORS.empty })
+  const bar = categoryBar(s, width, { fill: FILLED_CELL, empty: '░', emptyColor: COLORS.empty, marker: '┊' })
   return [label('context'), ...bar, span(FIGURE_GAP), contextFigure(s, 1)]
 }
 
-const legendRow = (s: Snapshot, o: ViewOptions): Line | null => {
-  if (!o.showLegend || s.categories === null) return null
+const legendLine = (s: Snapshot, isCompactShown: boolean): Line => {
   const items = legendCategories(s).flatMap(({ key, tokens }) => [
     span(NAMES[key], CATEGORY_COLORS[key]),
     span(` ${formatTokens(tokens)}${ITEM_GAP}`, COLORS.muted),
   ])
-  const row = mergeRuns([
+  const compact =
+    !isCompactShown || s.compactFraction === undefined
+      ? []
+      : [span(`${ITEM_GAP}· compact ${Math.round(s.compactFraction * 100)}%`, COLORS.dim)]
+  return mergeRuns([
     span(' '.repeat(LABEL_WIDTH)),
     ...items,
     span(`· ${formatTokens(s.freeTokens)} free`, COLORS.faint),
+    ...compact,
   ])
+}
+
+/** The legend, without its compact note if that is what overflows; else none. */
+const legendRow = (s: Snapshot, o: ViewOptions): Line | null => {
+  if (!o.showLegend || s.categories === null) return null
+  const row = firstFitting([legendLine(s, true), legendLine(s, false)], o.columns)
   return widthOf(row) <= o.columns ? row : null
 }
 
