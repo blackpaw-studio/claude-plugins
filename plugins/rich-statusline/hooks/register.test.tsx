@@ -56,6 +56,16 @@ describe('the status rows under the prompt', () => {
     expect(world.runs.length).toBeGreaterThan(before)
   })
 
+  test('a session start (resume) reads git again', async ($, on) => {
+    const world = installWorld(on, { branch: 'main' })
+    await mountHint($)
+    await world.clock.settle()
+    const before = world.runs.filter(run => run.includes('--show-toplevel')).length
+    await $.session.start({ cwd: '/Users/evan/.leo/workspace', surface: 'terminal', isInteractive: true })
+    await world.clock.settle()
+    expect(world.runs.filter(run => run.includes('--show-toplevel')).length).toBe(before + 1)
+  })
+
   test('other surfaces get the engine line alone', async ($, on) => {
     installWorld(on)
     const ui = await $.ui.mount({ plugin: PLUGIN, surface: 'desktop', ...PROMPT_HINT })

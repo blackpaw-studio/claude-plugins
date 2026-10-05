@@ -70,6 +70,13 @@ export const register: Register = on => {
     return statusTree($.ui.resolve(e), statusLines(inputs, e.viewport?.columns ?? DEFAULT_COLUMNS), engine)
   })
 
+  // A new or resumed session: the cwd, branch and effort may all have moved.
+  on('session.start', async ($, e, next) => {
+    const started = await next(e)
+    runtime.sessionStarted().catch(error => $.ui.log(`rich-statusline: session: ${describeError(error)}`, { to: 'debug' }))
+    return started
+  })
+
   on('session.measure', async ($, e, next) => {
     await update($, usageAtom, () => toUsage(e))
     if (e.changed.includes('context')) runtime.contextChanged()

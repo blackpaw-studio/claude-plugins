@@ -77,6 +77,7 @@ export const installWorld = (on: On, { branch = null, stored = {}, isUsageBroken
   on('ui.close', () => ({ value: undefined }))
   on('ui.log', () => ({ value: undefined }))
   on('session.measure', (_$, e) => ({ changed: e.changed }))
+  on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('session.usage', () => {
     usageCount += 1
     if (isUsageBroken) return { deny: 'no session bound' }

@@ -49,41 +49,57 @@ export type Runtime = {
   /** Asks for a breakdown once the context has been quiet for the debounce. */
   contextChanged: () => void
   cwdMaybeChanged: () => Promise<void>
+  /** A new or resumed session: identity, cwd, git and the breakdown again. */
+  sessionStarted: () => Promise<void>
   /** Restarts the refresh timers when their intervals changed. */
   retime: (settings: Settings) => void
 }
 
-/** Runs `task` unless the same one is still in flight. */
-const singleFlight = (task: () => Promise<void>) => {
-  let isRunning = false
-  return async (): Promise<void> => {
-    if (isRunning) return
-    isRunning = true
-    try {
+/**
+ * Runs `task` one at a time. A call while it runs queues exactly one rerun
+ * (later calls fold into it) and resolves when that rerun is done.
+ */
+const coalesce = (task: () => Promise<void>) => {
+  let running: Promise<void> | null = null
+  let isQueued = false
+  const loop = async (): Promise<void> => {
+    do {
+      isQueued = false
       await task()
-    } finally {
-      isRunning = false
+    } while (isQueued)
+  }
+  return (): Promise<void> => {
+    if (running !== null) {
+      isQueued = true
+      return running
     }
+    running = loop().finally(() => {
+      running = null
+    })
+    return running
   }
 }
 
 const describeError = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
-const collectors = (ports: Ports) => {
+const collectors = (ports: Ports, background: (what: string, task: () => Promise<void>) => void) => {
   const cwdOf = async (): Promise<string> => (await ports.identity.get())?.cwd || (await ports.cwd())
-  const refreshPr = singleFlight(async () => {
+  const refreshPr = coalesce(async () => {
     const git = await ports.git.get()
     const branch = git?.branch ?? null
     const root = git?.root ?? null
     const label = branch === null ? null : await collectPr(ports.run, await cwdOf())
-    if (label !== undefined) await ports.pr.set({ label, root, branch })
+    const now = await ports.git.get()
+    const isCurrent = (now?.branch ?? null) === branch && (now?.root ?? null) === root
+    if (label !== undefined && isCurrent) await ports.pr.set({ label, root, branch })
   })
-  const refreshGit = singleFlight(async () => {
+  const refreshGit = coalesce(async () => {
+    const cwd = await cwdOf()
     const before = await ports.git.get()
-    const git = await collectGit(ports.run, await cwdOf())
-    if (git === undefined) return
+    const git = await collectGit(ports.run, cwd)
+    if (git === undefined || (await cwdOf()) !== cwd) return
     await ports.git.set(git)
-    if (git.branch !== before?.branch || git.root !== before?.root) await refreshPr()
+    if (git.branch !== before?.branch || git.root !== before?.root) background('pr', refreshPr)
   })
   const loadBreakdown = async (): Promise<void> => {
     const usage = await ports.usage()
@@ -91,10 +107,20 @@ const collectors = (ports: Ports) => {
     if (usage.context.breakdown !== undefined) await ports.breakdown.set(toBreakdown(usage.context.breakdown))
   }
   const loadIdentity = async (): Promise<void> => {
-    const [model, cwd, home, effort] = await Promise.all([ports.model(), ports.cwd(), ports.home(), ports.configuredEffort()])
+    const [model, cwd, home, effort] = await Promise.all([
+      ports.model(),
+      ports.cwd(),
+      ports.home(),
+      ports.configuredEffort().catch(() => undefined),
+    ])
     const configuredEffort = effortOf(effort)
     await ports.identity.update(held =>
-      withSession(held, { model, cwd, ...(home === undefined ? {} : { home }), ...(configuredEffort === undefined ? {} : { configuredEffort }) }),
+      withSession(held, {
+        model,
+        cwd,
+        ...(home === undefined ? {} : { home }),
+        ...(configuredEffort === undefined ? {} : { configuredEffort }),
+      }),
     )
   }
   const tick = async (): Promise<void> => {
@@ -122,14 +148,16 @@ export const createRuntime = (): Runtime => {
     ]
   }
 
-  /** Each first read on its own: one failing never keeps the timers from starting. */
+  /** Timers first, then each first read on its own: no failure stops the rest. */
   const start = async (p: Ports, w: ReturnType<typeof collectors>): Promise<void> => {
+    const settings = parseSettings(await p.storedSettings().catch(() => undefined))
+    startTimers(p, w, settings)
+    background('settings', async () => {
+      await p.settings.set(settings)
+    })
     background('command', async () => {
       await p.registerCommand()
     })
-    const settings = parseSettings(await p.storedSettings().catch(() => undefined))
-    await p.settings.set(settings)
-    startTimers(p, w, settings)
     background('identity', w.loadIdentity)
     background('tick', w.tick)
     background('breakdown', w.loadBreakdown)
@@ -140,7 +168,7 @@ export const createRuntime = (): Runtime => {
     attach: next => {
       if (ports !== null) return
       ports = next
-      const w = collectors(next)
+      const w = collectors(next, background)
       work = w
       // From a timer: the attaching render hook must not write state itself.
       next.after(0, () => background('start', () => start(next, w)))
@@ -163,6 +191,13 @@ export const createRuntime = (): Runtime => {
       const cwd = await p.cwd()
       if ((await p.identity.get())?.cwd === cwd) return
       await p.identity.update(held => withCwd(held, cwd))
+      await w.refreshGit()
+    },
+    sessionStarted: async () => {
+      const w = work
+      if (w === null) return
+      await w.loadIdentity()
+      background('breakdown', w.loadBreakdown)
       await w.refreshGit()
     },
     retime: settings => {
