@@ -1,4 +1,4 @@
-// Git root, branch and uncommitted diff stats through an injected runner.
+// Git root, linked worktree, branch and uncommitted diff stats through an injected runner.
 // `undefined` from collectGit means "could not tell": keep the cached value.
 import type { RichStatuslineDiff, RichStatuslineGit } from '../../types'
 import { type Run, type RunInit, type RunResult, tryRun } from './run'
@@ -7,7 +7,7 @@ const GIT_TIMEOUT_MS = 5_000
 /** git reads only: never refresh the index (no index.lock fights with commits). */
 const GIT_ENV = { GIT_OPTIONAL_LOCKS: '0' }
 const LOCK_PATTERN = /\.lock\b/
-const NO_GIT: RichStatuslineGit = { root: null, branch: null, diff: null }
+const NO_GIT: RichStatuslineGit = { root: null, worktree: null, branch: null, diff: null }
 
 /** What one git call told us: an answer, a definite no, or nothing to go on. */
 type Reading = { kind: 'value'; text: string } | { kind: 'no' } | { kind: 'unknown' }
@@ -33,6 +33,22 @@ export const parseShortstat = (stdout: string): RichStatuslineDiff => {
   }
 }
 
+const withoutTrailingSlash = (path: string): string => (path.length > 1 ? path.replace(/\/+$/, '') : path)
+const basename = (path: string): string => withoutTrailingSlash(path).split('/').pop() ?? ''
+
+/**
+ * `rev-parse --git-dir --git-common-dir` output to the linked worktree's name:
+ * the two differ only in a linked worktree, named after its top-level folder.
+ * The last two lines, as an older git echoes an unknown flag first. Pure.
+ */
+export const parseWorktree = (stdout: string, root: string): string | null => {
+  const lines = stdout.split('\n').map(line => line.trim()).filter(line => line !== '')
+  if (lines.length < 2) return null
+  const [gitDir = '', commonDir = ''] = lines.slice(-2).map(withoutTrailingSlash)
+  const name = basename(root)
+  return gitDir === commonDir || name === '' ? null : name
+}
+
 const gitIn = (run: Run, cwd: string) => {
   const init: RunInit = { cwd, timeoutMs: GIT_TIMEOUT_MS, env: GIT_ENV }
   return async (...args: string[]): Promise<Reading> => readingOf(await tryRun(run, ['git', ...args], init))
@@ -50,12 +66,15 @@ export const collectGit = async (run: Run, cwd: string): Promise<RichStatuslineG
   const git = gitIn(run, cwd)
   const root = await git('rev-parse', '--show-toplevel')
   if (root.kind !== 'value') return root.kind === 'no' ? NO_GIT : undefined
+  const dirs = await git('rev-parse', '--path-format=absolute', '--git-dir', '--git-common-dir')
+  if (dirs.kind === 'unknown') return undefined
   const branch = await branchOf(git)
   if (branch.kind === 'unknown') return undefined
   const diff = await git('diff', 'HEAD', '--shortstat')
   if (diff.kind === 'unknown') return undefined
   return {
     root: root.text,
+    worktree: dirs.kind === 'value' ? parseWorktree(dirs.text, root.text) : null,
     branch: branch.kind === 'value' && branch.text !== '' ? branch.text : null,
     diff: diff.kind === 'value' ? parseShortstat(diff.text) : null,
   }

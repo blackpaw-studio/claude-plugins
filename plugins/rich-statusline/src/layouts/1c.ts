@@ -4,7 +4,7 @@ import { joinGroups, justify, type Line, mergeRuns, type Span, span, widthOf } f
 import { CATEGORY_COLORS, COLORS } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
 import type { ViewOptions } from '../view-options'
-import { categoryBar, contextFigure, diffSpans, limitFigure, resetLabel } from './parts'
+import { categoryBar, contextFigure, diffSpans, limitFigure, resetLabel, worktreeSpans } from './parts'
 
 const NAMES = { system: 'sys', tools: 'tools', mcp: 'mcp', memory: 'mem', chat: 'chat' } as const
 const MIN_GAP = 2
@@ -17,7 +17,9 @@ const identitySpans = (s: Snapshot, o: ViewOptions): Span[] =>
     span(s.model, COLORS.model, true),
     span(`${s.effort === undefined ? '' : `·${shortEffort(s.effort)}`}${s.cwd === '' ? '' : '  '}`, COLORS.muted),
     span(s.cwd, COLORS.system),
-    span(`  ${s.branch ?? 'no git'}`, COLORS.dim),
+    ...(s.worktree === null || !o.showWorktree
+      ? [span(`  ${s.branch ?? 'no git'}`, COLORS.dim)]
+      : [span('  '), ...worktreeSpans(s.worktree, true), span(` ${s.branch ?? 'no git'}`, COLORS.dim)]),
     ...diffSpans(s.diff, o.showDiff),
     ...(o.showPr ? [span(` · ${s.pr ?? 'no PR'}`, COLORS.dim)] : []),
   ])

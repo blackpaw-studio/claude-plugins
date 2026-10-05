@@ -14,6 +14,7 @@ export const COLORS = {
   tools: '#3bcfcf',
   mcp: '#c3a5f9',
   model: '#c3a5f9',
+  worktree: '#c3a5f9',
   memory: '#ee97c9',
   chat: '#8dca80',
   ok: '#8dca80',

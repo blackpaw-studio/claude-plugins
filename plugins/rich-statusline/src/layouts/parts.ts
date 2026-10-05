@@ -77,6 +77,10 @@ export const contextFigure = (snapshot: Snapshot, digits: number): Span => {
   return span(`${shown}%`, figureColor(levelFor(Number(shown), snapshot.thresholds)), true)
 }
 
+/** `wt <name>` before the branch in a linked worktree; nothing otherwise or hidden. */
+export const worktreeSpans = (worktree: string | null, isShown: boolean): Span[] =>
+  worktree === null || !isShown ? [] : [span('wt ', COLORS.muted), span(worktree, COLORS.worktree)]
+
 /** ` (+12,-3)` after the branch; nothing when clean or hidden. */
 export const diffSpans = (diff: RichStatuslineDiff | null, isShown: boolean): Span[] =>
   diff === null || !isShown

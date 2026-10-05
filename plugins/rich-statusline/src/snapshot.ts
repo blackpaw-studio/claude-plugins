@@ -33,6 +33,8 @@ export type Snapshot = {
   thresholds: Thresholds
   effort?: string
   cwd: string
+  /** The linked worktree's name; null on the main working tree. */
+  worktree: string | null
   branch: string | null
   diff: RichStatuslineDiff | null
   pr: string | null
@@ -89,6 +91,7 @@ export const buildSnapshot = ({ identity, git, pr, usage, breakdown, settings, n
     thresholds: { amberPercent: settings.amberPercent, redPercent: settings.redPercent },
     ...(identity?.effort === undefined ? {} : { effort: identity.effort }),
     cwd: identity === null || identity.cwd === '' ? '' : abbreviatePath(identity.cwd, identity.home),
+    worktree: git?.worktree ?? null,
     branch: git?.branch ?? null,
     diff: git?.diff ?? null,
     pr: prFor(git, pr),

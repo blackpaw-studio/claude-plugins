@@ -4,7 +4,16 @@ import { firstFitting, type Line, mergeRuns, type Span, span, widthOf } from '..
 import { CATEGORY_COLORS, COLORS } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
 import type { ViewOptions } from '../view-options'
-import { categoryBar, clamp, FILLED_CELL, contextFigure, diffSpans, limitFigure, resetLabel } from './parts'
+import {
+  categoryBar,
+  clamp,
+  contextFigure,
+  diffSpans,
+  FILLED_CELL,
+  limitFigure,
+  resetLabel,
+  worktreeSpans,
+} from './parts'
 
 const LABEL_WIDTH = 8
 const BAR_WIDTH = 60
@@ -25,22 +34,29 @@ const modelRow = (s: Snapshot): Line =>
     ...(s.effort === undefined ? [] : [span(`${DOT}thinking `, COLORS.muted), span(s.effort, COLORS.text)]),
   ])
 
-const whereLine = (s: Snapshot, isPrShown: boolean, isDiffShown: boolean): Line =>
-  mergeRuns([
+type WhereParts = { isPrShown: boolean; isDiffShown: boolean; isWorktreeShown: boolean }
+
+const whereLine = (s: Snapshot, { isPrShown, isDiffShown, isWorktreeShown }: WhereParts): Line => {
+  const worktree = worktreeSpans(s.worktree, isWorktreeShown)
+  return mergeRuns([
     label('where'),
     span(s.cwd, COLORS.system),
+    ...(worktree.length === 0 ? [] : [span(DOT, COLORS.muted), ...worktree]),
     span(DOT, COLORS.muted),
     span(s.branch ?? 'no git', COLORS.muted),
     ...diffSpans(s.diff, isDiffShown),
     ...(isPrShown ? [span(DOT, COLORS.muted), span(s.pr ?? 'no PR', COLORS.muted)] : []),
   ])
+}
 
-/** Drops the PR, then the diff stats, until the row fits. */
-const whereRow = (s: Snapshot, o: ViewOptions): Line =>
-  firstFitting(
-    [whereLine(s, o.showPr, o.showDiff), whereLine(s, false, o.showDiff), whereLine(s, false, false)],
-    o.columns,
-  )
+/** Drops the PR, then the diff stats, then the worktree, until the row fits. */
+const whereRow = (s: Snapshot, o: ViewOptions): Line => {
+  const all = { isPrShown: o.showPr, isDiffShown: o.showDiff, isWorktreeShown: o.showWorktree }
+  const noPr = { ...all, isPrShown: false }
+  const noDiff = { ...noPr, isDiffShown: false }
+  const bare = { ...noDiff, isWorktreeShown: false }
+  return firstFitting([all, noPr, noDiff, bare].map(parts => whereLine(s, parts)), o.columns)
+}
 
 const contextRow = (s: Snapshot, o: ViewOptions): Line => {
   const width = clamp(o.columns - CTX_ROW_CHROME, MIN_BAR_WIDTH, BAR_WIDTH)

@@ -8,6 +8,7 @@ export type RichStatuslineSettings = {
   showCost: boolean
   showPr: boolean
   showDiff: boolean
+  showWorktree: boolean
   showLegend: boolean
   amberPercent: number
   redPercent: number
@@ -20,6 +21,8 @@ export type RichStatuslineDiff = { insertions: number; deletions: number }
 export type RichStatuslineGit = {
   /** The repository's top-level folder; null outside a repository. */
   root: string | null
+  /** A linked worktree's name (its top-level folder); null on the main working tree or outside a repository. */
+  worktree: string | null
   /** Current branch (short sha when detached); null outside a repository. */
   branch: string | null
   /** Uncommitted changes against HEAD ((+0,-0) when clean); null outside a repo or before a first commit. */

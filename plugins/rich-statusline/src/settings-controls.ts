@@ -37,6 +37,7 @@ export const settingsControls = (s: Settings): Control[] => [
   toggle('showCost', 'Show cost', s.showCost),
   toggle('showPr', 'Show PR', s.showPr),
   toggle('showDiff', 'Show diff stats', s.showDiff),
+  toggle('showWorktree', 'Show worktree', s.showWorktree),
   toggle('showLegend', 'Show legend (1a/1b)', s.showLegend),
   {
     key: 'amberPercent',
@@ -54,7 +55,13 @@ export const settingsControls = (s: Settings): Control[] => [
   { key: 'prRefreshSeconds', label: 'PR refresh', value: String(s.prRefreshSeconds), options: numbered(PR_CHOICES, s.prRefreshSeconds, 's') },
 ]
 
-const BOOLEAN_KEYS: ReadonlySet<keyof Settings> = new Set(['showCost', 'showPr', 'showDiff', 'showLegend'])
+const BOOLEAN_KEYS: ReadonlySet<keyof Settings> = new Set([
+  'showCost',
+  'showPr',
+  'showDiff',
+  'showWorktree',
+  'showLegend',
+])
 const NUMBER_KEYS: ReadonlySet<keyof Settings> = new Set([
   'amberPercent',
   'redPercent',

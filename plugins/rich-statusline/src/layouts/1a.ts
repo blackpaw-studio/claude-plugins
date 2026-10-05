@@ -4,7 +4,17 @@ import { firstFitting, GAP, joinGroups, type Line, type Span, span, widthOf } fr
 import { CATEGORY_COLORS, COLORS } from '../palette'
 import type { LimitView, Snapshot } from '../snapshot'
 import type { ViewOptions } from '../view-options'
-import { categoryBar, clamp, contextFigure, diffSpans, FILLED_CELL, limitBar, limitFigure, resetLabel } from './parts'
+import {
+  categoryBar,
+  clamp,
+  contextFigure,
+  diffSpans,
+  FILLED_CELL,
+  limitBar,
+  limitFigure,
+  resetLabel,
+  worktreeSpans,
+} from './parts'
 
 const BAR_WIDTH = 60
 const MIN_BAR_WIDTH = 10
@@ -16,30 +26,29 @@ const NAMES = { system: 'system', tools: 'tools', mcp: 'mcp', memory: 'memory', 
 
 const join = (groups: readonly (readonly Span[])[]): Span[] => joinGroups(groups, [GAP])
 
-type IdentityParts = { isCostShown: boolean; isPrShown: boolean; isDiffShown: boolean }
+type IdentityParts = { isCostShown: boolean; isPrShown: boolean; isDiffShown: boolean; isWorktreeShown: boolean }
 
-const identityLine = (s: Snapshot, { isCostShown, isPrShown, isDiffShown }: IdentityParts): Line =>
+const identityLine = (s: Snapshot, { isCostShown, isPrShown, isDiffShown, isWorktreeShown }: IdentityParts): Line =>
   join([
     [span(`◆ ${s.model}`, COLORS.model, true)],
     s.effort === undefined ? [] : [span('thinking ', COLORS.muted), span(s.effort, COLORS.text)],
     [span('│', COLORS.separator)],
     s.cwd === '' ? [] : [span(s.cwd, COLORS.system)],
+    worktreeSpans(s.worktree, isWorktreeShown),
     [span(s.branch === null ? '⎇ no git' : `⎇ ${s.branch}`, COLORS.muted), ...diffSpans(s.diff, isDiffShown)],
     isPrShown ? [span(s.pr ?? 'no PR', COLORS.muted)] : [],
     isCostShown && s.cost !== undefined ? [span(formatCost(s.cost), COLORS.muted)] : [],
   ])
 
-/** Drops cost, then PR, then diff stats until the row fits. */
-const identityRow = (s: Snapshot, o: ViewOptions): Line =>
-  firstFitting(
-    [
-      identityLine(s, { isCostShown: o.showCost, isPrShown: o.showPr, isDiffShown: o.showDiff }),
-      identityLine(s, { isCostShown: false, isPrShown: o.showPr, isDiffShown: o.showDiff }),
-      identityLine(s, { isCostShown: false, isPrShown: false, isDiffShown: o.showDiff }),
-      identityLine(s, { isCostShown: false, isPrShown: false, isDiffShown: false }),
-    ],
-    o.columns,
-  )
+/** Drops cost, then PR, then diff stats, then the worktree until the row fits. */
+const identityRow = (s: Snapshot, o: ViewOptions): Line => {
+  const all = { isCostShown: o.showCost, isPrShown: o.showPr, isDiffShown: o.showDiff, isWorktreeShown: o.showWorktree }
+  const noCost = { ...all, isCostShown: false }
+  const noPr = { ...noCost, isPrShown: false }
+  const noDiff = { ...noPr, isDiffShown: false }
+  const bare = { ...noDiff, isWorktreeShown: false }
+  return firstFitting([all, noCost, noPr, noDiff, bare].map(parts => identityLine(s, parts)), o.columns)
+}
 
 const contextFigures = (s: Snapshot): Span[] =>
   s.context.tokens === undefined

@@ -9,12 +9,17 @@ describe('buildSnapshot', () => {
     expect(snapshot.effort).toBe('medium')
     expect(snapshot.cwd).toBe('~/.l/workspace')
     expect(snapshot.branch).toBeNull()
+    expect(snapshot.worktree).toBeNull()
     expect(snapshot.pr).toBeNull()
     expect(snapshot.context).toEqual({ tokens: 28_000, window: 200_000, percent: 14, level: 'ok' })
     expect(snapshot.freeTokens).toBe(172_000)
     expect(snapshot.fiveHour).toEqual({ percent: 10, level: 'ok', resetInMs: 71 * 60_000 + 30_000 })
     expect(snapshot.week?.level).toBe('amber')
     expect(snapshot.cost).toBeUndefined()
+  })
+  test('a linked worktree carries its name through', () => {
+    const git = { root: '/work/feat-x', worktree: 'feat-x', branch: 'feat/x', diff: null }
+    expect(buildSnapshot({ ...FIXTURE, git }).worktree).toBe('feat-x')
   })
   test('a limit level follows the rounded figure it is shown as', () => {
     const snapshot = buildSnapshot({
@@ -33,7 +38,7 @@ describe('buildSnapshot', () => {
   test('a PR read for another branch is not shown', () => {
     const snapshot = buildSnapshot({
       ...FIXTURE,
-      git: { root: '/repo', branch: 'main', diff: null },
+      git: { root: '/repo', worktree: null, branch: 'main', diff: null },
       pr: { label: '#9', root: '/repo', branch: 'old' },
     })
     expect(snapshot.pr).toBeNull()
@@ -41,11 +46,11 @@ describe('buildSnapshot', () => {
   test('a PR read for the same branch of another repository is not shown', () => {
     const snapshot = buildSnapshot({
       ...FIXTURE,
-      git: { root: '/repo-b', branch: 'main', diff: null },
+      git: { root: '/repo-b', worktree: null, branch: 'main', diff: null },
       pr: { label: '#9', root: '/repo-a', branch: 'main' },
     })
     expect(snapshot.pr).toBeNull()
-    expect(buildSnapshot({ ...FIXTURE, git: { root: '/repo-a', branch: 'main', diff: null }, pr: { label: '#9', root: '/repo-a', branch: 'main' } }).pr).toBe('#9')
+    expect(buildSnapshot({ ...FIXTURE, git: { root: '/repo-a', worktree: null, branch: 'main', diff: null }, pr: { label: '#9', root: '/repo-a', branch: 'main' } }).pr).toBe('#9')
   })
   test('nothing collected yet', () => {
     const snapshot = buildSnapshot({

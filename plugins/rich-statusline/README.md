@@ -2,7 +2,7 @@
 
 A Claude Code mod (function-hook plugin) that draws a multi-row status
 dashboard under the prompt: model and effort, where you are (path, git
-branch, uncommitted diff stats, PR), the context window broken down by
+branch, linked worktree, uncommitted diff stats, PR), the context window broken down by
 category, the 5-hour and weekly usage limits with reset countdowns, and the
 session's cost.
 
@@ -47,10 +47,11 @@ in some terminal setups (Claude Code inside tmux, for one).
 | Show cost | on | 1a: end of the first row; 1b: limits row; 1c: before `5h` |
 | Show PR | on | `#123` from `gh pr view`; `no PR` when there is none or `gh` is missing |
 | Show diff stats | on | `(+12,-3)` from `git diff HEAD --shortstat`, after the branch |
+| Show worktree | on | `wt <name>` before the branch inside a linked git worktree |
 | Show legend | on | the category legend of 1a and 1b |
 | Amber at | 70% | context and each limit turn amber from here |
 | Red at | 90% | ...and red from here |
-| Git refresh | 10 s | branch and diff stats |
+| Git refresh | 10 s | branch, worktree and diff stats |
 | PR refresh | 60 s | also refreshed at once when the branch changes |
 
 There is no keyboard shortcut: this build of the plugin API lets a Button

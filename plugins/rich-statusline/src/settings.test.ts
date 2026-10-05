@@ -7,6 +7,7 @@ describe('parseSettings', () => {
     expect(parseSettings('junk')).toEqual(DEFAULT_SETTINGS)
     expect(DEFAULT_SETTINGS.layout).toBe('1b')
     expect(DEFAULT_SETTINGS.showDiff).toBe(true)
+    expect(DEFAULT_SETTINGS.showWorktree).toBe(true)
   })
   test('keeps valid fields', () => {
     const parsed = parseSettings({ layout: '1c', showCost: false, amberPercent: 60, redPercent: 80 })

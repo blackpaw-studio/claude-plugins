@@ -34,6 +34,7 @@ describe('the status rows under the prompt', () => {
     expect(rows[rows.length - 1]).toEqual({ type: 'Text', props: { dimColor: true }, children: [ENGINE_HINT] })
     expect(world.runs).toEqual([
       'git rev-parse --show-toplevel',
+      'git rev-parse --path-format=absolute --git-dir --git-common-dir',
       'git rev-parse --abbrev-ref HEAD',
       'git diff HEAD --shortstat',
       'gh pr view --json number,state',
@@ -146,7 +147,7 @@ describe('the settings menu in the band above the prompt', () => {
     await ready($, on)
     const band = await mountBand($)
     expect(await $.command.run(run(''))).toEqual({})
-    expect(await band.findAll({ type: 'Select' })).toHaveLength(9)
+    expect(await band.findAll({ type: 'Select' })).toHaveLength(10)
     expect(await $.command.run(run('settings'))).toEqual({})
     expect(textOfNode(await band.drawn())).toBe(ENGINE_BAND)
     expect((await $.command.run(run('bogus'))).text).toBe('Usage: /rich-statusline [settings]')
@@ -173,6 +174,7 @@ describe('the settings menu in the band above the prompt', () => {
       'showCost',
       'showPr',
       'showDiff',
+      'showWorktree',
       'showLegend',
       'amberPercent',
       'redPercent',
@@ -192,7 +194,7 @@ describe('the settings menu in the band above the prompt', () => {
     expect(textOfNode(title)).toBe('rich-statusline settings')
     expect(buttonsOf(title)).toEqual(['done', 'reset'])
     expect(rest.map(textOfNode).join('\n')).not.toContain('ctrl+x tab')
-    expect(await band.findAll({ type: 'Select' })).toHaveLength(9)
+    expect(await band.findAll({ type: 'Select' })).toHaveLength(10)
   })
 
   test('Done closes the menu', async ($, on) => {

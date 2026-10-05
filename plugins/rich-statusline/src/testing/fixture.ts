@@ -23,7 +23,7 @@ export const IDENTITY: RichStatuslineIdentity = {
   home: '/Users/evan',
 }
 
-export const NO_GIT: RichStatuslineGit = { root: null, branch: null, diff: null }
+export const NO_GIT: RichStatuslineGit = { root: null, worktree: null, branch: null, diff: null }
 export const NO_PR: RichStatuslinePr = { label: null, root: null, branch: null }
 
 export const USAGE: RichStatuslineUsage = {

@@ -39,7 +39,7 @@ multi-row status layouts from the Claude Design artifact
   `bodyColumns` fits two cells of (longest label + longest option + 4 Select chrome), else one, so no cell
   wraps. Over `maxRows` the hint row goes first, then three to a row when the width allows; still taller, the
   engine scrolls it.
-- Controls: layout (1a/1b/1c `Select`), show cost, show PR, show legend (1a/1b), amber threshold, red
+- Controls: layout (1a/1b/1c `Select`), show cost, show PR, show diff stats, show worktree, show legend (1a/1b), amber threshold, red
   threshold, git refresh seconds, PR refresh seconds. Changes apply live and persist in `$.store`.
 - Settings are a validated `Settings` value (pure `parseSettings(raw) → Settings` with defaults; invalid
   stored values fall back to defaults).
@@ -51,6 +51,7 @@ multi-row status layouts from the Claude Design artifact
 | effort | `turn.step` `e.effort`; before first step, `settings.read` `effortLevel`; else omitted | turn.step |
 | cwd (abbreviated `~/.l/workspace` style: home→`~`, intermediate segments to first char, last kept) | `$.session.cwd()` | session.start, tool.call Bash cd |
 | branch | `git rev-parse --abbrev-ref HEAD` via `$.process.run`; `no git` when not a repo | 10 s timer, cached |
+| worktree | `git rev-parse --path-format=absolute --git-dir --git-common-dir`; differing dirs = linked worktree, named after the basename of `--show-toplevel`; nothing on the main working tree or outside a repo; same env and keep-cache-on-failure rules as branch | with branch timer |
 | diff stats | `git diff HEAD --shortstat` (uncommitted insertions/deletions, same as ccstatusline's git-changes) → `(+12,-3)`; omitted when not a repo | with branch timer |
 | PR | `gh pr view --json number,state` → `#123`; `no PR` when none or gh missing/unauthed | 60 s timer, cached, only when branch changes or timer fires |
 | context tokens / window / % | `session.measure` `context` | event-driven |
@@ -90,6 +91,11 @@ if the total passes the width, trim one cell at a time from the largest category
 (matches the design). Compact marker at round(threshold × width). Window = `context.window` (the model window shown in the label; scales for 1M). The compaction window (`rawMaxTokens`) is not used, so bar, label and marker agree.
 
 Diff stats placement (not in designs): right after the branch — 1a `⎇ main (+12,-3)`, 1b `where` row `· main (+12,-3)`, 1c `main (+12,-3)`; `+N` in `#8dca80`, `-N` in `#f97770`, parens muted. Toggle in settings (default on).
+
+Worktree (Evan, 2026-10-05): in a linked worktree, right before the branch, `wt <name>` with `wt` muted and the name in
+`#c3a5f9` — 1a `~/.l/x  wt feat-x  ⎇ branch (+1,-0)`, 1b `where` row `~/.l/x  ·  wt feat-x  ·  branch (+1,-0)`,
+1c `wt feat-x branch (+1,-0)`. Toggle "show worktree" (default on). On overflow the identity/where row drops cost
+(1a), then PR, then diff stats, then the worktree.
 
 Cost placement: 1a end of identity row `$1.23` muted; 1b appended to `limits` row `  ·  $1.23`; 1c before `5h`.
 

@@ -93,6 +93,8 @@ export const installWorld = (on: On, { branch = null, stored = {}, isUsageBroken
     const command = e.argv.join(' ')
     const stdout = command.includes('--show-toplevel')
       ? '/Users/evan/.leo/workspace\n'
+      : command.includes('--git-common-dir')
+        ? '/Users/evan/.leo/workspace/.git\n/Users/evan/.leo/workspace/.git\n'
       : command.includes('--abbrev-ref')
         ? `${branch}\n`
         : e.argv[0] === 'gh'

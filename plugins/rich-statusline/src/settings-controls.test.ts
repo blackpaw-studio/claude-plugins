@@ -10,6 +10,7 @@ describe('settingsControls', () => {
       'showCost=on',
       'showPr=on',
       'showDiff=on',
+      'showWorktree=on',
       'showLegend=on',
       'amberPercent=70',
       'redPercent=90',

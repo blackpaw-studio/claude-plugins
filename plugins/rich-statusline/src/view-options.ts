@@ -9,6 +9,7 @@ export type ViewOptions = {
   showResets: boolean
   showPr: boolean
   showDiff: boolean
+  showWorktree: boolean
   showCost: boolean
 }
 
@@ -23,5 +24,6 @@ export const viewOptions = (settings: Settings, columns: number): ViewOptions =>
   showResets: columns >= DETAIL_MIN_COLUMNS,
   showPr: settings.showPr && columns >= DETAIL_MIN_COLUMNS,
   showDiff: settings.showDiff,
+  showWorktree: settings.showWorktree,
   showCost: settings.showCost,
 })

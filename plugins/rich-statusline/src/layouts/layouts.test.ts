@@ -187,7 +187,7 @@ describe('1c compact, design fixture at 100 columns', () => {
 describe('git, diff stats, PR and cost', () => {
   const snap = buildSnapshot({
     ...FIXTURE,
-    git: { root: '/repo', branch: 'main', diff: { insertions: 12, deletions: 3 } },
+    git: { root: '/repo', worktree: null, branch: 'main', diff: { insertions: 12, deletions: 3 } },
     pr: { label: '#123', root: '/repo', branch: 'main' },
     usage: { ...FIXTURE.usage!, costUsd: 1.234 },
   })
@@ -216,13 +216,52 @@ describe('git, diff stats, PR and cost', () => {
     expect(textOf(lines[2]).trimStart()).toBe('$1.23   5h 10% ↻1h11m   wk 75% ↻1d12h')
   })
   test('a clean repository shows (+0,-0)', () => {
-    const clean = buildSnapshot({ ...FIXTURE, git: { root: '/repo', branch: 'main', diff: { insertions: 0, deletions: 0 } } })
+    const clean = buildSnapshot({ ...FIXTURE, git: { root: '/repo', worktree: null, branch: 'main', diff: { insertions: 0, deletions: 0 } } })
     expect(textOf(draw('1a', 120, DEFAULT_SETTINGS, clean)[0])).toBe('◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ main (+0,-0)  no PR')
   })
   test('toggles hide diff, PR and cost', () => {
     const settings = { ...DEFAULT_SETTINGS, showDiff: false, showPr: false, showCost: false }
     const [row] = draw('1a', 120, settings, snap)
     expect(textOf(row)).toBe('◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ main')
+  })
+})
+
+describe('a linked worktree, right before the branch', () => {
+  const WORKTREE = '#c3a5f9'
+  const inWorktree = (diff = { insertions: 1, deletions: 0 }) =>
+    buildSnapshot({ ...FIXTURE, git: { root: '/work/feat-x', worktree: 'feat-x', branch: 'feat/x', diff } })
+  const snap = inWorktree()
+  const isWtMuted = (line: Parameters<typeof runsOf>[0]) => runsOf(line).some(run => run.endsWith(`wt @${C.muted}`))
+  test('1a', () => {
+    const [row] = draw('1a', 120, DEFAULT_SETTINGS, snap)
+    expect(textOf(row)).toBe('◆ Opus 5.5  thinking medium  │  ~/.l/workspace  wt feat-x  ⎇ feat/x (+1,-0)  no PR')
+    expect(spanOf(row, 'feat-x')?.color).toBe(WORKTREE)
+    expect(isWtMuted(row)).toBe(true)
+  })
+  test('1b', () => {
+    const row = draw('1b', 120, DEFAULT_SETTINGS, snap)[1]
+    expect(textOf(row)).toBe('where   ~/.l/workspace  ·  wt feat-x  ·  feat/x (+1,-0)  ·  no PR')
+    expect(spanOf(row, 'feat-x')?.color).toBe(WORKTREE)
+    expect(isWtMuted(row)).toBe(true)
+  })
+  test('1c', () => {
+    const row = draw('1c', 100, DEFAULT_SETTINGS, snap)[1]
+    expect(textOf(row).startsWith('Opus 5.5·med  ~/.l/workspace  wt feat-x feat/x (+1,-0) · no PR')).toBe(true)
+    expect(spanOf(row, 'feat-x')?.color).toBe(WORKTREE)
+    expect(isWtMuted(row)).toBe(true)
+  })
+  test('the main working tree and the toggle show none', () => {
+    expect(textOf(draw('1a', 120)[0])).not.toContain('wt ')
+    const hidden = { ...DEFAULT_SETTINGS, showWorktree: false }
+    expect(textOf(draw('1a', 120, hidden, snap)[0])).toBe('◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ feat/x (+1,-0)  no PR')
+    expect(textOf(draw('1b', 120, hidden, snap)[1])).toBe('where   ~/.l/workspace  ·  feat/x (+1,-0)  ·  no PR')
+    expect(textOf(draw('1c', 100, hidden, snap)[1]).startsWith('Opus 5.5·med  ~/.l/workspace  feat/x (+1,-0)')).toBe(true)
+  })
+  test('overflow drops the diff stats before the worktree', () => {
+    const heavy = inWorktree({ insertions: 12_345, deletions: 6_789 })
+    expect(textOf(draw('1a', 80, DEFAULT_SETTINGS, heavy)[0])).toBe('◆ Opus 5.5  thinking medium  │  ~/.l/workspace  wt feat-x  ⎇ feat/x')
+    expect(textOf(draw('1a', 66, DEFAULT_SETTINGS, heavy)[0])).toBe('◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ feat/x')
+    expect(textOf(draw('1b', 61, DEFAULT_SETTINGS, heavy)[1])).toBe('where   ~/.l/workspace  ·  wt feat-x  ·  feat/x')
   })
 })
 
@@ -315,7 +354,7 @@ describe('extrapolated states', () => {
   test('rows stay inside the width at every breakpoint, with heavy figures', () => {
     const heavy = buildSnapshot({
       ...FIXTURE,
-      git: { root: '/repo', branch: 'main', diff: { insertions: 12_345, deletions: 6_789 } },
+      git: { root: '/repo', worktree: null, branch: 'main', diff: { insertions: 12_345, deletions: 6_789 } },
       pr: { label: '#12345', root: '/repo', branch: 'main' },
       usage: {
         tokens: 1_050_000,
