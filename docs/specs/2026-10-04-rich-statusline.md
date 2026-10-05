@@ -5,7 +5,7 @@ multi-row status layouts from the Claude Design artifact
 <https://claude.ai/artifact/6w9bGQT52i9wbbBiNt7dFT> (1a grouped rows, 1b labeled grid, 1c compact).
 
 ## Goals
-- Match the three designs exactly (glyphs, spacing, colours, wording) on a dark terminal at ≥102 cols (100-column rows after the engine's 2-column inset).
+- Match the three designs exactly (glyphs, spacing, colours, wording) on a dark terminal at ≥104 cols (100-column rows after the engine's 2+2-column padding).
 - All three layouts ship; default `1b` (Evan, 2026-10-05). The layout picker shows plain names (Grouped rows,
   Labeled grid, Compact); stored values stay `1a`/`1b`/`1c`. Chosen in the settings menu, persisted in `$.store`.
 - Add session cost (not in designs).
@@ -80,8 +80,8 @@ gives them no cells either. mcp is often 0: MCP tools loaded through tool search
 and only `kind === 'used'` rows are folded. Evan, 2026-10-05.
 Bottom rule: every layout (1a, 1b, 1c) ends in a full-width `─` row, gray + `dimColor`, built once in the shared
 layout picker; the engine hint line, when present, follows it directly. Evan, 2026-10-05.
-Full width is `viewport.columns − 2` (never below 0): the engine indents the PromptHint tree 2 columns, as it
-does its own hint line, and PromptHint carries no width prop. The width breakpoints count that same width.
+Full width is `viewport.columns − 4` (never below 0): the engine pads the PromptHint tree 2 columns each side (left as it
+does its own hint line), and PromptHint carries no width prop. The width breakpoints count that same width.
 
 **1a** — rows: `◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ <branch>  <PR>` /
 `ctx  <60-cell bar █ filled, · empty, ┊ at compact threshold>  14.0% 28k/200k` /
@@ -115,7 +115,7 @@ Cost placement: 1a end of identity row `$1.23` muted; 1b appended to `limits` ro
 - Amber at ≥70 %, red at ≥90 % — applies to context % and each limit (number + bar).
 - No rate limits (API key / gateway): limits row (1a/1b) hidden; 1c right side shows `ctx` only.
 - No context reading yet: `ctx —` with an all-empty bar.
-- Narrow terminals (by row width = viewport − 2 inset): <100 drop 1a/1b legend; <80 drop reset times and PR; <60 force 1c.
+- Narrow terminals (by row width = viewport − 4 padding): <100 drop 1a/1b legend; <80 drop reset times and PR; <60 force 1c.
 - Effort unknown (model without effort): `thinking …` omitted.
 - Light theme: not designed; v1 uses the same palette (documented limitation).
 

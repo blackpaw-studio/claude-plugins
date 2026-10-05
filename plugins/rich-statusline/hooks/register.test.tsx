@@ -30,7 +30,7 @@ describe('the status rows under the prompt', () => {
       '     ■ system 6.4k  ■ tools 8.2k  ■ mcp 3.0k  ■ memory 1.6k  ■ chat 8.8k  ┊ compact 85%',
       '5h   ▆·········  10%  ↻ 1h 11m  │  week  ▆▆▆▆▆▆▆▆··  75%  ↻ 1d 12h 11m',
       // The rule spans the hint row: 120 less the engine's 2-column inset.
-      '─'.repeat(118),
+      '─'.repeat(116),
       ENGINE_HINT,
     ])
     expect(rows[rows.length - 1]).toEqual({ type: 'Text', props: { dimColor: true }, children: [ENGINE_HINT] })
@@ -119,13 +119,13 @@ describe('the status rows under the prompt', () => {
   })
 
   for (const layout of ['1a', '1b', '1c']) {
-    test(`${layout}: every row fits the hint row, the viewport less the engine's 2-column inset`, async ($, on) => {
+    test(`${layout}: every row fits the hint row, the viewport less the engine's 2-column padding on each side`, async ($, on) => {
       const world = installWorld(on, { stored: { settings: { layout } }, branch: 'main' })
       await mountHint($)
       await world.clock.settle()
       const overflows: string[] = []
       for (const columns of [0, 1, 2, 3, 20, 40, 59, 60, 62, 80, 82, 100, 102, 110, 120, 160]) {
-        const inset = Math.max(0, columns - 2)
+        const inset = Math.max(0, columns - 4)
         // Our rows only: not the blank row above, not the engine's line below.
         const rows = rowsOfTree(await (await mountHint($, columns)).drawn()).map(textOfNode).slice(1, -1)
         const widths = rows.map(row => [...row].length)
@@ -143,10 +143,10 @@ describe('the status rows under the prompt', () => {
     const world = installWorld(on, { stored: GROUPED, branch: 'main' })
     await mountHint($)
     await world.clock.settle()
-    // Viewport 101 is a 99-column row: under 100, so the 1a legend goes.
+    // Viewport 103 is a 99-column row: under 100, so the 1a legend goes.
     const rowsAt = async (columns: number) => rowsOfTree(await (await mountHint($, columns)).drawn()).map(textOfNode)
-    expect((await rowsAt(102)).some(row => row.includes('■ system'))).toBe(true)
-    expect((await rowsAt(101)).some(row => row.includes('■ system'))).toBe(false)
+    expect((await rowsAt(104)).some(row => row.includes('■ system'))).toBe(true)
+    expect((await rowsAt(103)).some(row => row.includes('■ system'))).toBe(false)
   })
 
   test('reset countdowns tick with the clock', async ($, on) => {
@@ -265,7 +265,7 @@ describe('the settings menu in the band above the prompt', () => {
     const band = await mountBand($)
     await band.select({ key: 'layout', value: '1c' })
     const rows = rowsOfTree(await hint.drawn()).map(textOfNode)
-    expect(rows[1]).toBe('▀'.repeat(98))
+    expect(rows[1]).toBe('▀'.repeat(96))
     expect((await band.find({ type: 'Select', key: 'layout' }))?.props.value).toBe('1c')
     expect(world.stores[world.stores.length - 1]).toMatchObject({ key: 'settings', value: { layout: '1c' } })
     await band.press({ key: 'reset' })
@@ -296,6 +296,6 @@ describe('the settings menu in the band above the prompt', () => {
     const rows = rowsOfTree(await ui.drawn()).map(textOfNode)
     expect(rows[1]).toBe('model   Opus 5.5  ·  thinking medium')
     // The block ends in its rule; the engine's hint line follows it directly.
-    expect(rows.slice(-2)).toEqual(['─'.repeat(118), ENGINE_HINT])
+    expect(rows.slice(-2)).toEqual(['─'.repeat(116), ENGINE_HINT])
   })
 })
