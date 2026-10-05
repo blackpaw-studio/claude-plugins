@@ -6,9 +6,9 @@ multi-row status layouts from the Claude Design artifact
 
 ## Goals
 - Match the three designs exactly (glyphs, spacing, colours, wording) on a dark terminal at ≥100 cols.
-- All three layouts ship; default `1a`. Chosen in the settings panel, persisted in `$.store`.
+- All three layouts ship; default `1a`. Chosen in the settings menu, persisted in `$.store`.
 - Add session cost (not in designs).
-- Settings panel (keyboard-navigable Pane dialog).
+- Settings menu (keyboard-navigable, in the band above the prompt).
 - The permission-mode line is Claude Code's own and is left untouched; the designs' mode row
   (`▸▸ auto mode …`, `6 agents running`, 1c's `▸▸ auto ⇧⇥  6 agents`) is not drawn by this mod. Running
   background agents remain visible through the engine's own task pill on that line.
@@ -26,11 +26,16 @@ multi-row status layouts from the Claude Design artifact
   is a separate engine row *above* `PromptHint` (below any settings `statusLine`), so the actual order is
   prompt → engine mode line → our rows → engine hint text (when non-empty). We never touch the mode line.
 
-## Settings panel
-- Opened by `/rich-statusline` (or `/rich-statusline settings`). A keybinding action is not supported by the
-  plugin API (Button `action` accepts engine actions only); settings open via `/rich-statusline`. Pane with
-  `focus`, `closeOnEscape`; Tab/arrows walk
-  controls, Enter/Space activates, Esc closes.
+## Settings menu
+- Drawn in the band above the prompt (`ui.render` on `AbovePrompt`), not a Pane: in Evan's terminal (Claude
+  Code inside tmux under Leo) a placed Pane's render hook is never invoked (reproduced with a bare probe mod),
+  while the band draws, focuses and takes keys. Changed 2026-10-05, Evan-approved.
+- `/rich-statusline` (or `/rich-statusline settings`) toggles a `settingsOpen` state value; no output row, no
+  pane. A keybinding action is not supported by the plugin API (Button `action` accepts engine actions only).
+- While open (and no survey holds the band): a bold `rich-statusline settings` header with a dim
+  `ctrl+x tab to focus · ↑↓/tab move · enter change`, the controls two to a row from 72 `bodyColumns`, and a
+  footer with `Done` (hotkey `d`, closes the menu) and `Reset to defaults` (`r`). Taller than `maxRows`, the
+  engine scrolls it.
 - Controls: layout (1a/1b/1c `Select`), show cost, show PR, show legend (1a/1b), amber threshold, red
   threshold, git refresh seconds, PR refresh seconds. Changes apply live and persist in `$.store`.
 - Settings are a validated `Settings` value (pure `parseSettings(raw) → Settings` with defaults; invalid
@@ -96,7 +101,7 @@ Cost placement: 1a end of identity row `$1.23` muted; 1b appended to `limits` ro
 `plugins/rich-statusline/` in this repo (developed in the session dev-mods folder for hot reload, copied in when green):
 - `hooks/register.tsx` — wiring only.
 - `src/collect/*` — git, pr, usage collectors (each injectable for tests).
-- `src/settings.ts`, `src/settings-pane.tsx` — settings model and panel.
+- `src/settings.ts`, `src/settings-controls.ts`, `src/settings-band.tsx` — settings model and the band menu.
 - `src/snapshot.ts` — pure `buildSnapshot(inputs) → Snapshot`.
 - `src/bar.ts`, `src/format.ts` — bar allocation, `28k`, `1d 12h 11m`, path abbreviation.
 - `src/layouts/{1a,1b,1c}.tsx` — pure `Snapshot × width → tree`.

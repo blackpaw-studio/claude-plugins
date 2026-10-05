@@ -32,8 +32,14 @@ hide the settings status line, so leaving it in place draws both.
 ## Settings
 
 Run `/rich-statusline` (or `/rich-statusline settings`) to open the settings
-panel. Tab or the arrow keys move between controls, Enter picks, Esc closes.
-Changes apply immediately and are saved in the plugin's store.
+menu in the band above the prompt; run it again to close it. Press
+**ctrl+x tab** to focus the menu, then Tab or the arrow keys move between
+controls and Enter changes one. **Done** (`d`) closes the menu, **Reset to
+defaults** (`r`) restores the defaults. Changes apply immediately and are
+saved in the plugin's store.
+
+The menu lives in the band rather than a side pane because panes do not draw
+in some terminal setups (Claude Code inside tmux, for one).
 
 | Setting | Default | |
 |---|---|---|
