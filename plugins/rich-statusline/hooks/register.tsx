@@ -5,7 +5,7 @@ import type { Register } from 'claude-code'
 import { changeOnly, isSame, updateOnly } from '../src/change-only'
 import { withStep } from '../src/identity'
 import { toUsage } from '../src/collect/usage'
-import { DEFAULT_COLUMNS, statusLines, statusTree } from '../src/render'
+import { DEFAULT_COLUMNS, layoutColumns, statusLines, statusTree } from '../src/render'
 import { createRuntime } from '../src/runtime'
 import { DEFAULT_SETTINGS, parseSettings, type Settings } from '../src/settings'
 import { applyPick } from '../src/settings-controls'
@@ -79,7 +79,7 @@ export const register: Register = on => {
     // Until the stored settings load, the engine's line alone: no flash of 1a.
     if (settings === null) return engine
     const inputs = { settings: parseSettings(settings), git, pr, identity, usage, breakdown, now }
-    return statusTree($.ui.resolve(e), statusLines(inputs, e.viewport?.columns ?? DEFAULT_COLUMNS), engine)
+    return statusTree($.ui.resolve(e), statusLines(inputs, layoutColumns(e.viewport?.columns ?? DEFAULT_COLUMNS)), engine)
   })
 
   // A new or resumed session: the cwd, branch and effort may all have moved.

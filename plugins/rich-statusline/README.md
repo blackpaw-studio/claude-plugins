@@ -77,6 +77,8 @@ bind only the engine's own keybinding actions, not a plugin-defined one.
 
 - **Terminal only.** On desktop, VS Code and mobile the hint line is left as
   the engine draws it.
+- **Width:** the rows fill the terminal less the 2 columns the engine indents
+  the hint line by, and the breakpoints below count that same width.
 - **Narrow terminals:** the context bar shrinks to fit; under 100 columns the
   legend goes; under 80 the reset countdowns and the PR go; under 60 the
   compact layout is used whatever is chosen. When a row still overflows, 1b's

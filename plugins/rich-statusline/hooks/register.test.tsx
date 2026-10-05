@@ -29,7 +29,8 @@ describe('the status rows under the prompt', () => {
       `ctx  ${CTX_1A}  14.0% 28k/200k`,
       '     ■ system 6.4k  ■ tools 8.2k  ■ mcp 3.0k  ■ memory 1.6k  ■ chat 8.8k  ┊ compact 85%',
       '5h   ▆·········  10%  ↻ 1h 11m  │  week  ▆▆▆▆▆▆▆▆··  75%  ↻ 1d 12h 11m',
-      '─'.repeat(120),
+      // The rule spans the hint row: 120 less the engine's 2-column inset.
+      '─'.repeat(118),
       ENGINE_HINT,
     ])
     expect(rows[rows.length - 1]).toEqual({ type: 'Text', props: { dimColor: true }, children: [ENGINE_HINT] })
@@ -115,6 +116,37 @@ describe('the status rows under the prompt', () => {
     expect(world.usageCalls()).toBe(before)
     await world.clock.advance(2_000)
     expect(world.usageCalls()).toBe(before + 1)
+  })
+
+  for (const layout of ['1a', '1b', '1c']) {
+    test(`${layout}: every row fits the hint row, the viewport less the engine's 2-column inset`, async ($, on) => {
+      const world = installWorld(on, { stored: { settings: { layout } }, branch: 'main' })
+      await mountHint($)
+      await world.clock.settle()
+      const overflows: string[] = []
+      for (const columns of [0, 1, 2, 3, 20, 40, 59, 60, 62, 80, 82, 100, 102, 110, 120, 160]) {
+        const inset = Math.max(0, columns - 2)
+        // Our rows only: not the blank row above, not the engine's line below.
+        const rows = rowsOfTree(await (await mountHint($, columns)).drawn()).map(textOfNode).slice(1, -1)
+        const widths = rows.map(row => [...row].length)
+        // Under 20 columns 1c's figures alone outrun the row; the Text cuts them.
+        const tooWide = columns < 20 ? [] : widths.filter(width => width > inset)
+        if (tooWide.length > 0) overflows.push(`at ${columns}: ${tooWide.join(',')}`)
+        // The rule still spans the whole inset row.
+        if (widths[widths.length - 1] !== inset) overflows.push(`rule at ${columns}: ${widths[widths.length - 1]}`)
+      }
+      expect(overflows).toEqual([])
+    })
+  }
+
+  test('the width breakpoints read the inset width, not the viewport', async ($, on) => {
+    const world = installWorld(on, { stored: GROUPED, branch: 'main' })
+    await mountHint($)
+    await world.clock.settle()
+    // Viewport 101 is a 99-column row: under 100, so the 1a legend goes.
+    const rowsAt = async (columns: number) => rowsOfTree(await (await mountHint($, columns)).drawn()).map(textOfNode)
+    expect((await rowsAt(102)).some(row => row.includes('■ system'))).toBe(true)
+    expect((await rowsAt(101)).some(row => row.includes('■ system'))).toBe(false)
   })
 
   test('reset countdowns tick with the clock', async ($, on) => {
@@ -216,7 +248,7 @@ describe('the settings menu in the band above the prompt', () => {
     const band = await mountBand($)
     await band.select({ key: 'layout', value: '1c' })
     const rows = rowsOfTree(await hint.drawn()).map(textOfNode)
-    expect(rows[1]).toBe('▀'.repeat(100))
+    expect(rows[1]).toBe('▀'.repeat(98))
     expect((await band.find({ type: 'Select', key: 'layout' }))?.props.value).toBe('1c')
     expect(world.stores[world.stores.length - 1]).toMatchObject({ key: 'settings', value: { layout: '1c' } })
     await band.press({ key: 'reset' })
@@ -247,6 +279,6 @@ describe('the settings menu in the band above the prompt', () => {
     const rows = rowsOfTree(await ui.drawn()).map(textOfNode)
     expect(rows[1]).toBe('model   Opus 5.5  ·  thinking medium')
     // The block ends in its rule; the engine's hint line follows it directly.
-    expect(rows.slice(-2)).toEqual(['─'.repeat(120), ENGINE_HINT])
+    expect(rows.slice(-2)).toEqual(['─'.repeat(118), ENGINE_HINT])
   })
 })

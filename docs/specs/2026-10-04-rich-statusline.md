@@ -80,6 +80,8 @@ gives them no cells either. mcp is often 0: MCP tools loaded through tool search
 and only `kind === 'used'` rows are folded. Evan, 2026-10-05.
 Bottom rule: every layout (1a, 1b, 1c) ends in a full-width `─` row, gray + `dimColor`, built once in the shared
 layout picker; the engine hint line, when present, follows it directly. Evan, 2026-10-05.
+Full width is `viewport.columns − 2` (never below 0): the engine indents the PromptHint tree 2 columns, as it
+does its own hint line, and PromptHint carries no width prop. The width breakpoints count that same width.
 
 **1a** — rows: `◆ Opus 5.5  thinking medium  │  ~/.l/workspace  ⎇ <branch>  <PR>` /
 `ctx  <60-cell bar █ filled, · empty, ┊ at compact threshold>  14.0% 28k/200k` /

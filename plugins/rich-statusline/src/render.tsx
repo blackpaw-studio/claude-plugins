@@ -6,6 +6,15 @@ import { buildSnapshot, type SnapshotInputs } from './snapshot'
 import { viewOptions } from './view-options'
 
 export const DEFAULT_COLUMNS = 120
+/**
+ * Columns the engine indents the PromptHint tree from the left (its own hint
+ * line sits at the same inset). PromptHint carries no width prop, so a row
+ * sized to `viewport.columns` runs this far past the edge and is cut with `…`.
+ */
+export const PROMPT_HINT_INSET = 2
+
+/** The width our rows lay out in at a viewport this wide: the inset taken off, never below 0. Pure. */
+export const layoutColumns = (viewportColumns: number): number => Math.max(0, viewportColumns - PROMPT_HINT_INSET)
 
 export type StatusElements = Pick<Elements['terminal'], 'Box' | 'Text'>
 
