@@ -46,6 +46,14 @@ describe('wholeCells', () => {
     expect(wholeCells(75, 10)).toEqual({ full: 8, empty: 2 })
     expect(wholeCells(74, 10)).toEqual({ full: 7, empty: 3 })
   })
+  test('any use shows a cell and anything short of full leaves one empty', () => {
+    expect(wholeCells(1, 10)).toEqual({ full: 1, empty: 9 })
+    expect(wholeCells(0.2, 10)).toEqual({ full: 1, empty: 9 })
+    expect(wholeCells(99, 10)).toEqual({ full: 9, empty: 1 })
+    expect(wholeCells(99.9, 10)).toEqual({ full: 9, empty: 1 })
+    expect(wholeCells(0, 10)).toEqual({ full: 0, empty: 10 })
+    expect(wholeCells(100, 10)).toEqual({ full: 10, empty: 0 })
+  })
   test('clamps to the bar', () => {
     expect(wholeCells(130, 10)).toEqual({ full: 10, empty: 0 })
     expect(wholeCells(-3, 10)).toEqual({ full: 0, empty: 10 })

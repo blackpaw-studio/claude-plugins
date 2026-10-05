@@ -50,9 +50,14 @@ export const markerIndex = (fraction: number, width: number): number =>
 
 export type WholeCells = { full: number; empty: number }
 
-/** A percentage as whole cells, rounded to the nearest. */
+/**
+ * A percentage as whole cells, rounded to the nearest, but never hiding a
+ * difference: any use shows a cell, anything short of 100% leaves one empty.
+ */
 export const wholeCells = (percent: number, width: number): WholeCells => {
   const clamped = Math.min(100, Math.max(0, percent))
-  const full = Math.round((clamped / 100) * width)
-  return { full, empty: width - full }
+  const rounded = Math.round((clamped / 100) * width)
+  const atLeastOne = clamped > 0 ? Math.max(1, rounded) : rounded
+  const full = clamped < 100 ? Math.min(width - 1, atLeastOne) : atLeastOne
+  return { full: Math.max(0, full), empty: width - Math.max(0, full) }
 }
