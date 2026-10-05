@@ -42,6 +42,7 @@ multi-row status layouts from the Claude Design artifact
 | effort | `turn.step` `e.effort`; before first step, `settings.read` `effortLevel`; else omitted | turn.step |
 | cwd (abbreviated `~/.l/workspace` style: home→`~`, intermediate segments to first char, last kept) | `$.session.cwd()` | session.start, tool.call Bash cd |
 | branch | `git rev-parse --abbrev-ref HEAD` via `$.process.run`; `no git` when not a repo | 10 s timer, cached |
+| diff stats | `git diff HEAD --shortstat` (uncommitted insertions/deletions, same as ccstatusline's git-changes) → `(+12,-3)`; omitted when not a repo | with branch timer |
 | PR | `gh pr view --json number,state` → `#123`; `no PR` when none or gh missing/unauthed | 60 s timer, cached, only when branch changes or timer fires |
 | context tokens / window / % | `session.measure` `context` | event-driven |
 | categories | `$.session.usage({ breakdown: 'summary' })`, folded into 5 (see below) | on `context` change, debounced 2 s |
@@ -73,6 +74,8 @@ with the limits right-aligned `5h 10% ↻1h11m   wk 75% ↻1d12h` (left side emp
 
 Bar math: cells = round(tokens / window × width) per category, largest-remainder so segments sum to the
 total-filled cell count; compact marker at round(threshold × width). Window = `rawMaxTokens` (scales for 1M).
+
+Diff stats placement (not in designs): right after the branch — 1a `⎇ main (+12,-3)`, 1b `where` row `· main (+12,-3)`, 1c `main (+12,-3)`; `+N` in `#8dca80`, `-N` in `#f97770`, parens muted. Toggle in settings (default on).
 
 Cost placement: 1a end of identity row `$1.23` muted; 1b appended to `limits` row `  ·  $1.23`; 1c before `5h`.
 
