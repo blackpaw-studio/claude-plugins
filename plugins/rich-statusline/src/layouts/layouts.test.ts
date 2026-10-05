@@ -109,7 +109,7 @@ describe('1b labeled grid, design fixture at 120 columns', () => {
     expect(rowsOf(lines)).toEqual([
       'model   Opus 5.5  ·  thinking medium',
       'where   ~/.l/workspace  ·  no git  ·  no PR',
-      `context ${'▆'.repeat(9)}${'░'.repeat(42)}┊${'░'.repeat(8)}  14.0%`,
+      `context ${'▆'.repeat(9)}${'░'.repeat(51)}  14.0%`,
       '        sys 6.4k  tools 8.2k  mcp 3.0k  mem 1.6k  chat 8.8k  · 172k free  · compact 85%',
       'limits  session 10% resets 1h 11m    weekly 75% resets 1d 12h 11m',
       '─'.repeat(120),
@@ -118,8 +118,8 @@ describe('1b labeled grid, design fixture at 120 columns', () => {
   test('colours', () => {
     expect(runsOf(lines[0])).toEqual([`model   @${C.dim}`, `Opus 5.5@${C.mcp}`, `  ·  thinking @${C.muted}`, `medium@${C.text}`])
     expect(runsOf(lines[1])).toEqual([`where   @${C.dim}`, `~/.l/workspace@${C.system}`, `  ·  no git  ·  no PR@${C.muted}`])
-    expect(toneOf(spanOf(lines[2], '░'.repeat(42)))).toBe(C.empty)
-    expect(toneOf(spanOf(lines[2], '┊'))).toBe(C.muted)
+    expect(toneOf(spanOf(lines[2], '░'.repeat(51)))).toBe(C.empty)
+    expect(textOf(lines[2])).not.toContain('┊')
     expect(runsOf(lines[3])).toEqual([
       `sys@${C.system}`,
       ` 6.4k  @${C.muted}`,
@@ -300,9 +300,9 @@ describe('a 1M window with a smaller compaction window', () => {
     expect(textOf(lines[2]).endsWith('┊ compact 39%')).toBe(true)
     const grid = draw('1b', 120, DEFAULT_SETTINGS, snap)
     expect(textOf(grid[3]).endsWith('· 782k free  · compact 39%')).toBe(true)
-    expect([...textOf(grid[2]).slice(8, 68)].indexOf('┊')).toBe(Math.round(0.386 * 60))
+    expect(textOf(grid[2])).not.toContain('┊')
   })
-  test('auto-compact off: no 1b marker or note', () => {
+  test('auto-compact off: no 1b compact note', () => {
     const off = buildSnapshot({ ...FIXTURE, breakdown: { ...FIXTURE.breakdown!, compactThreshold: undefined } })
     const grid = rowsOf(draw('1b', 120, DEFAULT_SETTINGS, off))
     expect(grid[2]).toBe(`context ${'▆'.repeat(9)}${'░'.repeat(51)}  14.0%`)

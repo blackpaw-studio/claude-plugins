@@ -61,7 +61,7 @@ const whereRow = (s: Snapshot, o: ViewOptions): Line => {
 
 const contextRow = (s: Snapshot, o: ViewOptions): Line => {
   const width = clamp(o.columns - CTX_ROW_CHROME, MIN_BAR_WIDTH, BAR_WIDTH)
-  const bar = categoryBar(s, width, { fill: FILLED_CELL, empty: '░', emptyColor: COLORS.empty, marker: '┊' })
+  const bar = categoryBar(s, width, { fill: FILLED_CELL, empty: '░', emptyColor: COLORS.empty })
   return [label('context'), ...bar, span(FIGURE_GAP), contextFigure(s, 1)]
 }
 
