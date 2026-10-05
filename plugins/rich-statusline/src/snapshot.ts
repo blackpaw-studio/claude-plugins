@@ -65,7 +65,8 @@ const limitView = (
   const limit = limits.find(entry => entry.kind === kind)
   if (limit === undefined) return undefined
   const view = { percent: limit.percentUsed, level: levelFor(limit.percentUsed, thresholds) }
-  return limit.resetsAt === undefined ? view : { ...view, resetInMs: Math.max(0, limit.resetsAt - now) }
+  const isTimed = limit.resetsAt !== undefined && now > 0
+  return isTimed ? { ...view, resetInMs: Math.max(0, (limit.resetsAt ?? now) - now) } : view
 }
 
 const prFor = (git: RichStatuslineGit | null, pr: RichStatuslinePr | null): string | null =>

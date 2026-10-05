@@ -53,3 +53,8 @@ describe('buildSnapshot', () => {
     expect(snapshot.cost).toBe(2)
   })
 })
+
+test('reset countdowns wait for the first clock reading', () => {
+  const snapshot = buildSnapshot({ ...FIXTURE, now: 0 })
+  expect(snapshot.fiveHour).toEqual({ percent: 10, level: 'ok' })
+})

@@ -1,3 +1,118 @@
+// rich-statusline: wiring only. Collectors, layouts and the panel live in src/.
+// `$` is only ever spelled at its call sites here; src/ gets closures (Ports).
+import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
+import { withStep } from '../src/identity'
+import { toUsage } from '../src/collect/usage'
+import { DEFAULT_COLUMNS, statusLines, statusTree } from '../src/render'
+import { createRuntime } from '../src/runtime'
+import { DEFAULT_SETTINGS, parseSettings, type Settings } from '../src/settings'
+import { applyPick } from '../src/settings-controls'
+import { COMMAND, COMMAND_NAME, opensPanel, PANE, PANE_ID, settingsPane } from '../src/settings-pane'
 
-export const register: Register = () => {}
+const STORE_KEY = 'settings'
+
+// The $.state values (contract: types/index.d.ts). Written here, beside their
+// readers, so the engine's scan can read every reference.
+const settingsAtom = atom({ plugin: 'rich-statusline', key: 'settings' } as const, null)
+const gitAtom = atom({ plugin: 'rich-statusline', key: 'git' } as const, null)
+const prAtom = atom({ plugin: 'rich-statusline', key: 'pr' } as const, null)
+const identityAtom = atom({ plugin: 'rich-statusline', key: 'identity' } as const, null)
+const usageAtom = atom({ plugin: 'rich-statusline', key: 'usage' } as const, null)
+const breakdownAtom = atom({ plugin: 'rich-statusline', key: 'breakdown' } as const, null)
+const nowAtom = atom({ plugin: 'rich-statusline', key: 'now' } as const, 0)
+
+const isRetimed = (a: Settings, b: Settings): boolean =>
+  a.gitRefreshSeconds !== b.gitRefreshSeconds || a.prRefreshSeconds !== b.prRefreshSeconds
+
+const describeError = (error: unknown): string => (error instanceof Error ? error.message : String(error))
+
+export const register: Register = on => {
+  const runtime = createRuntime()
+
+  on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
+    if (e.surface !== 'terminal') return next(e)
+    if (!runtime.isAttached()) {
+      // Collectors start from a timer: a render hook itself never writes state.
+      runtime.attach({
+        run: (argv, init) => $.process.run(argv, init),
+        model: () => $.session.model(),
+        cwd: () => $.session.cwd(),
+        home: () => $.env.get('HOME'),
+        configuredEffort: async () => (await $.settings.read()).effortLevel,
+        usage: () => $.session.usage({ breakdown: 'summary' }),
+        now: () => $.clock.now(),
+        every: (ms, fn) => $.clock.every(ms, fn),
+        after: (ms, fn) => $.clock.after(ms, fn),
+        storedSettings: () => $.store.get(STORE_KEY),
+        registerCommand: () => $.command.register(COMMAND),
+        log: text => $.ui.log(text, { to: 'debug' }),
+        git: { get: () => read($, gitAtom), set: value => update($, gitAtom, () => value) },
+        pr: { set: value => update($, prAtom, () => value) },
+        identity: { get: () => read($, identityAtom), update: change => update($, identityAtom, change) },
+        usageState: { set: value => update($, usageAtom, () => value) },
+        breakdown: { set: value => update($, breakdownAtom, () => value) },
+        clockState: { set: value => update($, nowAtom, () => value) },
+        settings: { set: value => update($, settingsAtom, () => value) },
+      })
+    }
+    const [engine, settings, git, pr, identity, usage, breakdown, now] = await Promise.all([
+      next(e),
+      read($, settingsAtom),
+      read($, gitAtom),
+      read($, prAtom),
+      read($, identityAtom),
+      read($, usageAtom),
+      read($, breakdownAtom),
+      read($, nowAtom),
+    ])
+    const inputs = { settings: parseSettings(settings), git, pr, identity, usage, breakdown, now }
+    return statusTree($.ui.resolve(e), statusLines(inputs, e.viewport?.columns ?? DEFAULT_COLUMNS), engine)
+  })
+
+  on('session.measure', async ($, e, next) => {
+    await update($, usageAtom, () => toUsage(e))
+    if (e.changed.includes('context')) runtime.contextChanged()
+    return next(e)
+  })
+
+  on('turn.step', async function* ($, e, next) {
+    if (e.agentId === undefined) {
+      update($, identityAtom, held => withStep(held, e)).catch(error => $.ui.log(`rich-statusline: step: ${describeError(error)}`, { to: 'debug' }))
+    }
+    return yield* next(e)
+  })
+
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    const ran = await next(e)
+    runtime.cwdMaybeChanged().catch(error => $.ui.log(`rich-statusline: cwd: ${describeError(error)}`, { to: 'debug' }))
+    return ran
+  })
+
+  on('command.run', { command: 'rich-statusline' }, async ($, e) => {
+    if (!opensPanel(e.args)) return { text: `Usage: /${COMMAND_NAME} [settings]` }
+    const opened = await $.ui.open(PANE)
+    return opened.isPlaced ? {} : { text: `rich-statusline: the settings panel is waiting for room (${opened.reason}).` }
+  })
+
+  on('ui.render', { component: 'Pane', requestId: 'rich-statusline-settings' }, async ($, e) => {
+    const settings = parseSettings(await read($, settingsAtom))
+    if (e.surface === 'mobile') {
+      const { Text } = $.ui.resolve(e)
+      return <Text dimColor>Open /{COMMAND_NAME} in a terminal to change these settings.</Text>
+    }
+    const apply = async (change: (held: Settings) => unknown): Promise<void> => {
+      const before = parseSettings(await read($, settingsAtom))
+      const saved = await update($, settingsAtom, held => parseSettings(change(parseSettings(held))))
+      const after = parseSettings(saved)
+      await $.store.set(STORE_KEY, after)
+      if (isRetimed(before, after)) runtime.retime(after)
+    }
+    const fail = (error: unknown) => $.ui.log(`rich-statusline: settings: ${describeError(error)}`, { to: 'debug' })
+    return settingsPane($.ui.resolve(e), settings, {
+      onPick: (key, value) => void apply(held => applyPick(held, key, value)).catch(fail),
+      onReset: () => void apply(() => DEFAULT_SETTINGS).catch(fail),
+      onClose: () => void $.ui.close({ id: PANE_ID }).catch(fail),
+    })
+  })
+}
