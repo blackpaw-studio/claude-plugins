@@ -1,7 +1,8 @@
 // The snapshot as lines of spans at a width and height: the run view's
 // look (glyphs, indents, right-aligned durations) and its fit to the pane. Pure.
+import { etaLabel } from './eta'
 import { formatDuration, glyphOf, type RowLevel, type RowStatus, truncate, cellsOf } from './format'
-import { BLANK, justify, type Line, span, type Span } from './line'
+import { BLANK, justify, type Line, span, type Span, widthOf } from './line'
 import type { Card, Row, Snapshot } from './snapshot'
 import { rowsAt, type Window, WINDOWS } from './window'
 
@@ -24,17 +25,25 @@ const glyphSpan = (status: RowStatus, level: RowLevel, frame: number): Span => {
 }
 
 /** A row: indent, glyph, the name cut to fit, the duration (if any) at the right edge. */
-const rowLine = (depth: number, glyph: Span, name: (room: number) => Line, duration: Span | null, width: number): Line => {
+const rowLine = (depth: number, glyph: Span, name: (room: number) => Line, right: Line, width: number): Line => {
   const lead = INDENT.repeat(depth)
-  const durationCells = duration === null ? 0 : cellsOf(duration.text) + 1
-  const room = Math.max(1, width - cellsOf(lead) - 2 - durationCells)
+  const rightCells = right.length === 0 ? 0 : widthOf(right) + 1
+  const room = Math.max(1, width - cellsOf(lead) - 2 - rightCells)
   const left: Line = [...(lead === '' ? [] : [span(lead)]), glyph, span(' '), ...name(room)]
-  return justify(left, duration === null ? [] : [duration], width)
+  return justify(left, right, width)
 }
 
-const durationSpan = (ms: number | null, isDim: boolean): Span | null => {
+const durationLine = (ms: number | null, isDim: boolean): Line => {
   const text = formatDuration(ms)
-  return text === '' ? null : span(text, isDim ? { dim: true } : {})
+  return text === '' ? [] : [span(text, isDim ? { dim: true } : {})]
+}
+
+/** The elapsed time, then ` · ~2m left` when the card has an estimate and the name still fits beside both. */
+const cardTimes = (card: Card, width: number): Line => {
+  const elapsed = durationLine(card.durationMs, false)
+  if (elapsed.length === 0 || card.remainingMs === undefined) return elapsed
+  const withEta: Line = [...elapsed, span(` · ${etaLabel(card.remainingMs)}`, { dim: true })]
+  return 2 + cellsOf(card.name) + 1 + widthOf(withEta) <= width ? withEta : elapsed
 }
 
 /** `CI #482 · push`, the event dropped first when the row is tight; the name opens the run. */
@@ -55,12 +64,12 @@ const jobLine = (row: Row, width: number, frame: number): Line =>
     row.depth + 1,
     glyphSpan(row.status, row.depth === 0 ? 'job' : 'step', frame),
     room => [span(truncate(row.name, room), isQuiet(row) ? { dim: true } : {})],
-    durationSpan(row.durationMs, true),
+    durationLine(row.durationMs, true),
     width,
   )
 
 const cardLines = (card: Card, window: Window, width: number, frame: number): Line[] => [
-  rowLine(0, glyphSpan(card.status, 'run', frame), runName(card), durationSpan(card.durationMs, false), width),
+  rowLine(0, glyphSpan(card.status, 'run', frame), runName(card), cardTimes(card, width), width),
   ...(card.subtitle === '' ? [] : [[span(INDENT), span(truncate(card.subtitle, width - cellsOf(INDENT)), { dim: true })]]),
   ...rowsAt(card.jobs, window).map(row => jobLine(row, width, frame)),
 ]

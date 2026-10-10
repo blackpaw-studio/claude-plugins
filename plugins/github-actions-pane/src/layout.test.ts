@@ -155,3 +155,33 @@ describe('layoutPane', () => {
     ])
   })
 })
+
+describe('time remaining on a card', () => {
+  const withEta = (remainingMs: number): Card => ({ ...CI, remainingMs })
+  const headLine = (card: Card, width: number): string => texts(layoutPane(snapshotOf([card]), { width, rows: 40, frame: 0 }))[2] ?? ''
+  const gap = (n: number): string => ' '.repeat(n)
+
+  test('follows the elapsed time at the right edge, set off by a dot', () => {
+    expect(headLine(withEta(108 * SECOND), 43)).toBe(`◐ CI #482 · push${gap(10)}1m 12s · ~2m left`)
+  })
+
+  test('says <1m left and over est. at the ends', () => {
+    expect(headLine(withEta(20 * SECOND), 43)).toContain('1m 12s · <1m left')
+    expect(headLine(withEta(-5 * SECOND), 43)).toContain('1m 12s · over est.')
+  })
+
+  test('a card without an estimate shows only the elapsed time', () => {
+    expect(headLine(CI, 43)).toBe(`◐ CI #482 · push${gap(21)}1m 12s`)
+  })
+
+  test('dropped first, elapsed kept, when title + elapsed + estimate do not fit', () => {
+    expect(headLine(withEta(108 * SECOND), 27)).toBe('◐ CI #482 1m 12s · ~2m left')
+    expect(headLine(withEta(108 * SECOND), 26)).toBe(`◐ CI #482 · push${gap(4)}1m 12s`)
+    expect(headLine(withEta(108 * SECOND), 16)).toBe('◐ CI #482 1m 12s')
+  })
+
+  test('only the run line shows one, not its jobs and steps', () => {
+    const lines = texts(layoutPane(snapshotOf([withEta(108 * SECOND)]), ROOMY))
+    expect(lines.filter(line => line.includes('left'))).toHaveLength(1)
+  })
+})
