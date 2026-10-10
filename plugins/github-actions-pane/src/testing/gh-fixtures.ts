@@ -18,6 +18,7 @@ export const RUN_LIST = `[
     "status": "queued",
     "updatedAt": "2026-10-10T02:03:35Z",
     "url": "https://github.com/cli/cli/actions/runs/38015447143",
+    "workflowDatabaseId": 323696448,
     "workflowName": "Dependabot PR Triage (skills-driven)"
   },
   {
@@ -33,6 +34,7 @@ export const RUN_LIST = `[
     "status": "completed",
     "updatedAt": "2026-10-10T01:41:21Z",
     "url": "https://github.com/cli/cli/actions/runs/38014126493",
+    "workflowDatabaseId": 235328803,
     "workflowName": "Triage Scheduled Tasks"
   },
   {
@@ -48,6 +50,7 @@ export const RUN_LIST = `[
     "status": "completed",
     "updatedAt": "2026-10-10T01:22:34Z",
     "url": "https://github.com/cli/cli/actions/runs/38012701370",
+    "workflowDatabaseId": 323696448,
     "workflowName": "Dependabot PR Triage (skills-driven)"
   },
   {
@@ -63,6 +66,7 @@ export const RUN_LIST = `[
     "status": "completed",
     "updatedAt": "2026-10-10T01:18:28Z",
     "url": "https://github.com/cli/cli/actions/runs/38012637328",
+    "workflowDatabaseId": 319663245,
     "workflowName": "Agentic Maintenance"
   },
   {
@@ -78,6 +82,7 @@ export const RUN_LIST = `[
     "status": "completed",
     "updatedAt": "2026-10-10T01:00:41Z",
     "url": "https://github.com/cli/cli/actions/runs/38011438812",
+    "workflowDatabaseId": 235328803,
     "workflowName": "Triage Scheduled Tasks"
   },
   {
@@ -93,6 +98,7 @@ export const RUN_LIST = `[
     "status": "completed",
     "updatedAt": "2026-10-10T00:58:33Z",
     "url": "https://github.com/cli/cli/actions/runs/38011291519",
+    "workflowDatabaseId": 235328803,
     "workflowName": "Triage Scheduled Tasks"
   }
 ]`
@@ -480,3 +486,67 @@ export const JOBS_IN_PROGRESS = `{
 export const JOBS_NONE = `{
   "jobs": []
 }`
+
+/** `gh run list --workflow <workflowDatabaseId> --status success --limit 10 --json startedAt,createdAt,updatedAt,conclusion`: the last ten successes of one workflow. */
+export const RUN_HISTORY = `[
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-10T22:20:18Z",
+    "startedAt": "2026-10-10T22:20:18Z",
+    "updatedAt": "2026-10-10T22:20:28Z"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-10T21:19:14Z",
+    "startedAt": "2026-10-10T21:19:14Z",
+    "updatedAt": "2026-10-10T21:19:26Z"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-10T20:51:17Z",
+    "startedAt": "2026-10-10T20:51:17Z",
+    "updatedAt": "2026-10-10T20:51:25Z"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-10T20:21:08Z",
+    "startedAt": "2026-10-10T20:21:08Z",
+    "updatedAt": "2026-10-10T20:21:18Z"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-10T19:17:23Z",
+    "startedAt": "2026-10-10T19:17:23Z",
+    "updatedAt": "2026-10-10T19:17:35Z"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-10T18:25:49Z",
+    "startedAt": "2026-10-10T18:25:49Z",
+    "updatedAt": "2026-10-10T18:26:01Z"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-10T18:01:39Z",
+    "startedAt": "2026-10-10T18:01:39Z",
+    "updatedAt": "2026-10-10T18:01:46Z"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-10T17:18:20Z",
+    "startedAt": "2026-10-10T17:18:20Z",
+    "updatedAt": "2026-10-10T17:18:31Z"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-10T16:22:36Z",
+    "startedAt": "2026-10-10T16:22:36Z",
+    "updatedAt": "2026-10-10T16:22:46Z"
+  },
+  {
+    "conclusion": "success",
+    "createdAt": "2026-10-10T15:19:54Z",
+    "startedAt": "2026-10-10T15:19:54Z",
+    "updatedAt": "2026-10-10T15:20:02Z"
+  }
+]`

@@ -38,6 +38,7 @@ out = [
 ]
 for name, doc, data in [
     ("RUN_LIST", "`gh run list --limit 6 --json …`: newest first.", load("list")),
+    ("RUN_HISTORY", "`gh run list --workflow <workflowDatabaseId> --status success --limit 10 --json startedAt,createdAt,updatedAt,conclusion`: the last ten successes of one workflow.", load("history")),
     ("JOBS_LINT_FAILED", "`gh run view --json jobs` of a completed run: one job passed, one failed at a step.", load("failed")),
     ("JOBS_IN_PROGRESS", "`gh run view --json jobs` mid-run: two jobs done, one in progress with pending steps.", inprog),
     ("JOBS_NONE", "`gh run view --json jobs` of a run that failed before any job started.", load("nojobs")),
