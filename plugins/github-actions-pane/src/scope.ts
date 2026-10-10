@@ -11,11 +11,15 @@ export const shortSha = (sha: string): string => sha.slice(0, SHORT_SHA)
 export const effectiveScope = (scope: ActionsScope, context: ActionsContext): ActionsScope =>
   scope === 'branch' && context.branch === null ? 'commit' : scope
 
+/** A tag-push run is named after the tag, not the branch: the branch's runs, plus any run on HEAD's commit. */
+const branchFilter = (branch: string, sha: string | null): ListFilter =>
+  sha === null ? { kind: 'branch', branch } : { kind: 'any', of: [{ kind: 'branch', branch }, { kind: 'commit', sha }] }
+
 /** How gh filters the list; null when the scope has nothing to match yet (no commit). */
 export const listFilter = (scope: ActionsScope, context: ActionsContext): ListFilter | null => {
   const effective = effectiveScope(scope, context)
   if (effective === 'repo') return { kind: 'repo' }
-  if (effective === 'branch' && context.branch !== null) return { kind: 'branch', branch: context.branch }
+  if (effective === 'branch' && context.branch !== null) return branchFilter(context.branch, context.sha)
   return context.sha === null ? null : { kind: 'commit', sha: context.sha }
 }
 
@@ -29,6 +33,6 @@ export const scopeLabel = (scope: ActionsScope, context: ActionsContext): string
 export const isInScope = (run: ActionsRun, scope: ActionsScope, context: ActionsContext): boolean => {
   const effective = effectiveScope(scope, context)
   if (effective === 'repo') return true
-  if (effective === 'branch') return run.branch === context.branch
+  if (effective === 'branch') return run.branch === context.branch || (context.sha !== null && run.sha === context.sha)
   return context.sha !== null && run.sha === context.sha
 }

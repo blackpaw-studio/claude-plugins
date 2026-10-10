@@ -18,7 +18,11 @@ describe('effectiveScope', () => {
 
 describe('listFilter', () => {
   test('per scope; a commit scope with no HEAD yet lists nothing', () => {
-    expect(listFilter('branch', ON_MAIN)).toEqual({ kind: 'branch', branch: 'main' })
+    expect(listFilter('branch', ON_MAIN)).toEqual({
+      kind: 'any',
+      of: [{ kind: 'branch', branch: 'main' }, { kind: 'commit', sha: SHA }],
+    })
+    expect(listFilter('branch', { ...ON_MAIN, sha: null })).toEqual({ kind: 'branch', branch: 'main' })
     expect(listFilter('branch', DETACHED)).toEqual({ kind: 'commit', sha: SHA })
     expect(listFilter('commit', ON_MAIN)).toEqual({ kind: 'commit', sha: SHA })
     expect(listFilter('repo', ON_MAIN)).toEqual({ kind: 'repo' })
@@ -43,5 +47,17 @@ describe('isInScope', () => {
     expect([isInScope(run, 'commit', ON_MAIN), isInScope(other, 'commit', ON_MAIN)]).toEqual([true, false])
     expect(isInScope(other, 'branch', DETACHED)).toBe(false)
     expect(isInScope(other, 'repo', ON_MAIN)).toBe(true)
+  })
+
+  // GitHub names a tag-push run after the tag, so a release run is on no branch.
+  test('branch scope also takes a tag run on HEAD, not one on another commit', () => {
+    const onHead = runOf({ branch: 'v1.2.0', sha: SHA })
+    const elsewhere = runOf({ branch: 'v1.1.0', sha: 'ffff' })
+    expect([isInScope(onHead, 'branch', ON_MAIN), isInScope(elsewhere, 'branch', ON_MAIN)]).toEqual([true, false])
+  })
+
+  test('branch scope with no HEAD sha matches the branch only', () => {
+    const noHead = { ...ON_MAIN, sha: null }
+    expect([isInScope(runOf({ branch: 'main' }), 'branch', noHead), isInScope(runOf({ branch: 'v1' }), 'branch', noHead)]).toEqual([true, false])
   })
 })

@@ -91,6 +91,28 @@ describe('listRuns', () => {
     expect(asked.map(call => call.argv)).toEqual([`${LIST} --branch main`, `${LIST} --commit abc123`])
   })
 
+  test('an any filter lists each part and merges the runs without repeats', async () => {
+    const tagRun = runOf({ id: 50, branch: 'v1.2.0', createdAt: T0 })
+    const both = runOf({ id: 51, createdAt: T0 - MINUTE })
+    const branchOnly = runOf({ id: 52, createdAt: T0 - 2 * MINUTE })
+    const { run, asked } = runner({
+      [`${LIST} --branch main`]: ok(JSON.stringify([both, branchOnly].map(ghRun))),
+      [`${LIST} --commit abc123`]: ok(JSON.stringify([tagRun, both].map(ghRun))),
+    })
+    const listed = await listRuns(run, '/repo', { kind: 'any', of: [{ kind: 'branch', branch: 'main' }, { kind: 'commit', sha: 'abc123' }] })
+    expect(listed.kind === 'ok' ? listed.value.map(one => one.id) : listed).toEqual([50, 51, 52])
+    expect(asked.map(call => call.argv).sort()).toEqual([`${LIST} --branch main`, `${LIST} --commit abc123`])
+  })
+
+  test('an any filter fails when any part fails', async () => {
+    const { run } = runner({
+      [`${LIST} --branch main`]: ok('[]'),
+      [`${LIST} --commit abc123`]: fail('HTTP 403: API rate limit exceeded'),
+    })
+    const listed = await listRuns(run, '/repo', { kind: 'any', of: [{ kind: 'branch', branch: 'main' }, { kind: 'commit', sha: 'abc123' }] })
+    expect(listed.kind).toBe('rate-limited')
+  })
+
   // A full page can hide an older run still going: ask for the active ones too.
   const finished = Array.from({ length: 20 }, (_, i) =>
     runOf({ id: 1000 + i, status: 'completed', conclusion: 'success', createdAt: T0 - i * MINUTE }))

@@ -35,6 +35,13 @@ describe('which runs are shown', () => {
     expect(snapshot.activeIds).toEqual([1])
   })
 
+  test('branch scope: an active tag-push run on HEAD is active (auto-open); one on another commit is not', () => {
+    const tagOnHead = runOf({ id: 4, branch: 'v1.2.0' })
+    const tagElsewhere = runOf({ id: 5, branch: 'v1.1.0', sha: 'e'.repeat(40) })
+    const snapshot = buildSnapshot(inputs({ data: dataOf({ runs: [tagOnHead, tagElsewhere] }) }))
+    expect(snapshot.activeIds).toEqual([4])
+  })
+
   test('repo scope: every active run; commit scope: HEAD only', () => {
     const data = dataOf({ runs: [onMain, onFeature] })
     expect(buildSnapshot(inputs({ data, scope: 'repo' })).cards.map(card => card.id)).toEqual([1, 2])

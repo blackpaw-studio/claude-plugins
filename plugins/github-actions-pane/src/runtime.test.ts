@@ -23,6 +23,8 @@ const setup = (settings: Settings = DEFAULT_SETTINGS) => {
 }
 
 const gh = (world: FakeWorld) => world.asked.filter(argv => argv.startsWith('gh'))
+/** Branch scope lists twice per poll (by branch, by HEAD's commit): count polls by the branch list. */
+const pollsOf = (world: FakeWorld) => gh(world).filter(argv => argv.startsWith(LIST) && argv.includes('--branch ')).length
 
 describe('watching a run', () => {
   test('a poll that sees a run starts the pane, reads its jobs, and polls at the active rate', async () => {
@@ -33,6 +35,7 @@ describe('watching a run', () => {
     expect(gh(world)).toEqual([
       'gh repo view --json nameWithOwner',
       expect.stringMatching(/^gh run list --limit 20 --json \S+ --branch main$/),
+      expect.stringMatching(/^gh run list --limit 20 --json \S+ --commit a1b2c3d4e5f60718293a4b5c6d7e8f9012345678$/),
       'gh run view 482 --json jobs',
     ])
     expect(world.opens()).toBe(1)
@@ -246,7 +249,7 @@ describe('when there is nothing to watch', () => {
 
 describe('pushes from outside Claude', () => {
   const MAIN_REF = 'git rev-parse --verify -q refs/remotes/origin/main'
-  const lists = (world: FakeWorld) => gh(world).filter(argv => argv.startsWith(LIST)).length
+  const lists = pollsOf
   const pushed = (world: FakeWorld, sha = 'b'.repeat(40)) => world.answers.set(MAIN_REF, ok(`${sha}\n`))
 
   test('a moved tracking ref polls within 5s and holds the active rate for two minutes', async () => {
@@ -405,7 +408,7 @@ describe('kicks and toggles', () => {
     expect(world.waiting()).toEqual([REMOTE_WATCH_MS, 60_000])
     await world.advance(5 * SECOND)
     await runtime.kick()
-    expect(gh(world).filter(argv => argv.startsWith(LIST)).length).toBe(2)
+    expect(pollsOf(world)).toBe(2)
     expect(world.waiting()).toEqual([REMOTE_WATCH_MS, 10_000])
     await world.advance(120 * SECOND)
     expect(world.waiting()).toEqual([REMOTE_WATCH_MS, 60_000])
