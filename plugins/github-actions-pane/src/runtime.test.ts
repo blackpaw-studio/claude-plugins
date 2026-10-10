@@ -83,30 +83,6 @@ describe('watching a run', () => {
     expect(world.opens()).toBe(1)
   })
 
-  test('a run header that lags its jobs lingers from the last job, and is read until GitHub completes it', async () => {
-    const { world, runtime } = setup()
-    runsAre(world, [RUNNING])
-    jobsAre(world, 482, [TEST_JOB])
-    await runtime.start()
-    const views = () => gh(world).filter(argv => argv.startsWith('gh run view')).length
-    // GitHub still says in_progress; the only job finished at +8s.
-    jobsAre(world, 482, [jobOf('test', { completedAt: T0 + 8 * SECOND })])
-    await world.advance(10 * SECOND)
-    expect(world.data()?.runs[0]?.status).toBe('in_progress')
-    const viewsLagging = views()
-    await world.advance(10 * SECOND)
-    expect(views()).toBe(viewsLagging + 1)
-    runsAre(world, [{ ...PASSED, updatedAt: T0 + 8 * SECOND }])
-    await world.advance(10 * SECOND)
-    expect(views()).toBe(viewsLagging + 2)
-    // The linger ran from the job (+8s), not from GitHub catching up (+30s): closed at +38s.
-    await world.advance(7 * SECOND)
-    expect(world.closes()).toBe(0)
-    await world.advance(SECOND)
-    expect(world.closes()).toBe(1)
-    expect(views()).toBe(viewsLagging + 2)
-  })
-
   test('a re-run of a finished run has its jobs read again when it finishes again', async () => {
     const { world, runtime } = setup()
     runsAre(world, [RUNNING])

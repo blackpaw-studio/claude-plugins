@@ -52,7 +52,6 @@ const snapshotOf = (cards: Card[], fields: Partial<Snapshot> = {}): Snapshot => 
   counts: { running: 0, failed: 0, passed: 0 },
   activeIds: [],
   shownIds: cards.map(card => card.id),
-  polledIds: cards.map(card => card.id),
   ...fields,
 })
 

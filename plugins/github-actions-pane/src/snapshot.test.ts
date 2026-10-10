@@ -9,8 +9,6 @@ import { JOBS_IN_PROGRESS, JOBS_LINT_FAILED, RUN_LIST } from './testing/gh-fixtu
 
 const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
 const NOW = T0 + 72 * SECOND
-/** Just after the builders' jobs finish (T0 + 18s), inside a run's linger. */
-const SOON = T0 + 20 * SECOND
 
 const inputs = (fields: Partial<SnapshotInputs> = {}): SnapshotInputs => ({
   data: dataOf(),
@@ -162,8 +160,8 @@ describe('jobs and steps', () => {
   test('more than eight jobs: the passed ones fold into one row', () => {
     const passed = Array.from({ length: 12 }, (_, i) => jobOf(`shard ${i + 1}`, { id: i }))
     const failing = jobOf('lint', { id: 99, conclusion: 'failure', steps: [stepOf('golangci-lint', { conclusion: 'failure' })] })
-    const data = dataOf({ runs: [RUN], jobs: { 482: [...passed.slice(0, 6), failing, ...passed.slice(6)] }, watched: { 482: null } })
-    expect(rowsOf(buildSnapshot(inputs({ data, now: SOON })).cards[0])).toEqual([
+    const data = dataOf({ runs: [RUN], jobs: { 482: [...passed.slice(0, 6), failing, ...passed.slice(6)] } })
+    expect(rowsOf(buildSnapshot(inputs({ data })).cards[0])).toEqual([
       'success 12 jobs passed',
       'failure lint 18s',
       '  failure golangci-lint 1s',
@@ -172,7 +170,7 @@ describe('jobs and steps', () => {
 
   test('eight jobs or fewer stay listed', () => {
     const jobs = Array.from({ length: 8 }, (_, i) => jobOf(`shard ${i + 1}`, { id: i }))
-    expect(rowsOf(buildSnapshot(inputs({ data: dataOf({ runs: [RUN], jobs: { 482: jobs }, watched: { 482: null } }), now: SOON })).cards[0])).toHaveLength(8)
+    expect(rowsOf(buildSnapshot(inputs({ data: dataOf({ runs: [RUN], jobs: { 482: jobs } }) })).cards[0])).toHaveLength(8)
   })
 })
 
@@ -200,61 +198,5 @@ describe('the header and counts', () => {
   test('disabled: the reason, nothing shown', () => {
     const snapshot = buildSnapshot(inputs({ data: dataOf({ disabled: 'no GitHub remote', context: null, runs: [runOf()] }) }))
     expect(snapshot).toMatchObject({ label: '', note: 'no GitHub remote', cards: [] })
-  })
-})
-
-describe('a run header that lags its jobs', () => {
-  // GitHub's run status can trail the jobs by a poll: every job is done, the run still says in_progress.
-  const lagging = runOf({ id: 482, status: 'in_progress', startedAt: T0, updatedAt: T0 })
-  const done = (name: string, fields: Partial<ActionsJob> = {}) => jobOf(name, { startedAt: T0, completedAt: T0 + 18 * SECOND, ...fields })
-  const cardAt = (jobs: ActionsJob[], watched: Record<string, number | null> = { 482: null }, now = SOON) =>
-    buildSnapshot(inputs({ data: dataOf({ runs: [lagging], jobs: { 482: jobs }, watched }), now })).cards[0]
-
-  test('all jobs done: drawn complete, its duration frozen at the last job', () => {
-    const card = cardAt([done('lint'), done('test', { completedAt: T0 + 18 * SECOND })])
-    expect(card).toMatchObject({ status: 'success', isActive: false, durationMs: 18 * SECOND })
-  })
-
-  test('the frozen duration does not tick with the clock', () => {
-    const jobs = [done('lint', { completedAt: T0 + 9 * SECOND }), done('test')]
-    expect(cardAt(jobs, { 482: null }, SOON)?.durationMs).toBe(18 * SECOND)
-    expect(cardAt(jobs, { 482: null }, SOON + 5 * SECOND)?.durationMs).toBe(18 * SECOND)
-  })
-
-  test('the conclusion comes from the jobs: failure beats cancelled beats success', () => {
-    expect(cardAt([done('a'), done('b', { conclusion: 'failure' }), done('c', { conclusion: 'cancelled' })])?.status).toBe('failure')
-    expect(cardAt([done('a'), done('b', { conclusion: 'timed_out' })])?.status).toBe('failure')
-    expect(cardAt([done('a'), done('b', { conclusion: 'cancelled' })])?.status).toBe('cancelled')
-    expect(cardAt([done('a'), done('b', { conclusion: 'skipped' })])?.status).toBe('success')
-  })
-
-  test('a job still running keeps the run running', () => {
-    const running = jobOf('test', { status: 'in_progress', conclusion: null, completedAt: null })
-    expect(cardAt([done('lint'), running])).toMatchObject({ status: 'running', isActive: true })
-  })
-
-  test('no jobs read yet: the run stays as GitHub says', () => {
-    expect(cardAt([])).toMatchObject({ status: 'running', isActive: true })
-  })
-
-  test('it counts as finished: no active ids, counted as passed', () => {
-    const snapshot = buildSnapshot(inputs({ data: dataOf({ runs: [lagging], jobs: { 482: [done('lint')] }, watched: { 482: null } }), now: SOON }))
-    expect(snapshot.activeIds).toEqual([])
-    expect(snapshot.polledIds).toEqual([482])
-    expect(snapshot.counts).toEqual({ running: 0, failed: 0, passed: 1 })
-  })
-
-  test('its linger starts at the last job, not when GitHub catches up', () => {
-    const jobs = [done('lint')]
-    const lingerEnd = T0 + 18 * SECOND + DEFAULT_SETTINGS.lingerMs
-    expect(cardAt(jobs, { 482: null }, lingerEnd - 1)).toBeDefined()
-    expect(cardAt(jobs, { 482: null }, lingerEnd)).toBeUndefined()
-  })
-
-  test('GitHub completing late does not bring a lingered-out run back', () => {
-    const run = { ...lagging, status: 'completed', conclusion: 'success', updatedAt: T0 + 18 * SECOND }
-    const lingerEnd = T0 + 18 * SECOND + DEFAULT_SETTINGS.lingerMs
-    const data = dataOf({ runs: [run], jobs: { 482: [done('lint')] }, watched: { 482: lingerEnd + 5 * SECOND } })
-    expect(buildSnapshot(inputs({ data, now: lingerEnd + 6 * SECOND })).cards).toEqual([])
   })
 })

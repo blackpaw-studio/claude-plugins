@@ -199,7 +199,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     // A re-run makes a finished run active again: read it afresh when it finishes again.
     const active = new Set(data.runs.filter(run => isActiveStatus(run.status)).map(run => run.id))
     final = new Set([...final].filter(id => !active.has(id)))
-    const wanted = runsToDetail(data, (await snapshotAt(now)).polledIds, final)
+    const wanted = runsToDetail(data, (await snapshotAt(now)).shownIds, final)
     const answers = await Promise.all(wanted.map(async id => [id, await viewJobs(ports.run, cwd, id)] as const))
     const read = new Map<number, ActionsJob[]>()
     for (const [id, answer] of answers) {
