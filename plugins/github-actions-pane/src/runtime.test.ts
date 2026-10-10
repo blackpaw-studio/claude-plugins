@@ -21,7 +21,10 @@ const RUNNING = runOf({ id: 482, createdAt: T0, startedAt: T0 })
 const PASSED = { ...RUNNING, status: 'completed', conclusion: 'success', updatedAt: T0 + 90 * SECOND }
 const TEST_JOB = jobOf('test', { status: 'in_progress', conclusion: null, completedAt: null })
 
-const setup = (settings: Settings = DEFAULT_SETTINGS) => {
+/** Most scenarios are the pane's, which opens by itself only when asked to. */
+const AUTO_OPEN: Settings = { ...DEFAULT_SETTINGS, autoOpen: true }
+
+const setup = (settings: Settings = AUTO_OPEN) => {
   const world = fakeWorld(T0)
   const runtime = createRuntime(world.ports, settings)
   return { world, runtime }
@@ -124,7 +127,7 @@ describe('watching a run', () => {
   })
 
   test('autoOpen off: never opens, the status line says what runs', async () => {
-    const { world, runtime } = setup({ ...DEFAULT_SETTINGS, autoOpen: false })
+    const { world, runtime } = setup(DEFAULT_SETTINGS)
     runsAre(world, [RUNNING])
     jobsAre(world, 482, [TEST_JOB])
     await runtime.start()
@@ -136,7 +139,7 @@ describe('watching a run', () => {
 describe('the band with the pane closed', () => {
   const FAILED = { ...PASSED, conclusion: 'failure' }
   const TICK = 1000
-  const bandOnly = () => setup({ ...DEFAULT_SETTINGS, autoOpen: false })
+  const bandOnly = () => setup(DEFAULT_SETTINGS)
 
   test('ticks the drawn clock while a run is running, though no pane is open', async () => {
     const { world, runtime } = bandOnly()
@@ -578,12 +581,12 @@ describe('kicks and toggles', () => {
 describe('reload and /clear', () => {
   test('start picks up the watched runs a reload left in state, and an open pane', async () => {
     const { world } = setup()
-    const first = createRuntime(world.ports, DEFAULT_SETTINGS)
+    const first = createRuntime(world.ports, AUTO_OPEN)
     runsAre(world, [RUNNING])
     jobsAre(world, 482, [TEST_JOB])
     await first.start()
     first.stop()
-    const second = createRuntime(world.ports, DEFAULT_SETTINGS)
+    const second = createRuntime(world.ports, AUTO_OPEN)
     runsAre(world, [PASSED])
     await second.start()
     // Seen active before the reload: it lingers rather than vanishing.

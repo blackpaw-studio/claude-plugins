@@ -3,6 +3,7 @@
 // closures (Ports).
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
+import { bandAt } from '../src/band'
 import { isKickCommand } from '../src/kick'
 import { layoutPane } from '../src/layout'
 import { restoredData } from '../src/model'
@@ -128,5 +129,23 @@ export const register: Register = (on, options) => {
         .run(['gh', 'run', 'view', String(runId), ...repoArgs, '--web'], { env: { GH_PROMPT_DISABLED: '1' }, timeoutMs: 10_000 })
         .catch(error => $.ui.log(`github-actions-pane: open: ${describeError(error)}`, { to: 'debug' }))
     return paneTree($.ui.resolve(e), lines, open)
+  })
+  // The band shares the poller's data and clock: it draws, and the runtime ticks, with the pane closed.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    const below = await next(e)
+    if (e.surface !== 'terminal' && e.surface !== 'desktop') return below
+    if (e.props.hasSurvey) return below
+    const [data, now, scope] = await Promise.all([read($, dataAtom), read($, nowAtom), read($, scopeAtom)])
+    const text = bandAt({ data: restoredData(data), now, settings, scope: scope ?? settings.scope })
+    if (text === null) return below
+    const { Box, Text } = $.ui.resolve(e)
+    return (
+      <Box flexDirection="column">
+        <Text dimColor wrap="truncate">
+          {text}
+        </Text>
+        {below}
+      </Box>
+    )
   })
 }

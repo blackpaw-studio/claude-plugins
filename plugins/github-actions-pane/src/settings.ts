@@ -19,7 +19,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lingerMs: 30 * SECOND,
   activePollMs: 10 * SECOND,
   idlePollMs: 60 * SECOND,
-  autoOpen: true,
+  autoOpen: false,
 }
 
 export const isScope = (value: unknown): value is ActionsScope => SCOPES.includes(value as ActionsScope)

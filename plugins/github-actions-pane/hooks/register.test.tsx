@@ -4,6 +4,7 @@ import type { Engine } from 'claude-code/testing'
 import { ghJobs, ghRun, jobOf, runOf, SECOND, stepOf, T0 } from '../src/testing/builders'
 
 const PLUGIN = 'github-actions-pane'
+const ENGINE_BAND = 'engine band'
 const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
 
 const RUN = runOf({ id: 482, createdAt: T0, startedAt: T0 })
@@ -67,6 +68,10 @@ const installWorld = (on: On): World => {
     if (command === 'gh run view 482 --repo acme/widgets --web') return answer('')
     return answer('', 1, `unexpected: ${command}`)
   })
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return <Text key="engine-band">{ENGINE_BAND}</Text>
+  })
   on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } }) as never)
   return { argvs, opens, registered, statuses, clock, setRepo: value => void (isRepo = value) }
 }
@@ -98,6 +103,11 @@ const findNode = (node: unknown, type: string): Node | undefined => {
   return kind === type ? (node as Node) : children.map(child => findNode(child, type)).find(found => found !== undefined)
 }
 
+const BAND_PROPS = { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 95, scroll: { offset: 0, bodyRows: 11 }, view: {} }
+
+const mountBand = ($: Engine) =>
+  $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'AbovePrompt', props: BAND_PROPS, viewport: { columns: 100, rows: 40 } })
+
 const command = (args: string) => ({
   command: 'actions',
   args,
@@ -106,7 +116,7 @@ const command = (args: string) => ({
 })
 
 describe('github-actions-pane in a session', () => {
-  test('a run in flight opens the pane, drawn as the run view', async ($, on) => {
+  test('with autoOpen on, a run in flight opens the pane, drawn as the run view', { options: { autoOpen: true } }, async ($, on) => {
     const world = installWorld(on)
     await startSession($, world)
     expect(world.opens).toEqual([{ id: 'actions', title: 'Actions' }])
@@ -165,5 +175,45 @@ describe('github-actions-pane in a session', () => {
     await $.session.end({ reason: 'clear', sessionId: 'cleared', resume: { id: 'cleared' } })
     await world.clock.settle()
     expect(world.registered).toEqual(['actions', 'actions'])
+  })
+
+  test('autoOpen defaults off: a run in flight opens no pane', async ($, on) => {
+    const world = installWorld(on)
+    await startSession($, world)
+    await world.clock.advance(3 * SECOND)
+    expect(world.opens).toEqual([])
+  })
+})
+
+describe('the band above the prompt', () => {
+  test('a run in flight draws a counting line, and the engine band stays beneath it', async ($, on) => {
+    const world = installWorld(on)
+    await startSession($, world)
+    const band = await mountBand($)
+    expect(textOfNode(await band.drawn())).toBe(`⟳ 1 running · 0s${ENGINE_BAND}`)
+    await world.clock.advance(3 * SECOND)
+    expect(textOfNode(await band.drawn())).toBe(`⟳ 1 running · 3s${ENGINE_BAND}`)
+    expect(world.opens).toEqual([])
+  })
+
+  test('nothing to say: the engine band alone', async ($, on) => {
+    const world = installWorld(on)
+    world.setRepo(false)
+    await startSession($, world)
+    expect(textOfNode(await (await mountBand($)).drawn())).toBe(ENGINE_BAND)
+  })
+
+  test('a survey keeps the band to itself', async ($, on) => {
+    const world = installWorld(on)
+    await startSession($, world)
+    const band = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'AbovePrompt', props: { ...BAND_PROPS, hasSurvey: true }, viewport: { columns: 100, rows: 40 } })
+    expect(textOfNode(await band.drawn())).toBe(ENGINE_BAND)
+  })
+
+  test('with the pane open too, the band still draws', async ($, on) => {
+    const world = installWorld(on)
+    await startSession($, world)
+    await $.command.run(command(''))
+    expect(textOfNode(await (await mountBand($)).drawn())).toContain('⟳ 1 running')
   })
 })

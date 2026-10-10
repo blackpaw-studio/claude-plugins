@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS, parseSettings } from './settings'
 describe('parseSettings', () => {
   test('the manifest defaults', () => {
     expect(parseSettings({})).toEqual(DEFAULT_SETTINGS)
-    expect(DEFAULT_SETTINGS).toEqual({ scope: 'branch', lingerMs: 30_000, activePollMs: 10_000, idlePollMs: 60_000, autoOpen: true })
+    expect(DEFAULT_SETTINGS).toEqual({ scope: 'branch', lingerMs: 30_000, activePollMs: 10_000, idlePollMs: 60_000, autoOpen: false })
   })
   test('reads each option in seconds', () => {
     expect(parseSettings({ scope: 'repo', lingerSeconds: 0, activePollSeconds: 6, idlePollSeconds: 120, autoOpen: false })).toEqual({
