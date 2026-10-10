@@ -38,8 +38,8 @@ export type Ports = {
   log: (text: string) => void
 }
 
-/** What the person's `/actions` asks for, and the answer to show them. */
-export type Reply = { text: string }
+/** The answer to the person's `/actions`; a quiet one needs no transcript row. */
+export type Reply = { text: string; isQuiet?: true }
 
 const describe = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
@@ -237,7 +237,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
       if (decision.effect === 'open') await ports.clock.set(now)
       showStatus(await snapshotAt(now))
       if (decision.effect === 'open') void poll().catch(fail('poll'))
-      return { text: decision.effect === 'open' ? 'Actions pane opened.' : 'Actions pane closed.' }
+      return { text: decision.effect === 'open' ? 'Actions pane opened.' : 'Actions pane closed.', isQuiet: true }
     },
     /** `/actions <scope>`: this session only. */
     setScope: async (scope: ActionsScope): Promise<Reply> => {
