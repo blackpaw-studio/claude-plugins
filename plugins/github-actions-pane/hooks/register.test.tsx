@@ -63,8 +63,8 @@ const installWorld = (on: On): World => {
     if (e.argv[0] === 'git') return isRepo ? answer(`${SHA}\nmain\n`) : answer('', 128, 'fatal: not a git repository')
     if (command.startsWith('gh repo view')) return answer('{"nameWithOwner":"acme/widgets"}')
     if (command.startsWith('gh run list')) return answer(JSON.stringify([ghRun(RUN)]))
-    if (command === 'gh run view 482 --json jobs') return answer(JSON.stringify(ghJobs(JOBS)))
-    if (command === 'gh run view 482 --web') return answer('')
+    if (command === 'gh run view 482 --repo acme/widgets --json jobs') return answer(JSON.stringify(ghJobs(JOBS)))
+    if (command === 'gh run view 482 --repo acme/widgets --web') return answer('')
     return answer('', 1, `unexpected: ${command}`)
   })
   on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } }) as never)
@@ -125,7 +125,7 @@ describe('github-actions-pane in a session', () => {
     ])
     expect(findNode(tree, 'Button')?.props).toMatchObject({ plain: true, key: 'open:482' })
     await $.ui.press({ plugin: PLUGIN, key: 'open:482' })
-    expect(world.argvs.at(-1)).toBe('gh run view 482 --web')
+    expect(world.argvs.at(-1)).toBe('gh run view 482 --repo acme/widgets --web')
   })
 
   test('/actions outside a repository answers why', async ($, on) => {

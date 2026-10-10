@@ -127,7 +127,8 @@ These are the plugin's options. Set them when you enable it, or in `settings.jso
   tags included, polls at once.
 - The repository comes from git remotes, not `gh`'s own pick (which prefers
   `upstream` over `origin` in a fork clone): the remote `gh repo set-default`
-  chose, else the branch's push target, else `origin`. Only github.com
+  chose, else the branch's push remote (`pushRemote`, `remote.pushDefault`,
+  or the remote it tracks), else `origin`. Only github.com
   remotes are read this way; a GitHub Enterprise host, or an ssh alias for
   github.com, falls back to `gh repo view`.
 - The linger and the stale note use your local clock, measured from when a

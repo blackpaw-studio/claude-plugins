@@ -2,11 +2,10 @@
 // view` picks `upstream` over `origin` in a fork clone and so watches someone
 // else's runs. Local git reads only, no network.
 //
-// Order: a remote `gh repo set-default` marked, then the branch's push target,
-// then origin. Only github.com URLs count (a GitHub Enterprise host, or an ssh
+// Order: a remote `gh repo set-default` marked, then the branch's push remote
+// (branch pushRemote, remote.pushDefault, the remote it tracks), then origin. Only github.com URLs count (a GitHub Enterprise host, or an ssh
 // alias for github.com, resolves nothing here and is left to `gh`).
 import { type Run, type RunInit, tryRun } from './run'
-import { trackingRefOf } from './remote-ref'
 
 const GIT_TIMEOUT_MS = 10_000
 const GIT_ENV = { GIT_OPTIONAL_LOCKS: '0' }
@@ -34,9 +33,6 @@ const parseConfig = (stdout: string): ReadonlyMap<string, string> =>
 
 const initOf = (cwd: string): RunInit => ({ cwd, timeoutMs: GIT_TIMEOUT_MS, env: GIT_ENV })
 
-const remoteNames = (config: ReadonlyMap<string, string>): string[] =>
-  [...config.keys()].flatMap(key => (/^remote\..+\.url$/.test(key) ? [key.slice('remote.'.length, -'.url'.length)] : []))
-
 const repoOfRemote = (config: ReadonlyMap<string, string>, name: string): string | null => {
   const url = config.get(`remote.${name}.url`)
   return url === undefined ? null : parseGitHubUrl(url)
@@ -50,13 +46,13 @@ const ghDefaults = (config: ReadonlyMap<string, string>): (string | null)[] =>
     return [value === GH_BASE ? repoOfRemote(config, name) : /^[^/\s]+\/[^/\s]+$/.test(value) ? value : null]
   })
 
-/** The remote a push of this branch goes to: the longest known remote name the push ref sits under. */
-const pushRemoteOf = async (run: Run, cwd: string, branch: string | null, names: readonly string[]): Promise<string | null> => {
-  if (branch === null) return null
-  const target = await trackingRefOf(run, cwd, branch)
-  if (!target.isConfigured) return null
-  return [...names].sort((a, b) => b.length - a.length).find(name => target.ref.startsWith(`refs/remotes/${name}/`)) ?? null
-}
+/** Where a push of this branch goes, as git config names it: its pushRemote, else remote.pushDefault, else the remote it tracks. No ref need exist yet. */
+const pushRemotesOf = (config: ReadonlyMap<string, string>, branch: string | null): string[] =>
+  [
+    ...(branch === null ? [] : [config.get(`branch.${branch}.pushremote`)]),
+    config.get('remote.pushdefault'),
+    ...(branch === null ? [] : [config.get(`branch.${branch}.remote`)]),
+  ].flatMap(name => (name === undefined ? [] : [name]))
 
 /** `owner/repo` the checkout pushes to; null when git names no GitHub repo (the caller then asks gh). */
 export const repoFromRemotes = async (run: Run, cwd: string, branch: string | null): Promise<string | null> => {
@@ -65,7 +61,6 @@ export const repoFromRemotes = async (run: Run, cwd: string, branch: string | nu
   const config = parseConfig(ran.result.stdout)
   const explicit = ghDefaults(config).find(repo => repo !== null)
   if (explicit !== undefined) return explicit
-  const pushRemote = await pushRemoteOf(run, cwd, branch, remoteNames(config))
-  const candidates = [pushRemote, DEFAULT_REMOTE].flatMap(name => (name === null ? [] : [repoOfRemote(config, name)]))
+  const candidates = [...pushRemotesOf(config, branch), DEFAULT_REMOTE].map(name => repoOfRemote(config, name))
   return candidates.find(repo => repo !== null) ?? null
 }

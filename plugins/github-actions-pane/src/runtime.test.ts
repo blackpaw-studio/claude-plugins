@@ -15,7 +15,7 @@ const FORK_CONFIG = [
 ].join('\n')
 const runsAre = (world: FakeWorld, runs: readonly ActionsRun[]) => world.answers.set(LIST, ok(JSON.stringify(runs.map(ghRun))))
 const jobsAre = (world: FakeWorld, id: number, jobs: readonly ActionsJob[]) =>
-  world.answers.set(`gh run view ${id} --json jobs`, ok(JSON.stringify(ghJobs(jobs))))
+  world.answers.set(`gh run view ${id} --repo`, ok(JSON.stringify(ghJobs(jobs))))
 
 const RUNNING = runOf({ id: 482, createdAt: T0, startedAt: T0 })
 const PASSED = { ...RUNNING, status: 'completed', conclusion: 'success', updatedAt: T0 + 90 * SECOND }
@@ -39,9 +39,9 @@ describe('watching a run', () => {
     await runtime.start()
     expect(gh(world)).toEqual([
       'gh repo view --json nameWithOwner',
-      expect.stringMatching(/^gh run list --limit 20 --json \S+ --branch main$/),
-      expect.stringMatching(/^gh run list --limit 20 --json \S+ --commit a1b2c3d4e5f60718293a4b5c6d7e8f9012345678$/),
-      'gh run view 482 --json jobs',
+      expect.stringMatching(/^gh run list --repo acme\/widgets --limit 20 --json \S+ --branch main$/),
+      expect.stringMatching(/^gh run list --repo acme\/widgets --limit 20 --json \S+ --commit a1b2c3d4e5f60718293a4b5c6d7e8f9012345678$/),
+      'gh run view 482 --repo acme/widgets --json jobs',
     ])
     expect(world.opens()).toBe(1)
     expect(world.data()?.jobs['482']?.map(job => job.name)).toEqual(['test'])
@@ -252,15 +252,25 @@ describe('when there is nothing to watch', () => {
     expect(gh(world).filter(argv => argv.startsWith('gh repo'))).toEqual([])
   })
 
+  test('every gh run command is pinned to the resolved repo, so a fork never reads the upstream\'s runs', async () => {
+    const { world, runtime } = setup()
+    world.answers.set('git config --list', ok(FORK_CONFIG))
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    await runtime.start()
+    const runCommands = gh(world).filter(argv => argv.startsWith('gh run'))
+    expect(runCommands.length).toBeGreaterThanOrEqual(3)
+    expect(runCommands.filter(argv => !argv.includes(' --repo blackpaw-studio/leoterm '))).toEqual([])
+  })
+
   test('a branch switch to another push remote moves the pane to that repo and drops the last one', async () => {
     const { world, runtime } = setup()
-    world.answers.set('git config --list', ok(`${FORK_CONFIG}\nremote.mine.url=git@github.com:evan/leoterm.git`))
+    world.answers.set('git config --list', ok(`${FORK_CONFIG}\nremote.mine.url=git@github.com:evan/leoterm.git\nbranch.feat/x.pushremote=mine`))
     runsAre(world, [RUNNING])
     jobsAre(world, 482, [TEST_JOB])
     await runtime.start()
     expect(world.data()?.context?.repo).toBe('blackpaw-studio/leoterm')
     world.answers.set(HEAD, ok(`${SHA}\nfeat/x\n`))
-    world.answers.set('git rev-parse --symbolic-full-name @{push}', ok('refs/remotes/mine/feat/x\n'))
     world.answers.set(LIST, ok('[]'))
     await runtime.poll()
     expect(world.data()?.context?.repo).toBe('evan/leoterm')
@@ -467,7 +477,7 @@ describe('kicks and toggles', () => {
     expect([asked, world.opens()]).toEqual([1, 0])
     expect(world.manual()).toBe(true)
     // Opened by hand with nothing active: the latest run is shown, its jobs read.
-    expect(gh(world)).toContain('gh run view 482 --json jobs')
+    expect(gh(world)).toContain('gh run view 482 --repo acme/widgets --json jobs')
     await world.advance(120 * SECOND)
     expect(world.closes()).toBe(0)
     expect((await runtime.toggle(async () => ({ isPlaced: true }))).text).toBe('Actions pane closed.')

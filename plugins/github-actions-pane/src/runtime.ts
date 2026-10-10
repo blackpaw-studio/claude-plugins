@@ -211,12 +211,12 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     return { cwd, branch: head.branch, sha: head.sha, repo: repo.value }
   }
 
-  const detail = async (cwd: string, now: number): Promise<void> => {
+  const detail = async (cwd: string, repo: string, now: number): Promise<void> => {
     // A re-run makes a finished run active again: read it afresh when it finishes again.
     const active = new Set(data.runs.filter(run => isActiveStatus(run.status)).map(run => run.id))
     final = new Set([...final].filter(id => !active.has(id)))
     const wanted = runsToDetail(data, (await snapshotAt(now)).shownIds, final)
-    const answers = await Promise.all(wanted.map(async id => [id, await viewJobs(ports.run, cwd, id)] as const))
+    const answers = await Promise.all(wanted.map(async id => [id, await viewJobs(ports.run, cwd, repo, id)] as const))
     const read = new Map<number, ActionsJob[]>()
     for (const [id, answer] of answers) {
       if (answer.kind !== 'ok') {
@@ -244,7 +244,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     const context = await readContext(cwd)
     if (context !== null) {
       const filter = listFilter(await scopeNow(), context)
-      const listed: GhResult<ActionsData['runs']> = filter === null ? { kind: 'ok', value: [] } : await listRuns(ports.run, cwd, filter)
+      const listed: GhResult<ActionsData['runs']> = filter === null ? { kind: 'ok', value: [] } : await listRuns(ports.run, cwd, context.repo, filter)
       // Another repository: nothing of the last one carries over, whatever the list says.
       const isNewRepo = data.context !== null && data.context.repo !== context.repo
       if (isNewRepo) final = new Set()
@@ -252,7 +252,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
       if (listed.kind === 'ok') await publish(withRuns(data, listed.value, now))
       else await onFailure(listed)
       await publish({ ...data, pollMs: intervalAt(now) })
-      if (data.disabled === null) await detail(cwd, now)
+      if (data.disabled === null) await detail(cwd, context.repo, now)
     }
     const settled = await ports.now()
     await step(snapshot => ({ kind: 'poll', view: viewOf(snapshot), autoOpen: settings.autoOpen }), settled)

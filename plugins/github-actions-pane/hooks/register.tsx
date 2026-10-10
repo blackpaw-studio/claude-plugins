@@ -122,9 +122,10 @@ export const register: Register = (on, options) => {
     const [data, now, scope, isManual] = await Promise.all([read($, dataAtom), read($, nowAtom), read($, scopeAtom), read($, manualAtom)])
     const snapshot = buildSnapshot({ data: data ?? EMPTY_DATA, now, settings, scope: scope ?? settings.scope, isManual })
     const lines = layoutPane(snapshot, { width: bodyWidth(e.props.bodyColumns), rows: e.props.scroll.bodyRows, frame: Math.floor(now / TICK_MS) })
+    const repoArgs = data?.context?.repo === undefined ? [] : ['--repo', data.context.repo]
     const open = (runId: number) =>
       void $.process
-        .run(['gh', 'run', 'view', String(runId), '--web'], { env: { GH_PROMPT_DISABLED: '1' }, timeoutMs: 10_000 })
+        .run(['gh', 'run', 'view', String(runId), ...repoArgs, '--web'], { env: { GH_PROMPT_DISABLED: '1' }, timeoutMs: 10_000 })
         .catch(error => $.ui.log(`github-actions-pane: open: ${describeError(error)}`, { to: 'debug' }))
     return paneTree($.ui.resolve(e), lines, open)
   })
