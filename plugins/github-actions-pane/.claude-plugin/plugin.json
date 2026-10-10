@@ -1,6 +1,6 @@
 {
   "name": "github-actions-pane",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Live GitHub Actions pane beside the transcript while workflow runs are active: run, jobs and steps with status icons and live durations, drawn like GitHub's run view.",
   "author": {
     "name": "Evan Coleman"

@@ -6,6 +6,7 @@ import type { ActionsData, ActionsJob, ActionsScope } from '../types'
 import { collectHead } from './collect/git'
 import { type GhFailure, type GhResult, listRuns, repoName, viewJobs } from './collect/gh'
 import { readRef, trackingRefOf } from './collect/remote-ref'
+import { repoFromRemotes } from './collect/repo'
 import type { Run } from './collect/run'
 import { isActiveStatus } from './format'
 import { CLOSED, decide, type Effect, type Lifecycle, type LifecycleEvent, statusText } from './lifecycle'
@@ -54,6 +55,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
   let lifecycle: Lifecycle = CLOSED
   let isPlaced = true
   let lastCwd: string | null = null
+  let ghRepo: { cwd: string; repo: string } | null = null
   let kickUntil = 0
   let lastKickAt = Number.NEGATIVE_INFINITY
   let pollTimer: Timer | null = null
@@ -180,6 +182,14 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     ports.log(`github-actions-pane: gh: ${failure.reason}`)
   }
 
+  /** gh's own pick when git names no GitHub repo: it costs a request, so kept for the cwd until it moves. */
+  const repoViaGh = async (cwd: string): Promise<GhResult<string>> => {
+    if (ghRepo?.cwd === cwd) return { kind: 'ok', value: ghRepo.repo }
+    const asked = await repoName(ports.run, cwd)
+    if (asked.kind === 'ok') ghRepo = { cwd, repo: asked.value }
+    return asked
+  }
+
   /** Reads the context; null when the poll stops here (now disabled, or a transient failure logged). */
   const readContext = async (cwd: string): Promise<ActionsData['context']> => {
     const head = await collectHead(ports.run, cwd)
@@ -191,8 +201,9 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
       ports.log(`github-actions-pane: git: ${head.reason}`)
       return null
     }
-    const known = data.context?.cwd === cwd ? data.context.repo : null
-    const repo: GhResult<string> = known === null ? await repoName(ports.run, cwd) : { kind: 'ok', value: known }
+    // Git's remotes are read every poll (cheap, local), so a branch switch to another push remote moves the pane.
+    const fromGit = await repoFromRemotes(ports.run, cwd, head.branch)
+    const repo: GhResult<string> = fromGit !== null ? { kind: 'ok', value: fromGit } : await repoViaGh(cwd)
     if (repo.kind !== 'ok') {
       await onFailure(repo)
       return null
