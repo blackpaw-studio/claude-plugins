@@ -11,18 +11,21 @@ const CI: Card = {
   status: 'running',
   name: 'CI #482',
   event: 'push',
-  href: 'https://github.com/acme/widgets/actions/runs/482',
   subtitle: 'fix: parser edge case · a1b2c3d',
   durationMs: MINUTE + 12 * SECOND,
   isActive: true,
-  rows: [
-    { depth: 0, status: 'success', name: 'lint', durationMs: 18 * SECOND },
-    { depth: 0, status: 'running', name: 'test (node 20)', durationMs: MINUTE + 4 * SECOND },
-    { depth: 1, status: 'success', name: 'Set up job', durationMs: 2 * SECOND },
-    { depth: 1, status: 'success', name: 'Checkout', durationMs: SECOND },
-    { depth: 1, status: 'running', name: 'Run tests', durationMs: 42 * SECOND },
-    { depth: 1, status: 'queued', name: 'Post checkout', durationMs: null },
-    { depth: 0, status: 'queued', name: 'build', durationMs: null },
+  jobs: [
+    { row: { depth: 0, status: 'success', name: 'lint', durationMs: 18 * SECOND }, steps: [] },
+    {
+      row: { depth: 0, status: 'running', name: 'test (node 20)', durationMs: MINUTE + 4 * SECOND },
+      steps: [
+        { depth: 1, status: 'success', name: 'Set up job', durationMs: 2 * SECOND },
+        { depth: 1, status: 'success', name: 'Checkout', durationMs: SECOND },
+        { depth: 1, status: 'running', name: 'Run tests', durationMs: 42 * SECOND },
+        { depth: 1, status: 'queued', name: 'Post checkout', durationMs: null },
+      ],
+    },
+    { row: { depth: 0, status: 'queued', name: 'build', durationMs: null }, steps: [] },
   ],
 }
 
@@ -31,13 +34,14 @@ const DEPLOY: Card = {
   status: 'failure',
   name: 'Deploy #77',
   event: 'push',
-  href: 'https://github.com/acme/widgets/actions/runs/77',
   subtitle: 'fix: parser edge case · a1b2c3d',
   durationMs: 3 * MINUTE + 2 * SECOND,
   isActive: false,
-  rows: [
-    { depth: 0, status: 'failure', name: 'deploy', durationMs: 2 * MINUTE + 50 * SECOND },
-    { depth: 1, status: 'failure', name: 'Upload artifacts', durationMs: 31 * SECOND },
+  jobs: [
+    {
+      row: { depth: 0, status: 'failure', name: 'deploy', durationMs: 2 * MINUTE + 50 * SECOND },
+      steps: [{ depth: 1, status: 'failure', name: 'Upload artifacts', durationMs: 31 * SECOND }],
+    },
   ],
 }
 
@@ -76,9 +80,9 @@ describe('layoutPane', () => {
     ])
   })
 
-  test('the run name is a link; glyphs carry theme colours', () => {
+  test('the run name opens the run; glyphs carry theme colours', () => {
     const [, , runRow = [], , lintRow = []] = layoutPane(snapshotOf([CI]), ROOMY)
-    expect(runRow).toContainEqual({ text: 'CI #482', bold: true, href: CI.href })
+    expect(runRow).toContainEqual({ text: 'CI #482', bold: true, opens: 482 })
     expect(runRow[0]).toEqual({ text: '◐', color: 'warning' })
     expect(lintRow).toContainEqual({ text: '✓', color: 'success' })
   })
@@ -126,7 +130,20 @@ describe('layoutPane', () => {
     expect(lines.some(line => line.includes('CI #483'))).toBe(false)
   })
 
-  test('a card taller than the pane is cut row by row', () => {
+  test('a tight pane narrows the running steps to a window before dropping anything', () => {
+    expect(texts(layoutPane(snapshotOf([CI]), { ...ROOMY, rows: 10 })).slice(2)).toEqual([
+      '◐ CI #482 · push                     1m 12s',
+      '  fix: parser edge case · a1b2c3d',
+      '  ✓ lint                                18s',
+      '  ◐ test (node 20)                   1m 04s',
+      '    ✓ 2 steps',
+      '    ⠋ Run tests                         42s',
+      '    ○ Post checkout',
+      '  ○ build',
+    ])
+  })
+
+  test('a card taller than the pane, steps hidden, is cut row by row', () => {
     const lines = texts(layoutPane(snapshotOf([CI]), { ...ROOMY, rows: 6 }))
     expect(lines).toEqual([
       'GitHub Actions · main',
@@ -134,7 +151,7 @@ describe('layoutPane', () => {
       '◐ CI #482 · push                     1m 12s',
       '  fix: parser edge case · a1b2c3d',
       '  ✓ lint                                18s',
-      '+6 more rows',
+      '+2 more rows',
     ])
   })
 })

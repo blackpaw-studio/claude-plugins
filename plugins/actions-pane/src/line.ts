@@ -7,8 +7,8 @@ export type Span = {
   readonly color?: string
   readonly dim?: true
   readonly bold?: true
-  /** Drawn as a link to this address. */
-  readonly href?: string
+  /** Drawn as a control that opens this workflow run in the browser. */
+  readonly opens?: number
 }
 
 export type Line = readonly Span[]

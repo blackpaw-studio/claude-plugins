@@ -6,7 +6,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import { isKickCommand } from '../src/kick'
 import { layoutPane } from '../src/layout'
 import { EMPTY_DATA } from '../src/model'
-import { paneTree } from '../src/pane'
+import { PANE_PADDING, paneTree } from '../src/pane'
 import { createRuntime, type Ports, type Runtime, TICK_MS } from '../src/runtime'
 import { isScope, parseSettings } from '../src/settings'
 import { buildSnapshot } from '../src/snapshot'
@@ -109,7 +109,12 @@ export const register: Register = (on, options) => {
     if (e.surface !== 'terminal') return next(e)
     const [data, now, scope, isManual] = await Promise.all([read($, dataAtom), read($, nowAtom), read($, scopeAtom), read($, manualAtom)])
     const snapshot = buildSnapshot({ data: data ?? EMPTY_DATA, now, settings, scope: scope ?? settings.scope, isManual })
-    const lines = layoutPane(snapshot, { width: e.props.bodyColumns, rows: e.props.scroll.bodyRows, frame: Math.floor(now / TICK_MS) })
-    return paneTree($.ui.resolve(e), lines)
+    const width = e.props.bodyColumns - 2 * PANE_PADDING
+    const lines = layoutPane(snapshot, { width, rows: e.props.scroll.bodyRows, frame: Math.floor(now / TICK_MS) })
+    const open = (runId: number) =>
+      void $.process
+        .run(['gh', 'run', 'view', String(runId), '--web'], { env: { GH_PROMPT_DISABLED: '1' }, timeoutMs: 10_000 })
+        .catch(error => $.ui.log(`actions-pane: open: ${describeError(error)}`, { to: 'debug' }))
+    return paneTree($.ui.resolve(e), lines, open)
   })
 }

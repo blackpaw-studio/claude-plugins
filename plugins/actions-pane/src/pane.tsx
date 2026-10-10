@@ -1,9 +1,14 @@
-// Lines of spans to the pane's elements: one truncating Text per row, the
-// run name a Link. Theme colour keys and dimColor only, never hex.
+// Lines of spans to the pane's elements: one truncating Text per row; the run
+// name is a plain Button that opens the run in the browser. (A Link would
+// print its URL beside the name wherever the terminal lacks OSC 8, as inside
+// tmux.) Theme colour keys and dimColor only, never hex.
 import type { Elements } from 'claude-code'
 import type { Line, Span } from './line'
 
-export type PaneElements = Pick<Elements['terminal'], 'Box' | 'Text' | 'Link'>
+export type PaneElements = Pick<Elements['terminal'], 'Box' | 'Text' | 'Button'>
+
+/** Cells of padding each side of the pane body. */
+export const PANE_PADDING = 1
 
 const styleOf = ({ color, dim, bold }: Span) => ({
   ...(color === undefined ? {} : { color }),
@@ -13,18 +18,28 @@ const styleOf = ({ color, dim, bold }: Span) => ({
 
 const isPlain = (part: Span): boolean => part.color === undefined && part.dim !== true && part.bold !== true
 
-const spanNode = ({ Text, Link }: PaneElements, part: Span) => {
-  const inner = part.href === undefined ? part.text : <Link href={part.href}>{part.text}</Link>
-  return isPlain(part) ? inner : <Text {...styleOf(part)}>{inner}</Text>
-}
+const spanNode = (Text: PaneElements['Text'], part: Span) => (isPlain(part) ? part.text : <Text {...styleOf(part)}>{part.text}</Text>)
 
-export const paneTree = (elements: PaneElements, lines: readonly Line[]) => {
-  const { Box, Text } = elements
+const textNode = (Text: PaneElements['Text'], parts: readonly Span[]) => <Text wrap="truncate">{parts.map(part => spanNode(Text, part))}</Text>
+
+const lineNode = ({ Box, Text, Button }: PaneElements, line: Line, onOpen: (runId: number) => void) => {
+  const at = line.findIndex(part => part.opens !== undefined)
+  const control = line[at]
+  if (control?.opens === undefined) return textNode(Text, line)
+  const runId = control.opens
   return (
-    <Box flexDirection="column">
-      {lines.map(line => (
-        <Text wrap="truncate">{line.map(part => spanNode(elements, part))}</Text>
-      ))}
+    <Box key={`run:${runId}`} flexDirection="row">
+      {textNode(Text, line.slice(0, at))}
+      <Button plain key={`open:${runId}`} hover={{ underline: true }} onPress={() => onOpen(runId)}>
+        <Text {...styleOf(control)}>{control.text}</Text>
+      </Button>
+      {textNode(Text, line.slice(at + 1))}
     </Box>
   )
 }
+
+export const paneTree = (elements: PaneElements, lines: readonly Line[], onOpen: (runId: number) => void) => (
+  <elements.Box flexDirection="column" paddingX={PANE_PADDING}>
+    {lines.map(line => lineNode(elements, line, onOpen))}
+  </elements.Box>
+)

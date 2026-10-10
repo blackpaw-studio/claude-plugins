@@ -1,8 +1,9 @@
 // The snapshot as lines of spans at a width and height: the run view's
-// look (glyphs, indents, right-aligned durations) and its overflow rules. Pure.
+// look (glyphs, indents, right-aligned durations) and its fit to the pane. Pure.
 import { formatDuration, glyphOf, type RowLevel, type RowStatus, truncate, cellsOf } from './format'
 import { BLANK, justify, type Line, span, type Span } from './line'
 import type { Card, Row, Snapshot } from './snapshot'
+import { rowsAt, type Window, WINDOWS } from './window'
 
 export type Frame = {
   /** Cells across the pane body. */
@@ -36,12 +37,12 @@ const durationSpan = (ms: number | null, isDim: boolean): Span | null => {
   return text === '' ? null : span(text, isDim ? { dim: true } : {})
 }
 
-/** `CI #482 · push`, the event dropped first when the row is tight; the name links the run. */
+/** `CI #482 · push`, the event dropped first when the row is tight; the name opens the run. */
 const runName = (card: Card) => (room: number): Line => {
   const event = card.event === '' ? '' : ` · ${card.event}`
   const hasEvent = cellsOf(card.name) + cellsOf(event) <= room
   return [
-    span(truncate(card.name, room), { bold: true, href: card.href }),
+    span(truncate(card.name, room), { bold: true, opens: card.id }),
     ...(hasEvent && event !== '' ? [span(event, { dim: true })] : []),
   ]
 }
@@ -58,10 +59,10 @@ const jobLine = (row: Row, width: number, frame: number): Line =>
     width,
   )
 
-const cardLines = (card: Card, width: number, frame: number): Line[] => [
+const cardLines = (card: Card, window: Window, width: number, frame: number): Line[] => [
   rowLine(0, glyphSpan(card.status, 'run', frame), runName(card), durationSpan(card.durationMs, false), width),
   ...(card.subtitle === '' ? [] : [[span(INDENT), span(truncate(card.subtitle, width - cellsOf(INDENT)), { dim: true })]]),
-  ...card.rows.map(row => jobLine(row, width, frame)),
+  ...rowsAt(card.jobs, window).map(row => jobLine(row, width, frame)),
 ]
 
 const headerLine = ({ label, note }: Snapshot, width: number): Line => {
@@ -76,37 +77,51 @@ const emptyLine = ({ label }: Snapshot, width: number): Line => [span(truncate(`
 /** Card blocks joined by blank lines. */
 const stack = (blocks: readonly Line[][]): Line[] => blocks.flatMap((block, i) => (i === 0 ? block : [BLANK, ...block]))
 
-const heightOf = (blocks: readonly Line[][]): number => stack(blocks).length
-
-/** Drops finished cards, oldest (last) first, until the blocks fit or none is left to drop. */
-const dropFinished = (cards: readonly Card[], blocks: readonly Line[][], room: number): number[] => {
-  const kept = cards.map((_, i) => i)
-  const fits = (indexes: readonly number[]) => heightOf(indexes.map(i => blocks[i] ?? [])) <= room
-  const finished = cards.map((card, i) => (card.isActive ? -1 : i)).filter(i => i >= 0).reverse()
-  return finished.reduce((left, i) => (fits(left) ? left : left.filter(k => k !== i)), kept)
-}
+type Draw = (card: Card, window: Window) => Line[]
 
 const moreLine = (text: string): Line => [span(text, { dim: true })]
 
-/** The card blocks cut to `room` rows: finished cards dropped first, then a `+N more` line. */
-const fitCards = (cards: readonly Card[], blocks: readonly Line[][], room: number): Line[] => {
-  const kept = dropFinished(cards, blocks, room)
-  const keptBlocks = kept.map(i => blocks[i] ?? [])
-  if (heightOf(keptBlocks) <= room) return stack(keptBlocks)
-  const lines = stack(keptBlocks).slice(0, Math.max(0, room - 1))
-  const whole = keptBlocks.filter((_, n) => heightOf(keptBlocks.slice(0, n + 1)) <= lines.length).length
-  const isCutMidCard = whole === 0 || heightOf(keptBlocks.slice(0, whole)) < lines.length
-  const hiddenCards = cards.length - whole - (isCutMidCard ? 1 : 0)
-  // A trailing blank before the note reads as a gap: trim it.
-  const shown = lines[lines.length - 1] === BLANK ? lines.slice(0, -1) : lines
-  if (hiddenCards > 0) return [...shown.slice(0, room - 1), moreLine(`+${hiddenCards} more`)]
-  return [...shown, moreLine(`+${stack(keptBlocks).length - shown.length} more rows`)]
+/** The card sets to try: all, then less the finished ones, oldest (last) first. */
+const keptSets = (cards: readonly Card[]): Card[][] => {
+  const finished = cards.filter(card => !card.isActive).reverse()
+  return finished.reduce<Card[][]>((sets, drop) => [...sets, (sets[sets.length - 1] ?? []).filter(card => card !== drop)], [[...cards]])
+}
+
+const STEP_WINDOWS = WINDOWS.filter(window => window !== 'none')
+
+/** The roomiest window at which these cards stack within `room` rows. */
+const fitting = (cards: readonly Card[], draw: Draw, room: number): Line[] | undefined =>
+  STEP_WINDOWS.map(window => stack(cards.map(card => draw(card, window)))).find(lines => lines.length <= room)
+
+/**
+ * The cards in `room` rows: running steps windowed tighter first, then the
+ * oldest finished cards dropped, then running steps hidden; past that, the
+ * whole cards that fit and a `+N more` line (rows cut from a lone card).
+ */
+const fitCards = (cards: readonly Card[], draw: Draw, room: number): Line[] => {
+  const sets = keptSets(cards)
+  for (const kept of sets) {
+    const lines = fitting(kept, draw, room)
+    if (lines !== undefined) return lines
+  }
+  const kept = sets[sets.length - 1] ?? []
+  const bare = stack(kept.map(card => draw(card, 'none')))
+  if (bare.length <= room) return bare
+  const whole = kept.filter((_, n) => stack(kept.slice(0, n + 1).map(card => draw(card, 'none'))).length <= room - 1).length
+  if (whole > 0) {
+    const lines = fitting(kept.slice(0, whole), draw, room - 1) ?? stack(kept.slice(0, whole).map(card => draw(card, 'none')))
+    return [...lines, moreLine(`+${cards.length - whole} more`)]
+  }
+  const first = kept[0] === undefined ? [] : draw(kept[0], 'none')
+  const shown = first.slice(0, Math.max(0, room - 1))
+  const hiddenCards = cards.length - 1
+  return [...shown, moreLine(hiddenCards > 0 ? `+${hiddenCards} more` : `+${first.length - shown.length} more rows`)]
 }
 
 export const layoutPane = (snapshot: Snapshot, { width, rows, frame }: Frame): Line[] => {
   const header = headerLine(snapshot, width)
   if (snapshot.label === '' && snapshot.cards.length === 0) return [header]
   if (snapshot.cards.length === 0) return [header, BLANK, emptyLine(snapshot, width)]
-  const blocks = snapshot.cards.map(card => cardLines(card, width, frame))
-  return [header, BLANK, ...fitCards(snapshot.cards, blocks, Math.max(1, rows - HEADER_ROWS))]
+  const draw: Draw = (card, window) => cardLines(card, window, width, frame)
+  return [header, BLANK, ...fitCards(snapshot.cards, draw, Math.max(1, rows - HEADER_ROWS))]
 }

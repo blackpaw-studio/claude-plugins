@@ -61,7 +61,8 @@ const installWorld = (on: On): World => {
     if (e.argv[0] === 'git') return isRepo ? answer(`${SHA}\nmain\n`) : answer('', 128, 'fatal: not a git repository')
     if (command.startsWith('gh repo view')) return answer('{"nameWithOwner":"acme/widgets"}')
     if (command.startsWith('gh run list')) return answer(JSON.stringify([ghRun(RUN)]))
-    if (command.startsWith('gh run view 482')) return answer(JSON.stringify(ghJobs(JOBS)))
+    if (command === 'gh run view 482 --json jobs') return answer(JSON.stringify(ghJobs(JOBS)))
+    if (command === 'gh run view 482 --web') return answer('')
     return answer('', 1, `unexpected: ${command}`)
   })
   on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } }) as never)
@@ -76,7 +77,7 @@ const startSession = async ($: Engine, world: World) => {
 const PANE_PROPS = {
   title: 'Actions',
   isFocused: false,
-  bodyColumns: 43,
+  bodyColumns: 45,
   placement: 'dock' as const,
   scroll: { offset: 0, bodyRows: 30 },
   view: {},
@@ -120,7 +121,9 @@ describe('actions-pane in a session', () => {
       '    ✓ Set up job                         1s',
       `    ${'⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'[(Math.floor(T0 / 1000) + 3) % 10]} Run tests                          3s`,
     ])
-    expect(findNode(tree, 'Link')?.props).toEqual({ href: RUN.url })
+    expect(findNode(tree, 'Button')?.props).toMatchObject({ plain: true, key: 'open:482' })
+    await $.ui.press({ plugin: PLUGIN, key: 'open:482' })
+    expect(world.argvs.at(-1)).toBe('gh run view 482 --web')
   })
 
   test('/actions outside a repository answers why', async ($, on) => {

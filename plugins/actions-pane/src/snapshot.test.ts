@@ -3,6 +3,7 @@ import type { ActionsJob } from '../types'
 import { parseJobs, parseRuns } from './collect/gh'
 import { DEFAULT_SETTINGS } from './settings'
 import { buildSnapshot, type Card, type Row, type SnapshotInputs } from './snapshot'
+import { rowsAt } from './window'
 import { dataOf, jobOf, MINUTE, runOf, SECOND, stepOf, T0 } from './testing/builders'
 import { JOBS_IN_PROGRESS, JOBS_LINT_FAILED, RUN_LIST } from './testing/gh-fixtures'
 
@@ -20,7 +21,7 @@ const inputs = (fields: Partial<SnapshotInputs> = {}): SnapshotInputs => ({
 
 const rowText = (row: Row): string =>
   `${'  '.repeat(row.depth)}${row.status} ${row.name}${row.durationMs === null ? '' : ` ${row.durationMs / SECOND}s`}`
-const rowsOf = (card: Card | undefined): string[] => (card?.rows ?? []).map(rowText)
+const rowsOf = (card: Card | undefined): string[] => rowsAt(card?.jobs ?? [], 'all').map(rowText)
 const jobsOf = (json: string): ActionsJob[] => parseJobs(json) ?? []
 
 describe('which runs are shown', () => {
@@ -81,7 +82,6 @@ describe('the run card', () => {
       status: 'running',
       name: 'CI #482',
       event: 'push',
-      href: 'https://github.com/acme/widgets/actions/runs/482',
       subtitle: 'fix: parser edge case · a1b2c3d',
       durationMs: 72 * SECOND,
       isActive: true,
@@ -106,14 +106,16 @@ describe('the run card', () => {
 describe('jobs and steps', () => {
   const RUN = runOf({ id: 482 })
 
-  test('a running job shows its steps; a passed job is one line (real mid-run jobs)', () => {
+  test('a running job shows every step; a passed job is one line (real mid-run jobs)', () => {
     const data = dataOf({ runs: [RUN], jobs: { 482: jobsOf(JOBS_IN_PROGRESS) } })
     const now = Date.parse('2026-10-10T02:04:40Z')
     expect(rowsOf(buildSnapshot(inputs({ data, now })).cards[0])).toEqual([
       'success activation 31s',
       'success agent 55s',
       'running detection 62s',
-      '  success 3 steps',
+      '  success Set up job 2s',
+      '  success Setup Scripts 2s',
+      '  success Download activation artifact 2s',
       '  success Ensure threat-detection directory and log 0s',
       '  success Install AWF binary 1s',
       '  running Install GitHub Copilot CLI 42s',
@@ -122,40 +124,6 @@ describe('jobs and steps', () => {
       '  queued Render detection log',
       '  queued Post Setup Scripts',
     ])
-  })
-
-  test('a long running job windows its steps around the current one', () => {
-    const steps = Array.from({ length: 20 }, (_, i) =>
-      i < 10
-        ? stepOf(`done ${i + 1}`, { number: i + 1 })
-        : i === 10
-          ? stepOf('current', { number: 11, status: 'in_progress', conclusion: null, completedAt: null })
-          : stepOf(`later ${i + 1}`, { number: i + 1, status: 'pending', conclusion: null, startedAt: null, completedAt: null }),
-    )
-    const job = jobOf('build', { status: 'in_progress', conclusion: null, completedAt: null, steps })
-    const rows = rowsOf(buildSnapshot(inputs({ data: dataOf({ runs: [RUN], jobs: { 482: [job] } }) })).cards[0])
-    expect(rows.map(row => row.replace(/ \d+s$/, ''))).toEqual([
-      'running build',
-      '  success 8 steps',
-      '  success done 9',
-      '  success done 10',
-      '  running current',
-      '  queued later 12',
-      '  queued later 13',
-      '  queued later 14',
-      '  queued 6 more',
-    ])
-  })
-
-  test('a failure hidden in the window still marks its summary row', () => {
-    const steps = [
-      stepOf('flaky', { number: 1, conclusion: 'failure' }),
-      ...Array.from({ length: 8 }, (_, i) => stepOf(`done ${i + 2}`, { number: i + 2 })),
-      stepOf('current', { number: 10, status: 'in_progress', conclusion: null, completedAt: null }),
-    ]
-    const job = jobOf('build', { status: 'in_progress', conclusion: null, completedAt: null, steps })
-    const rows = rowsOf(buildSnapshot(inputs({ data: dataOf({ runs: [RUN], jobs: { 482: [job] } }) })).cards[0])
-    expect(rows[1]).toBe('  failure 7 steps')
   })
 
   test('a failed job shows only its failed step (real failed run)', () => {

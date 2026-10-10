@@ -1,13 +1,13 @@
 // What the pane draws, from what the poller holds: the runs in scope that are
 // active or lingering, each as a card of jobs and steps, plus the header.
-// All of the pane's decisions are here. Pure.
+// Every decision but the fit to the pane's size is here. Pure.
 import type { ActionsData, ActionsRun, ActionsScope } from '../types'
 import { formatDuration, isActiveStatus, type RowStatus, statusOf } from './format'
-import { jobsToRows, type Row } from './jobs'
+import { type JobBlock, jobsToBlocks } from './jobs'
 import { effectiveScope, isInScope, scopeLabel, shortSha } from './scope'
 import type { Settings } from './settings'
 
-export type { Row } from './jobs'
+export type { JobBlock, Row } from './jobs'
 
 export type Card = {
   id: number
@@ -15,12 +15,12 @@ export type Card = {
   /** `CI #482`. */
   name: string
   event: string
-  href: string
   /** The commit or PR title, then the short sha (the branch in repo scope). */
   subtitle: string
   durationMs: number | null
   isActive: boolean
-  rows: Row[]
+  /** Jobs and the steps they show, newest-run-first cards; the layout windows the steps. */
+  jobs: JobBlock[]
 }
 
 export type Counts = { running: number; failed: number; passed: number }
@@ -63,11 +63,10 @@ const cardOf = (run: ActionsRun, { data, now, scope }: SnapshotInputs): Card => 
     status: statusOf(run.status, run.conclusion),
     name: `${run.workflow} #${run.number}`,
     event: run.event,
-    href: run.url,
     subtitle: [run.title, where].filter(part => part !== '').join(' · '),
     durationMs: (isActive ? now : run.updatedAt) - start,
     isActive,
-    rows: jobsToRows(data.jobs[String(run.id)] ?? [], now),
+    jobs: jobsToBlocks(data.jobs[String(run.id)] ?? [], now),
   }
 }
 
