@@ -13,11 +13,14 @@ export type RefRead = { kind: 'ok'; sha: string | null } | { kind: 'unknown' }
 
 const initOf = (cwd: string): RunInit => ({ cwd, timeoutMs: GIT_TIMEOUT_MS, env: GIT_ENV })
 
+/** The ref a push updates; `isConfigured` when git named it, not guessed as origin's. */
+export type TrackingRef = { ref: string; isConfigured: boolean }
+
 /** The ref a push of this branch updates: its push target, else origin's. */
-export const trackingRefOf = async (run: Run, cwd: string, branch: string): Promise<string> => {
+export const trackingRefOf = async (run: Run, cwd: string, branch: string): Promise<TrackingRef> => {
   const ran = await tryRun(run, ['git', 'rev-parse', '--symbolic-full-name', '@{push}'], initOf(cwd))
   const ref = ran.kind === 'ran' && ran.result.exitCode === 0 ? ran.result.stdout.trim() : ''
-  return ref === '' ? `refs/remotes/${DEFAULT_REMOTE}/${branch}` : ref
+  return ref === '' ? { ref: `refs/remotes/${DEFAULT_REMOTE}/${branch}`, isConfigured: false } : { ref, isConfigured: true }
 }
 
 export const readRef = async (run: Run, cwd: string, ref: string): Promise<RefRead> => {

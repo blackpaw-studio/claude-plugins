@@ -86,15 +86,12 @@ These are the plugin's options. Set them when you enable it, or in `settings.jso
   tool polls at once, then at the active rate for two minutes.
 - **Pushes from any terminal:** every 5 seconds a local `git rev-parse` reads
   the remote-tracking ref of the branch in scope (its push target, else
-  `origin/<branch>`; under `repo` scope the current branch's). When it moves,
+  `origin/<branch>`, re-read on every poll and on every look while it is only
+  guessed, so a first `git push -u <remote>` is seen; under `repo` scope the
+  current branch's). When it moves,
   the same kick happens: a poll at once, then the active rate for two
   minutes. No GitHub calls are made while idle, and the watch is off when
   there is no repository or the HEAD is detached.
-- **Run status lags its jobs:** GitHub can keep a run `in_progress` for up to
-  a poll after its last job finished. Such a run is drawn complete, with the
-  conclusion taken from its jobs, its duration frozen at the last job and its
-  linger counted from there. It is still read until GitHub itself says
-  completed.
 - **What shows:** runs that are active, plus the runs this session saw
   finish, for the linger window. A run that had already finished when it was
   first seen does not open the pane.
@@ -120,6 +117,8 @@ These are the plugin's options. Set them when you enable it, or in `settings.jso
 
 ## Limitations
 
+- A run stays active until `gh` says completed, so a run's header can keep
+  ticking for up to one poll after its last job finished.
 - A push is detected within about 5 seconds from any terminal, by the
   remote-tracking ref moving. A push that leaves the ref alone, to a remote
   other than the branch's push target, is only seen on the next idle poll.

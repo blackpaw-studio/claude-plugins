@@ -61,7 +61,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
   let remoteTimer: Timer | null = null
   let isReadingRemote = false
   /** The tracking ref being watched, for this branch in this cwd, and the sha it last held. */
-  let tracked: { key: string; ref: string; sha: string | null } | null = null
+  let tracked: { key: string; ref: string; isConfigured: boolean; sha: string | null } | null = null
   let polling: Promise<void> | null = null
   let isPollQueued = false
   /** Finished runs whose jobs were read after they finished: never asked again. */
@@ -130,19 +130,24 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
 
   /**
    * One look at the tracking ref of the scoped branch. The first look at a
-   * branch is a baseline; a later change is a push from outside Claude.
+   * branch is a baseline; a later change is a push from outside Claude. The
+   * push target is read again on each poll, and on every look while it is
+   * only guessed (origin's), so a first `git push -u <remote>` is seen.
    */
-  const watchRemote = async (): Promise<void> => {
+  const watchRemote = async (isPoll: boolean): Promise<void> => {
     const context = data.context
     if (context === null || context.branch === null || isReadingRemote) return
     isReadingRemote = true
     try {
       const key = `${context.cwd}\0${context.branch}`
-      const ref = tracked?.key === key ? tracked.ref : await trackingRefOf(ports.run, context.cwd, context.branch)
-      const read = await readRef(ports.run, context.cwd, ref)
+      const known = tracked?.key === key ? tracked : null
+      const target = known !== null && known.isConfigured && !isPoll ? known : await trackingRefOf(ports.run, context.cwd, context.branch)
+      const read = await readRef(ports.run, context.cwd, target.ref)
       if (read.kind === 'unknown') return
-      const isPush = tracked?.key === key && tracked.sha !== read.sha
-      tracked = { key, ref, sha: read.sha }
+      tracked = { key, ...target, sha: read.sha }
+      if (known === null) return
+      // Moved to a ref: a push if it moved, or if the push target just became known and holds the branch.
+      const isPush = known.ref === target.ref ? known.sha !== read.sha : !known.isConfigured && read.sha !== null
       // A push through Claude's Bash was kicked the moment it ran: the ref moving is the same push.
       if (isPush && (await ports.now()) - lastKickAt > KICK_DEDUPE_MS) await kick()
     } finally {
@@ -159,9 +164,9 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
       tracked = null
       return
     }
-    if (remoteTimer === null) remoteTimer = ports.every(REMOTE_WATCH_MS, () => void watchRemote().catch(fail('remote')))
-    // A baseline now: a push before the first timer tick would otherwise go unseen.
-    if (tracked?.key !== `${data.context?.cwd}\0${data.context?.branch}`) void watchRemote().catch(fail('remote'))
+    remoteTimer ??= ports.every(REMOTE_WATCH_MS, () => void watchRemote(false).catch(fail('remote')))
+    // The baseline for this poll's branch, and its push target read afresh.
+    void watchRemote(true).catch(fail('remote'))
   }
 
   const disable = async (reason: string): Promise<void> => {

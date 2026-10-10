@@ -329,6 +329,41 @@ describe('pushes from outside Claude', () => {
     expect(lists(world)).toBe(listed + 1)
   })
 
+  test('the first push -u of a new branch to another remote is seen and watched from then on', async () => {
+    const { world, runtime } = setup()
+    // A new branch: no push target yet, so origin's ref is watched.
+    world.answers.set('git rev-parse --symbolic-full-name @{push}', fail('fatal: no upstream', 128))
+    await runtime.start()
+    await world.advance(10 * SECOND)
+    expect(lists(world)).toBe(1)
+    // git push -u fork main: the upstream is set and fork's ref appears; origin's does not move.
+    world.answers.set('git rev-parse --symbolic-full-name @{push}', ok('refs/remotes/fork/main\n'))
+    world.answers.set('git rev-parse --verify -q refs/remotes/fork/main', ok(`${'f'.repeat(40)}\n`))
+    await world.advance(5 * SECOND)
+    expect(lists(world)).toBe(2)
+    // Once the kick has lapsed, fork's ref moving is what kicks.
+    await world.advance(125 * SECOND)
+    const listed = lists(world)
+    world.answers.set('git rev-parse --verify -q refs/remotes/fork/main', ok(`${'9'.repeat(40)}\n`))
+    await world.advance(5 * SECOND)
+    expect(lists(world)).toBe(listed + 1)
+  })
+
+  test('a push target changed in config is re-read on the next poll, then watched', async () => {
+    const { world, runtime } = setup()
+    await runtime.start()
+    world.answers.set('git rev-parse --symbolic-full-name @{push}', ok('refs/remotes/fork/main\n'))
+    world.answers.set('git rev-parse --verify -q refs/remotes/fork/main', ok(`${'f'.repeat(40)}\n`))
+    await world.advance(5 * SECOND)
+    await runtime.poll()
+    const listed = lists(world)
+    await world.advance(5 * SECOND)
+    expect(lists(world)).toBe(listed)
+    world.answers.set('git rev-parse --verify -q refs/remotes/fork/main', ok(`${'9'.repeat(40)}\n`))
+    await world.advance(5 * SECOND)
+    expect(lists(world)).toBe(listed + 1)
+  })
+
   test('one watch timer however many polls and reloads of state', async () => {
     const { world, runtime } = setup()
     await runtime.start()

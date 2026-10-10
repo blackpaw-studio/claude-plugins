@@ -8,18 +8,18 @@ const PUSH = 'git rev-parse --symbolic-full-name @{push}'
 describe('trackingRefOf', () => {
   test("the branch's push target, read-only, in the cwd", async () => {
     const { run, asked } = runner({ [PUSH]: ok('refs/remotes/fork/feat/actions-pane\n') })
-    expect(await trackingRefOf(run, '/repo', 'feat/actions-pane')).toBe('refs/remotes/fork/feat/actions-pane')
+    expect(await trackingRefOf(run, '/repo', 'feat/actions-pane')).toEqual({ ref: 'refs/remotes/fork/feat/actions-pane', isConfigured: true })
     expect(asked[0]?.init).toEqual({ cwd: '/repo', timeoutMs: 10_000, env: { GIT_OPTIONAL_LOCKS: '0' } })
   })
 
   test('a branch with no push target (never pushed with -u) tracks origin', async () => {
     const { run } = runner({ [PUSH]: fail('fatal: The current branch feat/x has no upstream branch.', 128) })
-    expect(await trackingRefOf(run, '/repo', 'feat/x')).toBe('refs/remotes/origin/feat/x')
+    expect(await trackingRefOf(run, '/repo', 'feat/x')).toEqual({ ref: 'refs/remotes/origin/feat/x', isConfigured: false })
   })
 
   test('git that cannot start also falls back to origin', async () => {
     const { run } = runner({ [PUSH]: new Error('spawn git ENOENT') })
-    expect(await trackingRefOf(run, '/repo', 'main')).toBe('refs/remotes/origin/main')
+    expect(await trackingRefOf(run, '/repo', 'main')).toEqual({ ref: 'refs/remotes/origin/main', isConfigured: false })
   })
 })
 
