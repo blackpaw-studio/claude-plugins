@@ -123,6 +123,10 @@ claude plugin validate plugins/github-actions-pane
 claude plugin test plugins/github-actions-pane
 ```
 
+CI (`.github/workflows/ci.yml`) runs both, plus the marketplace validation,
+on every pull request. It skips `tsc`, because the declarations below need a
+logged-in session to be written.
+
 Type-checking needs the declarations the engine lays into
 `.claude-plugin/types/` when it loads the mod from a folder you own (a
 `--plugin-dir` or the session's mods folder). Run `tsc -p` on the
