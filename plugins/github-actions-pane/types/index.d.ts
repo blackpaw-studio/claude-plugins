@@ -1,4 +1,4 @@
-// The $.state contract of actions-pane: what its poller collects and its pane
+// The $.state contract of github-actions-pane: what its poller collects and its pane
 // draws. Self-contained (no imports), named in plugin.json.
 
 /** Which runs the pane watches: HEAD's commit, the current branch, or the whole repo. */
@@ -78,7 +78,7 @@ export type ActionsData = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'actions-pane': {
+    'github-actions-pane': {
       data: ActionsData | null
       /** The clock the pane draws durations and the spinner from, ticked while open. */
       now: number

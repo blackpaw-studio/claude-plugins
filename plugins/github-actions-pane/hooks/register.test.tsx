@@ -3,7 +3,7 @@ import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import { ghJobs, ghRun, jobOf, runOf, SECOND, stepOf, T0 } from '../src/testing/builders'
 
-const PLUGIN = 'actions-pane'
+const PLUGIN = 'github-actions-pane'
 const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
 
 const RUN = runOf({ id: 482, createdAt: T0, startedAt: T0 })
@@ -103,7 +103,7 @@ const command = (args: string) => ({
   presentation: { isFullscreen: true, columns: 140 },
 })
 
-describe('actions-pane in a session', () => {
+describe('github-actions-pane in a session', () => {
   test('a run in flight opens the pane, drawn as the run view', async ($, on) => {
     const world = installWorld(on)
     await startSession($, world)

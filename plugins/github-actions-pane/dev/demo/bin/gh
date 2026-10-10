@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A fake `gh` for the actions-pane demo: replays a scripted run timeline.
+"""A fake `gh` for the github-actions-pane demo: replays a scripted run timeline.
 
 Answers only what the mod asks (`gh repo view`, `gh run list`, `gh run view
 <id> --json jobs`) in the JSON shapes real gh prints, as of the seconds since
@@ -202,7 +202,7 @@ def main(args):
             return 1
         print(json.dumps({"jobs": run_json(match[0], t, head_sha())[1]}))
         return 0
-    print(f"actions-pane demo gh: unsupported: gh {' '.join(args)}", file=sys.stderr)
+    print(f"github-actions-pane demo gh: unsupported: gh {' '.join(args)}", file=sys.stderr)
     return 1
 
 

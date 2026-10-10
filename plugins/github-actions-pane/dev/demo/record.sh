@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Records a real Claude Code session with actions-pane loaded from this
+# Records a real Claude Code session with github-actions-pane loaded from this
 # checkout, watching the fake gh's scripted run timeline (bin/gh) in a
 # throwaway git repo. Nothing reaches GitHub.
 #
@@ -42,7 +42,7 @@ git -C $REPO remote add origin https://github.com/acme/widgets.git
 # The demo polls at the floors (5s active, 15s idle) so the pane opens soon
 # after the scripted run starts; lingerSeconds and the rest are the defaults.
 cat > $OUT/settings.json <<EOF
-{ "pluginConfigs": { "actions-pane": { "options": { "activePollSeconds": ${ACTIVE_POLL:-5}, "idlePollSeconds": ${IDLE_POLL:-15} } } } }
+{ "pluginConfigs": { "github-actions-pane": { "options": { "activePollSeconds": ${ACTIVE_POLL:-5}, "idlePollSeconds": ${IDLE_POLL:-15} } } } }
 EOF
 
 NO_FLICKER=0

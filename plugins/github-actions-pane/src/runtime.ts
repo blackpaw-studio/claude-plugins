@@ -56,7 +56,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
   /** Finished runs whose jobs were read after they finished: never asked again. */
   let final = new Set<number>()
 
-  const fail = (where: string) => (error: unknown) => ports.log(`actions-pane: ${where}: ${describe(error)}`)
+  const fail = (where: string) => (error: unknown) => ports.log(`github-actions-pane: ${where}: ${describe(error)}`)
 
   const scopeNow = async (): Promise<ActionsScope> => (await ports.scope.get()) ?? settings.scope
 
@@ -125,7 +125,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
   const onFailure = async (failure: GhFailure): Promise<void> => {
     if (failure.kind === 'fatal') return disable(failure.reason)
     if (failure.kind === 'rate-limited') return publish({ ...data, isRateLimited: true })
-    ports.log(`actions-pane: gh: ${failure.reason}`)
+    ports.log(`github-actions-pane: gh: ${failure.reason}`)
   }
 
   /** Reads the context; null when the poll stops here (now disabled, or a transient failure logged). */
@@ -136,7 +136,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
       return null
     }
     if (head.kind === 'transient') {
-      ports.log(`actions-pane: git: ${head.reason}`)
+      ports.log(`github-actions-pane: git: ${head.reason}`)
       return null
     }
     const known = data.context?.cwd === cwd ? data.context.repo : null

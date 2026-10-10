@@ -1,4 +1,4 @@
-# actions-pane
+# github-actions-pane
 
 A Claude Code mod (function-hook plugin) that shows your GitHub Actions runs
 in a pane beside the transcript while they are running, drawn like GitHub's
@@ -38,7 +38,7 @@ From this marketplace:
 
 ```shell
 /plugin marketplace add blackpaw-studio/claude-plugins
-/plugin install actions-pane@blackpaw-plugins
+/plugin install github-actions-pane@blackpaw-plugins
 ```
 
 ## Use
@@ -61,7 +61,7 @@ new run opens it again.
 ## Settings
 
 These are the plugin's options. Set them when you enable it, or in `settings.json` under
-`pluginConfigs["actions-pane"].options` (`scope`, `lingerSeconds`,
+`pluginConfigs["github-actions-pane"].options` (`scope`, `lingerSeconds`,
 `activePollSeconds`, `idlePollSeconds`, `autoOpen`).
 
 | Setting | Default | |
@@ -115,8 +115,8 @@ These are the plugin's options. Set them when you enable it, or in `settings.jso
 ## Development
 
 ```sh
-claude plugin validate plugins/actions-pane
-claude plugin test plugins/actions-pane
+claude plugin validate plugins/github-actions-pane
+claude plugin test plugins/github-actions-pane
 ```
 
 Type-checking needs the declarations the engine lays into

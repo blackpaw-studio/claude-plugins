@@ -1,4 +1,4 @@
-// actions-pane: wiring only. The poller, snapshot, lifecycle and layout live
+// github-actions-pane: wiring only. The poller, snapshot, lifecycle and layout live
 // in src/. `$` is only ever spelled at its call sites here; src/ gets
 // closures (Ports).
 import { atom, read, update } from 'claude-code'
@@ -18,10 +18,10 @@ const INLINE_ROWS = 24
 
 // The $.state values (contract: types/index.d.ts). Written here, beside their
 // readers, so the engine's scan can read every reference.
-const dataAtom = atom({ plugin: 'actions-pane', key: 'data' } as const, null)
-const nowAtom = atom({ plugin: 'actions-pane', key: 'now' } as const, 0)
-const scopeAtom = atom({ plugin: 'actions-pane', key: 'scope' } as const, null)
-const manualAtom = atom({ plugin: 'actions-pane', key: 'isManual' } as const, false)
+const dataAtom = atom({ plugin: 'github-actions-pane', key: 'data' } as const, null)
+const nowAtom = atom({ plugin: 'github-actions-pane', key: 'now' } as const, 0)
+const scopeAtom = atom({ plugin: 'github-actions-pane', key: 'scope' } as const, null)
+const manualAtom = atom({ plugin: 'github-actions-pane', key: 'isManual' } as const, false)
 
 const describeError = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
@@ -57,7 +57,7 @@ export const register: Register = (on, options) => {
     if (runtime !== null) return runtime
     const started = createRuntime(ports, settings)
     runtime = started
-    started.start().catch(error => ports.log(`actions-pane: start: ${describeError(error)}`))
+    started.start().catch(error => ports.log(`github-actions-pane: start: ${describeError(error)}`))
     return started
   }
 
@@ -76,7 +76,7 @@ export const register: Register = (on, options) => {
   // A /clear empties the session's state and no session.start follows.
   on('session.end', async ($, e, next) => {
     const ended = await next(e)
-    if (e.reason === 'clear') runtime?.republish().catch(error => $.ui.log(`actions-pane: clear: ${describeError(error)}`, { to: 'debug' }))
+    if (e.reason === 'clear') runtime?.republish().catch(error => $.ui.log(`github-actions-pane: clear: ${describeError(error)}`, { to: 'debug' }))
     return ended
   })
 
@@ -85,7 +85,7 @@ export const register: Register = (on, options) => {
     const ran = await next(e)
     const watcher = attach(portsOf($))
     const work = isKickCommand(e.command) ? watcher.kick() : watcher.cwdMaybeChanged()
-    work.catch(error => $.ui.log(`actions-pane: bash: ${describeError(error)}`, { to: 'debug' }))
+    work.catch(error => $.ui.log(`github-actions-pane: bash: ${describeError(error)}`, { to: 'debug' }))
     return ran
   }).catch(($, e, next) => next(e))
 
@@ -103,7 +103,7 @@ export const register: Register = (on, options) => {
 
   on('ui.close', { id: PANE }, async ($, e, next) => {
     const closed = await next(e)
-    if (e.origin.kind === 'person') runtime?.closedByPerson().catch(error => $.ui.log(`actions-pane: close: ${describeError(error)}`, { to: 'debug' }))
+    if (e.origin.kind === 'person') runtime?.closedByPerson().catch(error => $.ui.log(`github-actions-pane: close: ${describeError(error)}`, { to: 'debug' }))
     return closed
   }).catch(($, e, next) => next(e))
 
@@ -115,7 +115,7 @@ export const register: Register = (on, options) => {
     const open = (runId: number) =>
       void $.process
         .run(['gh', 'run', 'view', String(runId), '--web'], { env: { GH_PROMPT_DISABLED: '1' }, timeoutMs: 10_000 })
-        .catch(error => $.ui.log(`actions-pane: open: ${describeError(error)}`, { to: 'debug' }))
+        .catch(error => $.ui.log(`github-actions-pane: open: ${describeError(error)}`, { to: 'debug' }))
     return paneTree($.ui.resolve(e), lines, open)
   })
 }

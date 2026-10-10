@@ -1,4 +1,4 @@
-# actions-pane — spec
+# github-actions-pane — spec
 
 A mod that docks a live GitHub Actions pane beside the transcript while workflow runs are active, drawn like GitHub's run view: run → jobs → steps, status icons, live durations.
 
@@ -90,7 +90,7 @@ Header: `GitHub Actions · <branch|sha7|owner/repo>` dim, then one card per run,
 
 ## Structure
 
-`plugins/actions-pane/` following rich-statusline: `hooks/register.tsx` (wiring only), `src/collect/` (git + gh runners, injected `run`), `src/snapshot.ts` (pure), `src/lifecycle.ts` (pure open/close state machine), `src/pane.tsx` (drawing), `src/format.ts` (durations, truncation, icons). Marketplace entry added.
+`plugins/github-actions-pane/` following rich-statusline: `hooks/register.tsx` (wiring only), `src/collect/` (git + gh runners, injected `run`), `src/snapshot.ts` (pure), `src/lifecycle.ts` (pure open/close state machine), `src/pane.tsx` (drawing), `src/format.ts` (durations, truncation, icons). Marketplace entry added.
 
 ## Testing
 
