@@ -41,6 +41,7 @@ describe('watching a run', () => {
       'gh repo view --json nameWithOwner',
       expect.stringMatching(/^gh run list --repo acme\/widgets --limit 20 --json \S+ --branch main$/),
       expect.stringMatching(/^gh run list --repo acme\/widgets --limit 20 --json \S+ --commit a1b2c3d4e5f60718293a4b5c6d7e8f9012345678$/),
+      'gh run list --repo acme/widgets --workflow 1234 --status success --limit 10 --json startedAt,createdAt,updatedAt,conclusion',
       'gh run view 482 --repo acme/widgets --json jobs',
     ])
     expect(world.opens()).toBe(1)
@@ -535,5 +536,102 @@ describe('reload and /clear', () => {
     await world.ports.data.set(null as never)
     await runtime.republish()
     expect(world.data()).toEqual(held)
+  })
+})
+
+describe('run ETA history', () => {
+  const HISTORY = 'gh run list --repo acme/widgets --workflow'
+  const durations = (...seconds: number[]) =>
+    ok(JSON.stringify(seconds.map(s => ({ conclusion: 'success', createdAt: '2026-10-09T17:00:00Z', startedAt: '2026-10-09T17:00:00Z', updatedAt: new Date(Date.parse('2026-10-09T17:00:00Z') + s * SECOND).toISOString() }))))
+  const historyCalls = (world: FakeWorld) => gh(world).filter(argv => argv.includes('--workflow '))
+  const historyIs = (world: FakeWorld, id: number, ...seconds: number[]) => world.answers.set(`${HISTORY} ${id} `, durations(...seconds))
+  const started = async () => {
+    const harness = setup()
+    runsAre(harness.world, [RUNNING])
+    jobsAre(harness.world, 482, [TEST_JOB])
+    historyIs(harness.world, 1234, 100, 120, 140)
+    await harness.runtime.start()
+    return harness
+  }
+
+  test('reads the workflow\'s last ten successes by id once the run is seen, and keeps the durations', async () => {
+    const { world } = await started()
+    expect(historyCalls(world)).toEqual([
+      'gh run list --repo acme/widgets --workflow 1234 --status success --limit 10 --json startedAt,createdAt,updatedAt,conclusion',
+    ])
+    expect(world.data()?.history).toEqual({ '1234': [100_000, 120_000, 140_000] })
+  })
+
+  test('one call per distinct workflow among the active runs', async () => {
+    const { world, runtime } = setup()
+    runsAre(world, [RUNNING, runOf({ id: 483, number: 483, workflowId: 1234 }), runOf({ id: 484, number: 12, workflowId: 77, workflow: 'Deploy' })])
+    jobsAre(world, 482, [TEST_JOB])
+    jobsAre(world, 483, [TEST_JOB])
+    jobsAre(world, 484, [TEST_JOB])
+    await runtime.start()
+    expect(historyCalls(world).map(argv => argv.split(' ')[6])).toEqual(['1234', '77'])
+  })
+
+  test('polls that follow, idle or not, do not read it again', async () => {
+    const { world } = await started()
+    await world.advance(60 * SECOND)
+    expect(historyCalls(world)).toHaveLength(1)
+  })
+
+  test('a run finishing drops the workflow\'s history; the next run of it reads afresh, with the finished one a sample', async () => {
+    const { world } = await started()
+    runsAre(world, [PASSED])
+    jobsAre(world, 482, [jobOf('test')])
+    await world.advance(10 * SECOND)
+    expect(world.data()?.history).toEqual({})
+    expect(historyCalls(world)).toHaveLength(1)
+    historyIs(world, 1234, 90, 100, 120, 140)
+    runsAre(world, [PASSED, runOf({ id: 483, number: 483, createdAt: T0 + 70 * SECOND, startedAt: T0 + 70 * SECOND })])
+    jobsAre(world, 483, [TEST_JOB])
+    await world.advance(60 * SECOND)
+    expect(historyCalls(world)).toHaveLength(2)
+    expect(world.data()?.history).toEqual({ '1234': [90_000, 100_000, 120_000, 140_000] })
+  })
+
+  test('a failed read leaves no history, the pane carries on, and a later poll tries again', async () => {
+    const { world, runtime } = setup()
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    world.answers.set(`${HISTORY} 1234 `, fail('HTTP 502'))
+    await runtime.start()
+    expect(world.data()?.history).toEqual({})
+    expect(world.data()?.disabled).toBe(null)
+    expect(world.opens()).toBe(1)
+    historyIs(world, 1234, 100, 120, 140)
+    await world.advance(10 * SECOND)
+    expect(historyCalls(world)).toHaveLength(2)
+    expect(world.data()?.history).toEqual({ '1234': [100_000, 120_000, 140_000] })
+  })
+
+  test('none is read while rate limited; read once the limit lifts', async () => {
+    const { world, runtime } = setup()
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    world.answers.set(`${HISTORY} 1234 `, fail('HTTP 502'))
+    await runtime.start()
+    world.answers.set(LIST, fail('API rate limit exceeded'))
+    historyIs(world, 1234, 100, 120, 140)
+    await world.advance(30 * SECOND)
+    expect(world.data()?.isRateLimited).toBe(true)
+    expect(historyCalls(world)).toHaveLength(1)
+    runsAre(world, [RUNNING])
+    await world.advance(60 * SECOND)
+    expect(world.data()?.isRateLimited).toBe(false)
+    expect(world.data()?.history).toEqual({ '1234': [100_000, 120_000, 140_000] })
+  })
+
+  test('a rate limit on the read itself marks the pane rate limited and leaves no history', async () => {
+    const { world, runtime } = setup()
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    world.answers.set(`${HISTORY} 1234 `, fail('API rate limit exceeded'))
+    await runtime.start()
+    expect(world.data()?.isRateLimited).toBe(true)
+    expect(world.data()?.history).toEqual({})
   })
 })

@@ -52,6 +52,8 @@ export const baseAnswers = (): Map<string, RunResult | Error> =>
     ['git rev-parse --verify -q refs/remotes/origin/main', ok(`${SHA}\n`)],
     ['gh repo view', ok('{"nameWithOwner":"acme/widgets"}')],
     ['gh run list', ok('[]')],
+    // A workflow's past successes: none.
+    ['gh run list --repo acme/widgets --workflow', ok('[]')],
   ])
 
 export const fakeWorld = (start: number, overrides: Partial<Ports> = {}): FakeWorld => {

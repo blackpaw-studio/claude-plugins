@@ -4,13 +4,13 @@
 // clock; hooks/register.tsx wires the ports to `$`.
 import type { ActionsData, ActionsJob, ActionsScope } from '../types'
 import { collectHead } from './collect/git'
-import { type GhFailure, type GhResult, listRuns, repoName, viewJobs } from './collect/gh'
+import { type GhFailure, type GhResult, listDurations, listRuns, repoName, viewJobs } from './collect/gh'
 import { readRef, trackingRefOf } from './collect/remote-ref'
 import { repoFromRemotes } from './collect/repo'
 import type { Run } from './collect/run'
 import { isActiveStatus } from './format'
 import { CLOSED, decide, type Effect, type Lifecycle, type LifecycleEvent, statusText } from './lifecycle'
-import { EMPTY_DATA, runsToDetail, withJobs, withRuns } from './model'
+import { EMPTY_DATA, runsToDetail, withHistory, withJobs, withRuns, workflowsToRead } from './model'
 import { KICK_MS, nextPollMs } from './schedule'
 import { listFilter } from './scope'
 import type { Settings } from './settings'
@@ -229,6 +229,18 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     await publish(withJobs(data, read))
   }
 
+  /** Past durations of the active runs' workflows, for the ETA: not while rate limited; a failed read is retried next poll. */
+  const readHistory = async (cwd: string, repo: string): Promise<void> => {
+    if (data.isRateLimited) return
+    const answers = await Promise.all(workflowsToRead(data).map(async id => [id, await listDurations(ports.run, cwd, repo, id)] as const))
+    const read = new Map<number, number[]>()
+    for (const [id, answer] of answers) {
+      if (answer.kind === 'ok') read.set(id, answer.value)
+      else await onFailure(answer)
+    }
+    await publish(withHistory(data, read))
+  }
+
   /** A push (or a command that starts runs): poll now and at the active rate for a while. */
   const kick = async (): Promise<void> => {
     lastKickAt = await ports.now()
@@ -252,6 +264,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
       if (listed.kind === 'ok') await publish(withRuns(data, listed.value, now))
       else await onFailure(listed)
       await publish({ ...data, pollMs: intervalAt(now) })
+      if (data.disabled === null) await readHistory(cwd, context.repo)
       if (data.disabled === null) await detail(cwd, context.repo, now)
     }
     const settled = await ports.now()
