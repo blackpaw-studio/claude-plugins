@@ -48,6 +48,16 @@ function portsOf($: EngineInterface): Ports {
   }
 }
 
+/** Declares /actions for the session (each one: a /clear starts another). */
+function registerCommand($: EngineInterface) {
+  return $.command.register({
+    name: 'actions',
+    description: 'Toggle the GitHub Actions pane; with commit, branch or repo, set what it watches this session',
+    argumentHint: '[commit|branch|repo]',
+    immediate: true,
+  })
+}
+
 export const register: Register = (on, options) => {
   const settings = parseSettings(options)
   let runtime: Runtime | null = null
@@ -63,12 +73,7 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     const started = await next(e)
-    await $.command.register({
-      name: 'actions',
-      description: 'Toggle the GitHub Actions pane; with commit, branch or repo, set what it watches this session',
-      argumentHint: '[commit|branch|repo]',
-      immediate: true,
-    })
+    await registerCommand($)
     attach(portsOf($))
     return started
   })
@@ -76,7 +81,12 @@ export const register: Register = (on, options) => {
   // A /clear empties the session's state and no session.start follows.
   on('session.end', async ($, e, next) => {
     const ended = await next(e)
-    if (e.reason === 'clear') runtime?.republish().catch(error => $.ui.log(`github-actions-pane: clear: ${describeError(error)}`, { to: 'debug' }))
+    if (e.reason === 'clear') {
+      const log = (error: unknown) => $.ui.log(`github-actions-pane: clear: ${describeError(error)}`, { to: 'debug' })
+      // Commands are the session's: the one going on after a /clear needs /actions again.
+      registerCommand($).catch(log)
+      runtime?.republish().catch(log)
+    }
     return ended
   })
 

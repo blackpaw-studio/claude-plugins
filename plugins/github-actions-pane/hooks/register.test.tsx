@@ -24,6 +24,7 @@ const JOBS = [
 type World = {
   argvs: string[]
   opens: { id: string; title?: string }[]
+  registered: string[]
   statuses: (string | undefined)[]
   clock: ReturnType<typeof mock.clock>
   setRepo: (isRepo: boolean) => void
@@ -36,13 +37,14 @@ const installWorld = (on: On): World => {
   const argvs: string[] = []
   const opens: { id: string; title?: string }[] = []
   const statuses: (string | undefined)[] = []
+  const registered: string[] = []
   let isRepo = true
   let isOpen = false
   const clock = mock.clock(on, { now: T0 })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
   on('session.cwd', () => ({ value: '/r' }))
-  on('command.register', (_$, e) => ({ value: { command: e.name } }))
+  on('command.register', (_$, e) => ((registered.push(e.name), { value: { command: e.name } })))
   on('ui.log', () => ({ value: undefined }))
   on('ui.status', (_$, e) => ((statuses.push(e.text), { value: undefined })))
   on('ui.open', (_$, e) => {
@@ -66,7 +68,7 @@ const installWorld = (on: On): World => {
     return answer('', 1, `unexpected: ${command}`)
   })
   on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } }) as never)
-  return { argvs, opens, statuses, clock, setRepo: value => void (isRepo = value) }
+  return { argvs, opens, registered, statuses, clock, setRepo: value => void (isRepo = value) }
 }
 
 const startSession = async ($: Engine, world: World) => {
@@ -154,5 +156,13 @@ describe('github-actions-pane in a session', () => {
     await $.tool.call({ tool: 'Bash', command: 'ls' } as never)
     await world.clock.settle()
     expect(lists()).toBe(before + 1)
+  })
+
+  test('/actions is registered again after a /clear (a new session, no session.start)', async ($, on) => {
+    const world = installWorld(on)
+    await startSession($, world)
+    await $.session.end({ reason: 'clear', sessionId: 'cleared', resume: { id: 'cleared' } })
+    await world.clock.settle()
+    expect(world.registered).toEqual(['actions', 'actions'])
   })
 })
