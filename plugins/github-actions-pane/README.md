@@ -5,9 +5,13 @@ in a pane beside the transcript while they are running, drawn like GitHub's
 run view: each run with its jobs, the running job's steps, status icons, and
 durations that tick live.
 
-The pane opens by itself when a run starts on your branch. Finished runs stay
-for a short linger, and the pane closes itself once nothing is left to show.
-A failed job collapses to the step that failed.
+A one-line band above the prompt says what is running (`⟳ 2 running · ~3m left`,
+or the longest elapsed time when there is no estimate) and, after a failure,
+which run failed (`✗ CI #482 failed`) for the linger time. The pane is opt-in:
+`/actions` opens it, or turn on **Open automatically** and it opens when a run
+starts on your branch. Finished runs stay for a short linger, and an
+automatically opened pane closes itself once nothing is left to show. A failed
+job collapses to the step that failed.
 
 ## Screenshots
 
@@ -44,8 +48,8 @@ From this marketplace:
 
 ## Use
 
-There is nothing to run. Push, or start a workflow, and the pane opens on the
-next poll.
+Push, or start a workflow, and the band appears on the next poll. Run
+`/actions` to open the pane.
 
 | Command | |
 |---|---|
@@ -71,7 +75,7 @@ These are the plugin's options. Set them when you enable it, or in `settings.jso
 | Linger seconds | 30 | How long finished runs stay before the pane closes; 0 closes at once |
 | Active poll seconds | 10 | Poll interval while a run is active; at least 5 |
 | Idle poll seconds | 60 | Poll interval while nothing is active; at least 15 |
-| Open automatically | on | Off: no pane opens by itself, and the status line shows what is running |
+| Open automatically | off | On: the pane opens by itself when a run starts. Off: the band above the prompt and the status line show what is running, and `/actions` opens the pane |
 
 ## Behaviour
 

@@ -1,6 +1,6 @@
 {
   "name": "github-actions-pane",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Live GitHub Actions pane beside the transcript while workflow runs are active: run, jobs and steps with status icons and live durations, drawn like GitHub's run view.",
   "author": {
     "name": "Evan Coleman"
@@ -39,8 +39,8 @@
     "autoOpen": {
       "type": "boolean",
       "title": "Open automatically",
-      "description": "Open the pane when a run starts. Off: status line hint only.",
-      "default": true
+      "description": "Open the pane when a run starts. Off (the default): the band above the prompt and the status line show what runs; /actions opens the pane.",
+      "default": false
     }
   }
 }
