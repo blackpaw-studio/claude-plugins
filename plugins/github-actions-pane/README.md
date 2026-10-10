@@ -125,6 +125,12 @@ These are the plugin's options. Set them when you enable it, or in `settings.jso
   The same goes for a tag pushed from outside Claude: it moves no branch ref,
   so its run shows on the next idle poll. A `git push` through Claude's Bash,
   tags included, polls at once.
+- The repository comes from git remotes, not `gh`'s own pick (which prefers
+  `upstream` over `origin` in a fork clone): the remote `gh repo set-default`
+  chose, else the branch's push remote (`pushRemote`, `remote.pushDefault`,
+  or the remote it tracks), else `origin`. Only github.com
+  remotes are read this way; a GitHub Enterprise host, or an ssh alias for
+  github.com, falls back to `gh repo view`.
 - The linger and the stale note use your local clock, measured from when a
   poll saw the change, not from GitHub's timestamps.
 - Some terminal setups (inside tmux, for one) do not support OSC 8

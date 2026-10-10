@@ -1,0 +1,66 @@
+// The GitHub repository a checkout pushes to, read from git remotes: `gh repo
+// view` picks `upstream` over `origin` in a fork clone and so watches someone
+// else's runs. Local git reads only, no network.
+//
+// Order: a remote `gh repo set-default` marked, then the branch's push remote
+// (branch pushRemote, remote.pushDefault, the remote it tracks), then origin. Only github.com URLs count (a GitHub Enterprise host, or an ssh
+// alias for github.com, resolves nothing here and is left to `gh`).
+import { type Run, type RunInit, tryRun } from './run'
+
+const GIT_TIMEOUT_MS = 10_000
+const GIT_ENV = { GIT_OPTIONAL_LOCKS: '0' }
+const DEFAULT_REMOTE = 'origin'
+/** What `gh repo set-default` writes as `remote.<name>.gh-resolved` for the remote it picked. */
+const GH_BASE = 'base'
+
+// https://[user@]github.com/o/r[.git][/], ssh://git@github.com/o/r, git@github.com:o/r[.git], git://github.com/o/r
+const GITHUB_URL = /^(?:(?:https?|ssh|git):\/\/)?(?:[^@/]+@)?(?:www\.)?github\.com[:/]([^/:]+)\/([^/]+?)(?:\.git)?\/?$/i
+
+/** `owner/repo` of a github.com remote URL; null for any other host or shape. Pure. */
+export const parseGitHubUrl = (url: string): string | null => {
+  const match = GITHUB_URL.exec(url.trim())
+  return match === null ? null : `${match[1]}/${match[2]}`
+}
+
+/** `git config --list` as key to value, a later entry replacing an earlier one. Keys: section and variable lowercased. */
+const parseConfig = (stdout: string): ReadonlyMap<string, string> =>
+  new Map(
+    stdout.split('\n').flatMap((line): [string, string][] => {
+      const at = line.indexOf('=')
+      return at > 0 ? [[line.slice(0, at), line.slice(at + 1)]] : []
+    }),
+  )
+
+const initOf = (cwd: string): RunInit => ({ cwd, timeoutMs: GIT_TIMEOUT_MS, env: GIT_ENV })
+
+const repoOfRemote = (config: ReadonlyMap<string, string>, name: string): string | null => {
+  const url = config.get(`remote.${name}.url`)
+  return url === undefined ? null : parseGitHubUrl(url)
+}
+
+/** The repos named by `gh repo set-default`, in config order: a remote marked `base`, or `owner/repo` outright. */
+const ghDefaults = (config: ReadonlyMap<string, string>): (string | null)[] =>
+  [...config.entries()].flatMap(([key, value]) => {
+    const name = /^remote\.(.+)\.gh-resolved$/.exec(key)?.[1]
+    if (name === undefined) return []
+    return [value === GH_BASE ? repoOfRemote(config, name) : /^[^/\s]+\/[^/\s]+$/.test(value) ? value : null]
+  })
+
+/** Where a push of this branch goes, as git config names it: its pushRemote, else remote.pushDefault, else the remote it tracks. No ref need exist yet. */
+const pushRemotesOf = (config: ReadonlyMap<string, string>, branch: string | null): string[] =>
+  [
+    ...(branch === null ? [] : [config.get(`branch.${branch}.pushremote`)]),
+    config.get('remote.pushdefault'),
+    ...(branch === null ? [] : [config.get(`branch.${branch}.remote`)]),
+  ].flatMap(name => (name === undefined ? [] : [name]))
+
+/** `owner/repo` the checkout pushes to; null when git names no GitHub repo (the caller then asks gh). */
+export const repoFromRemotes = async (run: Run, cwd: string, branch: string | null): Promise<string | null> => {
+  const ran = await tryRun(run, ['git', 'config', '--list'], initOf(cwd))
+  if (ran.kind !== 'ran' || ran.result.exitCode !== 0) return null
+  const config = parseConfig(ran.result.stdout)
+  const explicit = ghDefaults(config).find(repo => repo !== null)
+  if (explicit !== undefined) return explicit
+  const candidates = [...pushRemotesOf(config, branch), DEFAULT_REMOTE].map(name => repoOfRemote(config, name))
+  return candidates.find(repo => repo !== null) ?? null
+}

@@ -8,9 +8,14 @@ import { fakeWorld, type FakeWorld, flush, SHA } from './testing/ports'
 
 const LIST = 'gh run list'
 const HEAD = 'git rev-parse HEAD --abbrev-ref HEAD'
+const FORK_CONFIG = [
+  'remote.upstream.url=https://github.com/ghostty-org/ghostty.git',
+  'remote.origin.url=git@github.com:blackpaw-studio/leoterm.git',
+  'branch.main.remote=origin',
+].join('\n')
 const runsAre = (world: FakeWorld, runs: readonly ActionsRun[]) => world.answers.set(LIST, ok(JSON.stringify(runs.map(ghRun))))
 const jobsAre = (world: FakeWorld, id: number, jobs: readonly ActionsJob[]) =>
-  world.answers.set(`gh run view ${id} --json jobs`, ok(JSON.stringify(ghJobs(jobs))))
+  world.answers.set(`gh run view ${id} --repo`, ok(JSON.stringify(ghJobs(jobs))))
 
 const RUNNING = runOf({ id: 482, createdAt: T0, startedAt: T0 })
 const PASSED = { ...RUNNING, status: 'completed', conclusion: 'success', updatedAt: T0 + 90 * SECOND }
@@ -34,9 +39,9 @@ describe('watching a run', () => {
     await runtime.start()
     expect(gh(world)).toEqual([
       'gh repo view --json nameWithOwner',
-      expect.stringMatching(/^gh run list --limit 20 --json \S+ --branch main$/),
-      expect.stringMatching(/^gh run list --limit 20 --json \S+ --commit a1b2c3d4e5f60718293a4b5c6d7e8f9012345678$/),
-      'gh run view 482 --json jobs',
+      expect.stringMatching(/^gh run list --repo acme\/widgets --limit 20 --json \S+ --branch main$/),
+      expect.stringMatching(/^gh run list --repo acme\/widgets --limit 20 --json \S+ --commit a1b2c3d4e5f60718293a4b5c6d7e8f9012345678$/),
+      'gh run view 482 --repo acme/widgets --json jobs',
     ])
     expect(world.opens()).toBe(1)
     expect(world.data()?.jobs['482']?.map(job => job.name)).toEqual(['test'])
@@ -238,6 +243,49 @@ describe('when there is nothing to watch', () => {
     expect([world.data()?.runs, world.data()?.jobs, world.data()?.watched]).toEqual([[], {}, {}])
   })
 
+  test('a fork clone watches its own remote, not the upstream gh would pick, and never asks gh', async () => {
+    const { world, runtime } = setup()
+    world.answers.set('git config --list', ok(FORK_CONFIG))
+    world.answers.set('gh repo view', ok('{"nameWithOwner":"ghostty-org/ghostty"}'))
+    await runtime.start()
+    expect(world.data()?.context?.repo).toBe('blackpaw-studio/leoterm')
+    expect(gh(world).filter(argv => argv.startsWith('gh repo'))).toEqual([])
+  })
+
+  test('every gh run command is pinned to the resolved repo, so a fork never reads the upstream\'s runs', async () => {
+    const { world, runtime } = setup()
+    world.answers.set('git config --list', ok(FORK_CONFIG))
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    await runtime.start()
+    const runCommands = gh(world).filter(argv => argv.startsWith('gh run'))
+    expect(runCommands.length).toBeGreaterThanOrEqual(3)
+    expect(runCommands.filter(argv => !argv.includes(' --repo blackpaw-studio/leoterm '))).toEqual([])
+  })
+
+  test('a branch switch to another push remote moves the pane to that repo and drops the last one', async () => {
+    const { world, runtime } = setup()
+    world.answers.set('git config --list', ok(`${FORK_CONFIG}\nremote.mine.url=git@github.com:evan/leoterm.git\nbranch.feat/x.pushremote=mine`))
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    await runtime.start()
+    expect(world.data()?.context?.repo).toBe('blackpaw-studio/leoterm')
+    world.answers.set(HEAD, ok(`${SHA}\nfeat/x\n`))
+    world.answers.set(LIST, ok('[]'))
+    await runtime.poll()
+    expect(world.data()?.context?.repo).toBe('evan/leoterm')
+    expect(world.data()?.runs).toEqual([])
+  })
+
+  test('without a GitHub remote in git, gh is asked once and its answer kept until the cwd moves', async () => {
+    const { world, runtime } = setup()
+    world.answers.set('git config --list', ok('remote.corp.url=git@git.corp.example:team/app.git'))
+    await runtime.start()
+    await runtime.poll()
+    expect(world.data()?.context?.repo).toBe('acme/widgets')
+    expect(gh(world).filter(argv => argv.startsWith('gh repo'))).toEqual(['gh repo view --json nameWithOwner'])
+  })
+
   test('/actions says why, and does not open', async () => {
     const { world, runtime } = setup()
     world.answers.set('gh repo view', fail('To get started with GitHub CLI, please run:  gh auth login', 4))
@@ -429,7 +477,7 @@ describe('kicks and toggles', () => {
     expect([asked, world.opens()]).toEqual([1, 0])
     expect(world.manual()).toBe(true)
     // Opened by hand with nothing active: the latest run is shown, its jobs read.
-    expect(gh(world)).toContain('gh run view 482 --json jobs')
+    expect(gh(world)).toContain('gh run view 482 --repo acme/widgets --json jobs')
     await world.advance(120 * SECOND)
     expect(world.closes()).toBe(0)
     expect((await runtime.toggle(async () => ({ isPlaced: true }))).text).toBe('Actions pane closed.')

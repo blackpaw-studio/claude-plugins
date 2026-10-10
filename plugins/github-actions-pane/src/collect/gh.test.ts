@@ -6,7 +6,8 @@ import { classifyFailure, listRuns, parseJobs, parseRuns, repoName, viewJobs, RU
 
 const at = (iso: string) => Date.parse(iso)
 const GH_INIT = { cwd: '/repo', timeoutMs: 10_000, env: { GH_PROMPT_DISABLED: '1' } }
-const LIST = `gh run list --limit 20 --json ${RUN_FIELDS}`
+const REPO = 'acme/widgets'
+const LIST = `gh run list --repo ${REPO} --limit 20 --json ${RUN_FIELDS}`
 
 describe('parseRuns', () => {
   test('reads gh run list JSON, a run not yet concluded with a null conclusion', () => {
@@ -79,15 +80,15 @@ describe('parseJobs', () => {
 describe('listRuns', () => {
   test('repo scope lists without a filter, prompts off, bounded', async () => {
     const { run, asked } = runner({ [LIST]: ok(RUN_LIST) })
-    const listed = await listRuns(run, '/repo', { kind: 'repo' })
+    const listed = await listRuns(run, '/repo', REPO, { kind: 'repo' })
     expect(listed.kind === 'ok' ? listed.value.length : listed).toBe(6)
     expect(asked).toEqual([{ argv: LIST, init: GH_INIT }])
   })
 
   test('branch and commit scopes filter on the server', async () => {
     const { run, asked } = runner({ [`${LIST} --branch main`]: ok('[]'), [`${LIST} --commit abc123`]: ok('[]') })
-    await listRuns(run, '/repo', { kind: 'branch', branch: 'main' })
-    await listRuns(run, '/repo', { kind: 'commit', sha: 'abc123' })
+    await listRuns(run, '/repo', REPO, { kind: 'branch', branch: 'main' })
+    await listRuns(run, '/repo', REPO, { kind: 'commit', sha: 'abc123' })
     expect(asked.map(call => call.argv)).toEqual([`${LIST} --branch main`, `${LIST} --commit abc123`])
   })
 
@@ -99,7 +100,7 @@ describe('listRuns', () => {
       [`${LIST} --branch main`]: ok(JSON.stringify([both, branchOnly].map(ghRun))),
       [`${LIST} --commit abc123`]: ok(JSON.stringify([tagRun, both].map(ghRun))),
     })
-    const listed = await listRuns(run, '/repo', { kind: 'any', of: [{ kind: 'branch', branch: 'main' }, { kind: 'commit', sha: 'abc123' }] })
+    const listed = await listRuns(run, '/repo', REPO, { kind: 'any', of: [{ kind: 'branch', branch: 'main' }, { kind: 'commit', sha: 'abc123' }] })
     expect(listed.kind === 'ok' ? listed.value.map(one => one.id) : listed).toEqual([50, 51, 52])
     expect(asked.map(call => call.argv).sort()).toEqual([`${LIST} --branch main`, `${LIST} --commit abc123`])
   })
@@ -109,7 +110,7 @@ describe('listRuns', () => {
       [`${LIST} --branch main`]: ok('[]'),
       [`${LIST} --commit abc123`]: fail('HTTP 403: API rate limit exceeded'),
     })
-    const listed = await listRuns(run, '/repo', { kind: 'any', of: [{ kind: 'branch', branch: 'main' }, { kind: 'commit', sha: 'abc123' }] })
+    const listed = await listRuns(run, '/repo', REPO, { kind: 'any', of: [{ kind: 'branch', branch: 'main' }, { kind: 'commit', sha: 'abc123' }] })
     expect(listed.kind).toBe('rate-limited')
   })
 
@@ -126,14 +127,14 @@ describe('listRuns', () => {
       [`${BRANCH} --status in_progress`]: pageOf([older]),
       [`${BRANCH} --status queued`]: pageOf([older]),
     })
-    const listed = await listRuns(run, '/repo', { kind: 'branch', branch: 'main' })
+    const listed = await listRuns(run, '/repo', REPO, { kind: 'branch', branch: 'main' })
     expect(listed.kind === 'ok' ? listed.value.map(one => one.id) : listed).toEqual([...finished.map(one => one.id), 7])
     expect(asked.map(call => call.argv)).toEqual([BRANCH, `${BRANCH} --status in_progress`, `${BRANCH} --status queued`])
   })
 
   test('a page short of the limit is the whole list: one call', async () => {
     const { run, asked } = runner({ [BRANCH]: pageOf(finished.slice(1)) })
-    await listRuns(run, '/repo', { kind: 'branch', branch: 'main' })
+    await listRuns(run, '/repo', REPO, { kind: 'branch', branch: 'main' })
     expect(asked).toHaveLength(1)
   })
 
@@ -143,19 +144,19 @@ describe('listRuns', () => {
       [`${BRANCH} --status in_progress`]: fail('HTTP 403: API rate limit exceeded'),
       [`${BRANCH} --status queued`]: pageOf([]),
     })
-    expect((await listRuns(run, '/repo', { kind: 'branch', branch: 'main' })).kind).toBe('rate-limited')
+    expect((await listRuns(run, '/repo', REPO, { kind: 'branch', branch: 'main' })).kind).toBe('rate-limited')
   })
 
   test('output that does not parse is transient', async () => {
     const { run } = runner({ [LIST]: ok('<html>') })
-    expect(await listRuns(run, '/repo', { kind: 'repo' })).toEqual({ kind: 'transient', reason: 'gh returned output that is not a run list' })
+    expect(await listRuns(run, '/repo', REPO, { kind: 'repo' })).toEqual({ kind: 'transient', reason: 'gh returned output that is not a run list' })
   })
 })
 
 describe('viewJobs and repoName', () => {
   test('viewJobs asks for one run', async () => {
-    const { run, asked } = runner({ 'gh run view 37981739982 --json jobs': ok(JOBS_LINT_FAILED) })
-    const viewed = await viewJobs(run, '/repo', 37981739982)
+    const { run, asked } = runner({ 'gh run view 37981739982 --repo acme/widgets --json jobs': ok(JOBS_LINT_FAILED) })
+    const viewed = await viewJobs(run, '/repo', REPO, 37981739982)
     expect(viewed.kind === 'ok' ? viewed.value.map(job => job.name) : viewed).toEqual(['lint', 'govulncheck'])
     expect(asked[0]?.init).toEqual(GH_INIT)
   })

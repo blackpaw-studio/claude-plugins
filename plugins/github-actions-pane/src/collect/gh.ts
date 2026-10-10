@@ -163,17 +163,17 @@ const gh = async <T>(run: Run, cwd: string, args: readonly string[], parse: (std
 /** The statuses asked for apart when the newest page is full, so a long run can't fall off it. */
 const ACTIVE_STATUSES = ['in_progress', 'queued'] as const
 
-const listPage = (run: Run, cwd: string, filter: LeafFilter, extra: readonly string[] = []): Promise<GhResult<ActionsRun[]>> =>
-  gh(run, cwd, ['run', 'list', '--limit', String(LIST_LIMIT), '--json', RUN_FIELDS, ...filterArgs(filter), ...extra], parseRuns, 'a run list')
+const listPage = (run: Run, cwd: string, repo: string, filter: LeafFilter, extra: readonly string[] = []): Promise<GhResult<ActionsRun[]>> =>
+  gh(run, cwd, ['run', 'list', '--repo', repo, '--limit', String(LIST_LIMIT), '--json', RUN_FIELDS, ...filterArgs(filter), ...extra], parseRuns, 'a run list')
 
 /**
  * The newest runs in the filter, plus, when that page is full, the active runs
  * older than it (one more call per active status). Any failed call fails the list.
  */
-const listLeaf = async (run: Run, cwd: string, filter: LeafFilter): Promise<GhResult<ActionsRun[]>> => {
-  const newest = await listPage(run, cwd, filter)
+const listLeaf = async (run: Run, cwd: string, repo: string, filter: LeafFilter): Promise<GhResult<ActionsRun[]>> => {
+  const newest = await listPage(run, cwd, repo, filter)
   if (newest.kind !== 'ok' || newest.value.length < LIST_LIMIT) return newest
-  const pages = await Promise.all(ACTIVE_STATUSES.map(status => listPage(run, cwd, filter, ['--status', status])))
+  const pages = await Promise.all(ACTIVE_STATUSES.map(status => listPage(run, cwd, repo, filter, ['--status', status])))
   const failed = pages.find(page => page.kind !== 'ok')
   if (failed !== undefined) return failed
   const onPage = new Set(newest.value.map(one => one.id))
@@ -182,10 +182,10 @@ const listLeaf = async (run: Run, cwd: string, filter: LeafFilter): Promise<GhRe
   return { kind: 'ok', value: [...newest.value, ...unique] }
 }
 
-/** The runs of every part of the filter, merged without repeats (a failed part fails the list), newest first. */
-export const listRuns = async (run: Run, cwd: string, filter: ListFilter): Promise<GhResult<ActionsRun[]>> => {
-  if (filter.kind !== 'any') return listLeaf(run, cwd, filter)
-  const lists = await Promise.all(filter.of.map(leaf => listLeaf(run, cwd, leaf)))
+/** The runs of `repo` (`owner/name`: gh would otherwise pick a fork's upstream) in every part of the filter, merged without repeats (a failed part fails the list), newest first. */
+export const listRuns = async (run: Run, cwd: string, repo: string, filter: ListFilter): Promise<GhResult<ActionsRun[]>> => {
+  if (filter.kind !== 'any') return listLeaf(run, cwd, repo, filter)
+  const lists = await Promise.all(filter.of.map(leaf => listLeaf(run, cwd, repo, leaf)))
   const failed = lists.find(list => list.kind !== 'ok')
   if (failed !== undefined) return failed
   const all = lists.flatMap(list => (list.kind === 'ok' ? list.value : []))
@@ -193,8 +193,8 @@ export const listRuns = async (run: Run, cwd: string, filter: ListFilter): Promi
   return { kind: 'ok', value: [...unique].sort((a, b) => b.createdAt - a.createdAt) }
 }
 
-export const viewJobs = (run: Run, cwd: string, id: number): Promise<GhResult<ActionsJob[]>> =>
-  gh(run, cwd, ['run', 'view', String(id), '--json', 'jobs'], parseJobs, 'a job list')
+export const viewJobs = (run: Run, cwd: string, repo: string, id: number): Promise<GhResult<ActionsJob[]>> =>
+  gh(run, cwd, ['run', 'view', String(id), '--repo', repo, '--json', 'jobs'], parseJobs, 'a job list')
 
 const parseRepo = (stdout: string): string | null => {
   const parsed = parseJson(stdout)
