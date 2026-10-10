@@ -265,7 +265,8 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
       else await onFailure(listed)
       await publish({ ...data, pollMs: intervalAt(now) })
       if (data.disabled === null) await readHistory(cwd, context.repo)
-      if (data.disabled === null) await detail(cwd, context.repo, now)
+      // A rate limit met by the history read stops this poll's job reads too.
+      if (data.disabled === null && !data.isRateLimited) await detail(cwd, context.repo, now)
     }
     const settled = await ports.now()
     await step(snapshot => ({ kind: 'poll', view: viewOf(snapshot), autoOpen: settings.autoOpen }), settled)

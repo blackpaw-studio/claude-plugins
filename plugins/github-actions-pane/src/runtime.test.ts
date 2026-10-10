@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import type { ActionsJob, ActionsRun } from '../types'
+import type { ActionsData, ActionsJob, ActionsRun } from '../types'
 import { fail, ok } from './testing/runner'
 import { createRuntime, REMOTE_WATCH_MS } from './runtime'
 import { DEFAULT_SETTINGS, type Settings } from './settings'
@@ -633,5 +633,14 @@ describe('run ETA history', () => {
     await runtime.start()
     expect(world.data()?.isRateLimited).toBe(true)
     expect(world.data()?.history).toEqual({})
+  })
+
+  test('no job requests follow a rate-limited history response', async () => {
+    const { world, runtime } = setup()
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    world.answers.set(`${HISTORY} 1234 `, fail('API rate limit exceeded'))
+    await runtime.start()
+    expect(gh(world).filter(argv => argv.startsWith('gh run view'))).toEqual([])
   })
 })
