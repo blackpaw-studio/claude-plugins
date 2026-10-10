@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { ActionsData, ActionsJob, ActionsRun } from '../types'
 import { fail, ok } from './testing/runner'
-import { createRuntime, REMOTE_WATCH_MS } from './runtime'
+import { createRuntime, type Ports, REMOTE_WATCH_MS } from './runtime'
 import { DEFAULT_SETTINGS, type Settings } from './settings'
 import { dataOf, ghJobs, ghRun, jobOf, runOf, SECOND, T0 } from './testing/builders'
 import { fakeWorld, type FakeWorld, flush, SHA } from './testing/ports'
@@ -126,13 +126,13 @@ describe('watching a run', () => {
     expect(world.data()?.jobs['482']?.[0]?.status).toBe('completed')
   })
 
-  test('autoOpen off: never opens, the status line says what runs', async () => {
+  test('autoOpen off: never opens; the band says what runs, so the status line stays clear', async () => {
     const { world, runtime } = setup(DEFAULT_SETTINGS)
     runsAre(world, [RUNNING])
     jobsAre(world, 482, [TEST_JOB])
     await runtime.start()
     expect(world.opens()).toBe(0)
-    expect(world.statuses.at(-1)).toBe('◐ 1 running')
+    expect(world.statuses.at(-1)).toBe(undefined)
   })
 })
 
@@ -201,6 +201,51 @@ describe('the band with the pane closed', () => {
   })
 })
 
+describe('the band and the status line', () => {
+  const OTHER = runOf({ id: 90, number: 90, createdAt: T0 - SECOND, startedAt: T0 - SECOND })
+  const OTHER_FAILED = { ...OTHER, status: 'completed', conclusion: 'failure', updatedAt: T0 + 5 * SECOND }
+
+  test('a failure beside a running run stays in the status line; the running half is the band\'s', async () => {
+    const { world, runtime } = setup(DEFAULT_SETTINGS)
+    runsAre(world, [RUNNING, OTHER])
+    jobsAre(world, 482, [TEST_JOB])
+    jobsAre(world, 90, [TEST_JOB])
+    await runtime.start()
+    expect(world.statuses.at(-1)).toBe(undefined)
+    runsAre(world, [RUNNING, OTHER_FAILED])
+    jobsAre(world, 90, [jobOf('test', { conclusion: 'failure' })])
+    await world.advance(10 * SECOND)
+    expect(world.statuses.at(-1)).toBe('✗ 1 failed')
+  })
+
+  test('a rate limit leaves no band, and the status line is what it was', async () => {
+    const { world, runtime } = setup(DEFAULT_SETTINGS)
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    await runtime.start()
+    world.answers.set(LIST, fail('HTTP 403: API rate limit exceeded for user ID 1.'))
+    await world.advance(10 * SECOND)
+    expect(world.statuses.at(-1)).toBe('◐ 1 running')
+  })
+})
+
+describe('a poll with requests still pending', () => {
+  test('the band ticks as soon as the runs are published, not when the poll ends', async () => {
+    const world = fakeWorld(T0)
+    // The workflow history never answers: the poll hangs after publishing the runs.
+    const run: Ports['run'] = (argv, init) =>
+      argv.join(' ').includes('--workflow') ? new Promise<never>(() => undefined) : world.ports.run(argv, init)
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    const runtime = createRuntime({ ...world.ports, run }, DEFAULT_SETTINGS)
+    void runtime.start()
+    await flush()
+    expect(world.drawnNow()).toBe(T0)
+    await world.advance(3 * SECOND)
+    expect(world.drawnNow()).toBe(T0 + 3 * SECOND)
+  })
+})
+
 describe('a pane that cannot seat', () => {
   test('shows the status line instead, and clears it once the pane seats', async () => {
     const { world, runtime } = setup()
@@ -208,7 +253,7 @@ describe('a pane that cannot seat', () => {
     runsAre(world, [RUNNING])
     jobsAre(world, 482, [TEST_JOB])
     await runtime.start()
-    expect(world.statuses.at(-1)).toBe('◐ 1 running')
+    expect(world.statuses.at(-1)).toBe(undefined)
     world.setPane({ isOpen: true, isPlaced: true })
     await world.advance(SECOND)
     expect(world.statuses.at(-1)).toBe(undefined)

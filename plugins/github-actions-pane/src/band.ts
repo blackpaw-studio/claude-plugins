@@ -28,6 +28,9 @@ export const bandText = (snapshot: Snapshot): string | null => {
   return failed.length > 0 ? failedText(failed) : null
 }
 
+/** Whether the band's text is the running state (the failure state is not). */
+export const isRunningBand = (text: string | null): boolean => text?.startsWith(RUNNING_GLYPH) === true
+
 /** The band for these inputs: never the pane's manual "latest run" fallback. */
 export const bandAt = (inputs: Omit<SnapshotInputs, 'isManual'>): string | null =>
   bandText(buildSnapshot({ ...inputs, isManual: false }))

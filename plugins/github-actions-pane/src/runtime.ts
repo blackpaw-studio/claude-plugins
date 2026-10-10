@@ -3,7 +3,7 @@
 // Everything outside reaches it through Ports, so tests drive it on a fake
 // clock; hooks/register.tsx wires the ports to `$`.
 import type { ActionsData, ActionsJob, ActionsScope } from '../types'
-import { bandAt } from './band'
+import { bandAt, isRunningBand } from './band'
 import { collectHead } from './collect/git'
 import { type GhFailure, type GhResult, listDurations, listRuns, repoName, viewJobs } from './collect/gh'
 import { readRef, trackingRefOf } from './collect/remote-ref'
@@ -82,14 +82,14 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     await ports.data.set(next)
   }
 
-  const showStatus = (snapshot: Snapshot): void => {
+  const showStatus = (snapshot: Snapshot, isRunningInBand: boolean): void => {
     const isPaneShowing = lifecycle.mode !== 'closed' && isPlaced
-    ports.status(isPaneShowing ? undefined : statusText(snapshot.counts))
+    // The band says what runs; the status line keeps what it does not (failures).
+    const counts = isRunningInBand ? { ...snapshot.counts, running: 0, passed: 0 } : snapshot.counts
+    ports.status(isPaneShowing ? undefined : statusText(counts))
   }
 
-  /** The band shows (a run runs, or a failure lingers): it needs the drawn clock moving, pane or no pane. */
-  const isBandShowing = async (now: number): Promise<boolean> =>
-    bandAt({ data, now, settings, scope: await scopeNow() }) !== null
+  const bandTextAt = async (now: number): Promise<string | null> => bandAt({ data, now, settings, scope: await scopeNow() })
 
   const startTick = (): void => {
     tickTimer ??= ports.every(TICK_MS, () => void tick().catch(fail('tick')))
@@ -115,16 +115,19 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     await ports.manual.set(lifecycle.mode === 'manual')
   }
 
-  /** The status line, and the tick: running while the pane is open or the band shows. */
+  /** The tick runs while the pane is open or the band shows; the clock is brought up when it starts. */
+  const syncTick = async (now: number, isBandShowing: boolean): Promise<void> => {
+    if (lifecycle.mode === 'closed' && !isBandShowing) return stopTick()
+    if (tickTimer !== null) return
+    await ports.clock.set(now)
+    startTick()
+  }
+
+  /** The status line, and the tick. */
   const refresh = async (now: number): Promise<void> => {
-    showStatus(await snapshotAt(now))
-    if (lifecycle.mode !== 'closed' || (await isBandShowing(now))) {
-      if (tickTimer === null) {
-        // The drawn clock stands still while nothing ticks: bring it up before the first frame.
-        await ports.clock.set(now)
-        startTick()
-      }
-    } else stopTick()
+    const band = await bandTextAt(now)
+    showStatus(await snapshotAt(now), isRunningBand(band))
+    await syncTick(now, band !== null)
   }
 
   const step = async (event: (snapshot: Snapshot) => LifecycleEvent, now: number): Promise<void> => {
@@ -279,6 +282,8 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
       await publish({ ...(isNewRepo ? EMPTY_DATA : data), context, disabled: null })
       if (listed.kind === 'ok') await publish(withRuns(data, listed.value, now))
       else await onFailure(listed)
+      // The band shows from here, while history and job reads are still out: tick now.
+      if (tickTimer === null && data.runs.some(run => isActiveStatus(run.status))) await syncTick(await ports.now(), true)
       await publish({ ...data, pollMs: intervalAt(now) })
       if (data.disabled === null) await readHistory(cwd, context.repo)
       // A rate limit met by the history read stops this poll's job reads too.
