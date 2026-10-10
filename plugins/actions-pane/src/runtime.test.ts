@@ -81,7 +81,7 @@ describe('watching a run', () => {
     jobsAre(world, 482, [TEST_JOB])
     await runtime.start()
     expect(world.opens()).toBe(0)
-    expect(world.statuses.at(-1)).toBe('Actions ◐ 1 running')
+    expect(world.statuses.at(-1)).toBe('◐ 1 running')
   })
 })
 
@@ -92,9 +92,27 @@ describe('a pane that cannot seat', () => {
     runsAre(world, [RUNNING])
     jobsAre(world, 482, [TEST_JOB])
     await runtime.start()
-    expect(world.statuses.at(-1)).toBe('Actions ◐ 1 running')
+    expect(world.statuses.at(-1)).toBe('◐ 1 running')
     world.setPane({ isOpen: true, isPlaced: true })
     await world.advance(SECOND)
+    expect(world.statuses.at(-1)).toBe(undefined)
+  })
+
+  test('/actions seats a pane that waits unseated (asked), rather than closing it', async () => {
+    const { world, runtime } = setup()
+    world.setPlaced(false)
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    await runtime.start()
+    let asked = 0
+    const reply = await runtime.toggle(async () => {
+      asked += 1
+      world.setPane({ isOpen: true, isPlaced: true })
+      return { isPlaced: true }
+    })
+    expect(reply.text).toBe('Actions pane opened.')
+    expect([asked, world.closes()]).toEqual([1, 0])
+    expect(world.manual()).toBe(true)
     expect(world.statuses.at(-1)).toBe(undefined)
   })
 
@@ -106,7 +124,7 @@ describe('a pane that cannot seat', () => {
     await runtime.start()
     runsAre(world, [{ ...RUNNING, status: 'completed', conclusion: 'failure' }])
     await world.advance(10 * SECOND)
-    expect(world.statuses.at(-1)).toBe('Actions ✗ 1 failed')
+    expect(world.statuses.at(-1)).toBe('✗ 1 failed')
     await world.advance(30 * SECOND)
     expect(world.closes()).toBe(1)
     expect(world.statuses.at(-1)).toBe(undefined)
@@ -192,7 +210,11 @@ describe('kicks and toggles', () => {
     runsAre(world, [PASSED])
     await runtime.start()
     let asked = 0
-    const reply = await runtime.toggle(async () => ((asked += 1), { isPlaced: true }))
+    const reply = await runtime.toggle(async () => {
+      asked += 1
+      world.setPane({ isOpen: true, isPlaced: true })
+      return { isPlaced: true }
+    })
     await flush()
     expect(reply.text).toBe('Actions pane opened.')
     expect([asked, world.opens()]).toEqual([1, 0])

@@ -48,7 +48,10 @@ def iso(offset):
 
 
 # step: (name, seconds, conclusion when it ends)
-SETUP = [("Set up job", 2, "success"), ("Checkout", 1, "success"), ("Setup Node.js 20", 3, "success")]
+def setup(node):
+    return [("Set up job", 2, "success"), ("Checkout", 1, "success"), (f"Setup Node.js {node}", 3, "success")]
+
+
 RUNS = [
     {
         "id": 18101,
@@ -65,12 +68,12 @@ RUNS = [
         "title": "fix: parser edge case",
         "created": 4,
         "jobs": [
-            {"name": "lint", "start": 6, "steps": SETUP + [("Install dependencies", 6, "success"), ("Lint", 5, "success"),
+            {"name": "lint", "start": 6, "steps": setup(20) + [("Install dependencies", 6, "success"), ("Lint", 5, "success"),
                                                      ("Post Checkout", 1, "success"), ("Complete job", 0, "success")]},
-            {"name": "test (node 20)", "start": 7, "steps": SETUP + [("Install dependencies", 7, "success"),
+            {"name": "test (node 20)", "start": 7, "steps": setup(20) + [("Install dependencies", 7, "success"),
                                                                ("Run tests", 26, "success"), ("Post Checkout", 1, "success"),
                                                                ("Complete job", 0, "success")]},
-            {"name": "test (node 22)", "start": 7, "steps": SETUP + [("Install dependencies", 7, "success"),
+            {"name": "test (node 22)", "start": 7, "steps": setup(22) + [("Install dependencies", 7, "success"),
                                                                ("Run tests", 24, "success"), ("Post Checkout", 1, "success"),
                                                                ("Complete job", 0, "success")]},
             {"name": "build", "start": 47, "steps": [("Set up job", 1, "success"), ("Checkout", 1, "success"),

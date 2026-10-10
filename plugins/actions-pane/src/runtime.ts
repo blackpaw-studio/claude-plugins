@@ -231,7 +231,8 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
       if (lifecycle.mode === 'closed' && data.disabled !== null) await poll()
       if (lifecycle.mode === 'closed' && data.disabled !== null) return { text: `Actions pane: ${data.disabled}.` }
       const now = await ports.now()
-      const decision = decide(lifecycle, { kind: 'toggle', view: viewOf(await snapshotAt(now)) })
+      isPlaced = lifecycle.mode === 'closed' || (await ports.pane()).isPlaced
+      const decision = decide(lifecycle, { kind: 'toggle', view: viewOf(await snapshotAt(now)), isPlaced })
       lifecycle = decision.state
       await apply(decision.effect, open)
       if (decision.effect === 'open') await ports.clock.set(now)

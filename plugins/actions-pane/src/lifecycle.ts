@@ -15,7 +15,8 @@ export type View = { activeIds: readonly number[]; shownIds: readonly number[] }
 
 export type LifecycleEvent =
   | { kind: 'poll' | 'tick'; view: View; autoOpen: boolean }
-  | { kind: 'toggle'; view: View }
+  /** `isPlaced`: whether an open pane is drawn now (an unseated one is seated, not closed). */
+  | { kind: 'toggle'; view: View; isPlaced: boolean }
   | { kind: 'closedByPerson'; view: View }
 
 export type Effect = 'open' | 'close' | 'none'
@@ -43,16 +44,19 @@ export const decide = (state: Lifecycle, event: LifecycleEvent): Decision => {
     case 'tick':
       return onUpdate(state, event.kind, event.view, event.autoOpen)
     case 'toggle':
-      return state.mode === 'closed' ? { state: { mode: 'manual', dismissed: [] }, effect: 'open' } : closeHolding(event.view)
+      return state.mode === 'closed' || !event.isPlaced ? { state: { mode: 'manual', dismissed: [] }, effect: 'open' } : closeHolding(event.view)
     case 'closedByPerson':
       return { ...closeHolding(event.view), effect: 'none' }
   }
 }
 
-/** The status line entry while runs show but the pane does not; undefined clears it. */
+/**
+ * The status line entry while runs show but the pane does not; undefined
+ * clears it. The engine already leads it with the plugin's name.
+ */
 export const statusText = ({ running, failed, passed }: Counts): string | undefined => {
-  if (running > 0) return `Actions ◐ ${running} running${failed > 0 ? ` · ✗ ${failed} failed` : ''}`
-  if (failed > 0) return `Actions ✗ ${failed} failed`
-  if (passed > 0) return `Actions ✓ ${passed} passed`
+  if (running > 0) return `◐ ${running} running${failed > 0 ? ` · ✗ ${failed} failed` : ''}`
+  if (failed > 0) return `✗ ${failed} failed`
+  if (passed > 0) return `✓ ${passed} passed`
   return undefined
 }

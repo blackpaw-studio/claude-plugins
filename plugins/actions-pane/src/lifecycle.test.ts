@@ -34,9 +34,12 @@ describe('closing', () => {
 
 describe('/actions toggles', () => {
   test('closed opens by hand; open (either way) closes and holds off the runs in flight', () => {
-    expect(decide(CLOSED, { kind: 'toggle', view: view([]) })).toEqual({ state: MANUAL, effect: 'open' })
-    expect(decide(AUTO, { kind: 'toggle', view: view([1, 2]) })).toEqual({ state: { mode: 'closed', dismissed: [1, 2] }, effect: 'close' })
-    expect(decide(MANUAL, { kind: 'toggle', view: view([]) })).toEqual({ state: CLOSED, effect: 'close' })
+    expect(decide(CLOSED, { kind: 'toggle', view: view([]), isPlaced: true })).toEqual({ state: MANUAL, effect: 'open' })
+    expect(decide(AUTO, { kind: 'toggle', view: view([1, 2]), isPlaced: true })).toEqual({ state: { mode: 'closed', dismissed: [1, 2] }, effect: 'close' })
+    expect(decide(MANUAL, { kind: 'toggle', view: view([]), isPlaced: true })).toEqual({ state: CLOSED, effect: 'close' })
+  })
+  test('an open pane waiting unseated is seated by hand, not closed', () => {
+    expect(decide(AUTO, { kind: 'toggle', view: view([1]), isPlaced: false })).toEqual({ state: MANUAL, effect: 'open' })
   })
 })
 
@@ -87,10 +90,10 @@ describe('the timeline, through snapshots on a fake clock', () => {
 
 describe('statusText', () => {
   test('running first, failures beside; failed alone; passed alone; nothing clears', () => {
-    expect(statusText({ running: 2, failed: 0, passed: 1 })).toBe('Actions ◐ 2 running')
-    expect(statusText({ running: 1, failed: 1, passed: 0 })).toBe('Actions ◐ 1 running · ✗ 1 failed')
-    expect(statusText({ running: 0, failed: 1, passed: 3 })).toBe('Actions ✗ 1 failed')
-    expect(statusText({ running: 0, failed: 0, passed: 3 })).toBe('Actions ✓ 3 passed')
+    expect(statusText({ running: 2, failed: 0, passed: 1 })).toBe('◐ 2 running')
+    expect(statusText({ running: 1, failed: 1, passed: 0 })).toBe('◐ 1 running · ✗ 1 failed')
+    expect(statusText({ running: 0, failed: 1, passed: 3 })).toBe('✗ 1 failed')
+    expect(statusText({ running: 0, failed: 0, passed: 3 })).toBe('✓ 3 passed')
     expect(statusText({ running: 0, failed: 0, passed: 0 })).toBe(undefined)
   })
 })
