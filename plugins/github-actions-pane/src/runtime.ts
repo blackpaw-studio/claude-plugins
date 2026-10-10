@@ -6,6 +6,7 @@ import type { ActionsData, ActionsJob, ActionsScope } from '../types'
 import { collectHead } from './collect/git'
 import { type GhFailure, type GhResult, listRuns, repoName, viewJobs } from './collect/gh'
 import type { Run } from './collect/run'
+import { isActiveStatus } from './format'
 import { CLOSED, decide, type Effect, type Lifecycle, type LifecycleEvent, statusText } from './lifecycle'
 import { EMPTY_DATA, runsToDetail, withJobs, withRuns } from './model'
 import { KICK_MS, nextPollMs } from './schedule'
@@ -149,6 +150,9 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
   }
 
   const detail = async (cwd: string, now: number): Promise<void> => {
+    // A re-run makes a finished run active again: read it afresh when it finishes again.
+    const active = new Set(data.runs.filter(run => isActiveStatus(run.status)).map(run => run.id))
+    final = new Set([...final].filter(id => !active.has(id)))
     const wanted = runsToDetail(data, (await snapshotAt(now)).shownIds, final)
     const answers = await Promise.all(wanted.map(async id => [id, await viewJobs(ports.run, cwd, id)] as const))
     const read = new Map<number, ActionsJob[]>()

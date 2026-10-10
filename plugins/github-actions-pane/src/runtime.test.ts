@@ -83,6 +83,25 @@ describe('watching a run', () => {
     expect(world.opens()).toBe(1)
   })
 
+  test('a re-run of a finished run has its jobs read again when it finishes again', async () => {
+    const { world, runtime } = setup()
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    await runtime.start()
+    runsAre(world, [PASSED])
+    jobsAre(world, 482, [jobOf('test')])
+    await world.advance(10 * SECOND)
+    // Nothing active: the re-run is seen at the idle rate.
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    await world.advance(60 * SECOND)
+    expect(world.data()?.jobs['482']?.[0]?.status).toBe('in_progress')
+    runsAre(world, [PASSED])
+    jobsAre(world, 482, [jobOf('test')])
+    await world.advance(10 * SECOND)
+    expect(world.data()?.jobs['482']?.[0]?.status).toBe('completed')
+  })
+
   test('autoOpen off: never opens, the status line says what runs', async () => {
     const { world, runtime } = setup({ ...DEFAULT_SETTINGS, autoOpen: false })
     runsAre(world, [RUNNING])
