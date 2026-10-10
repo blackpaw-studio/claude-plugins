@@ -101,6 +101,15 @@ These are the plugin's options. Set them when you enable it, or in `settings.jso
   short, the finished steps of running jobs fold into "N steps" around the
   current one. Then older finished runs drop out, and anything still left
   over ends in "+N more".
+- **Time remaining:** a running run's card shows an estimate after its
+  elapsed time (`3m 12s · ~2m left`, `<1m left`, or `over est.` once past
+  it). The estimate is the median duration of the workflow's last 10
+  successful runs on any branch or event, less the time the run has been
+  going. It needs at least 3 of them, so a new workflow shows none, and a
+  queued run shows none. It costs one `gh run list --workflow <id> --status
+  success` per workflow, the first time one of its runs is active and again
+  after one finishes; none is made while rate limited, and a failed one is
+  tried again on the next poll. On a narrow card the estimate drops first.
 - **Where it draws:** a pane that opens by itself seats from 144 columns,
   or from 110 once you have opened it there yourself. Narrower, it waits
   and the status line shows `◐ 2 running · ✗ 1 failed` instead. A pane
