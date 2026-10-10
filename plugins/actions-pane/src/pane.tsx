@@ -9,6 +9,11 @@ export type PaneElements = Pick<Elements['terminal'], 'Box' | 'Text' | 'Button'>
 
 /** Cells of padding each side of the pane body. */
 export const PANE_PADDING = 1
+/** The widest the run view lays out: past this, durations drift too far from their names to read. */
+const MAX_BODY = 96
+
+/** The width the layout fills in a pane body this wide. */
+export const bodyWidth = (bodyColumns: number): number => Math.max(1, Math.min(MAX_BODY, bodyColumns - 2 * PANE_PADDING))
 
 const styleOf = ({ color, dim, bold }: Span) => ({
   ...(color === undefined ? {} : { color }),

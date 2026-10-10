@@ -6,13 +6,15 @@ import type { EngineInterface, Register } from 'claude-code'
 import { isKickCommand } from '../src/kick'
 import { layoutPane } from '../src/layout'
 import { EMPTY_DATA } from '../src/model'
-import { PANE_PADDING, paneTree } from '../src/pane'
+import { bodyWidth, paneTree } from '../src/pane'
 import { createRuntime, type Ports, type Runtime, TICK_MS } from '../src/runtime'
 import { isScope, parseSettings } from '../src/settings'
 import { buildSnapshot } from '../src/snapshot'
 
 const PANE = 'actions'
 const TITLE = 'Actions'
+/** Body rows asked for when seated inline above the prompt (the frame still fits the tree). */
+const INLINE_ROWS = 24
 
 // The $.state values (contract: types/index.d.ts). Written here, beside their
 // readers, so the engine's scan can read every reference.
@@ -35,7 +37,7 @@ function portsOf($: EngineInterface): Ports {
     clock: { set: value => update($, nowAtom, () => value).then(() => undefined) },
     manual: { get: () => read($, manualAtom), set: value => update($, manualAtom, () => value).then(() => undefined) },
     scope: { get: () => read($, scopeAtom), set: value => update($, scopeAtom, () => value).then(() => undefined) },
-    open: () => $.ui.open({ id: PANE, title: TITLE }),
+    open: () => $.ui.open({ id: PANE, title: TITLE, rows: INLINE_ROWS }),
     close: () => $.ui.close({ id: PANE }),
     pane: async () => {
       const pane = (await $.ui.panes()).find(one => one.id === PANE)
@@ -92,7 +94,7 @@ export const register: Register = (on, options) => {
     const arg = e.args.trim()
     if (arg === '') {
       // Opened here, in the person's command, so it seats at any width.
-      const reply = await watcher.toggle(() => $.ui.open({ id: PANE, title: TITLE }))
+      const reply = await watcher.toggle(() => $.ui.open({ id: PANE, title: TITLE, rows: INLINE_ROWS }))
       return reply.isQuiet ? {} : { text: reply.text }
     }
     if (!isScope(arg)) return { text: 'Usage: /actions [commit|branch|repo]' }
@@ -109,8 +111,7 @@ export const register: Register = (on, options) => {
     if (e.surface !== 'terminal') return next(e)
     const [data, now, scope, isManual] = await Promise.all([read($, dataAtom), read($, nowAtom), read($, scopeAtom), read($, manualAtom)])
     const snapshot = buildSnapshot({ data: data ?? EMPTY_DATA, now, settings, scope: scope ?? settings.scope, isManual })
-    const width = e.props.bodyColumns - 2 * PANE_PADDING
-    const lines = layoutPane(snapshot, { width, rows: e.props.scroll.bodyRows, frame: Math.floor(now / TICK_MS) })
+    const lines = layoutPane(snapshot, { width: bodyWidth(e.props.bodyColumns), rows: e.props.scroll.bodyRows, frame: Math.floor(now / TICK_MS) })
     const open = (runId: number) =>
       void $.process
         .run(['gh', 'run', 'view', String(runId), '--web'], { env: { GH_PROMPT_DISABLED: '1' }, timeoutMs: 10_000 })
