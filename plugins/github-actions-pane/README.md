@@ -14,6 +14,7 @@ A failed job collapses to the step that failed.
 ![Two runs in flight](docs/running.png)
 ![A failed deploy beside a running CI](docs/failure.png)
 ![A run from start to finish](docs/demo.gif)
+![This repository's own CI run, captured from a real session](docs/real-run.png)
 
 In the main-screen layout (`CLAUDE_CODE_NO_FLICKER=0`) the pane sits above
 the prompt:

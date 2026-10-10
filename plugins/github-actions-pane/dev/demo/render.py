@@ -5,6 +5,8 @@
       the screen as it stood <second>s into the scripted timeline
   render.py gif <name> <from> <to> <out.gif> [--crop ...] [--speed N]
       the timeline between two seconds, idle stretches capped
+  render.py frame <capture.ansi> <cols> <rows> <out.png> [--crop ...]
+      one `tmux capture-pane -e -p` file, at its native cell size
 
 Cells, not pixels, for crops: columns x0..x1 and rows y0..y1 (end exclusive).
 """
@@ -93,6 +95,17 @@ def still(args):
                         crop_filter(gif, header, args.crop), args.out], check=True)
 
 
+def frame(args):
+    header = {"version": 2, "width": args.cols, "height": args.rows}
+    text = "\x1b[2J\x1b[H" + Path(args.capture).read_text().rstrip("\n").replace("\n", "\r\n")
+    cast = [json.dumps({**header, "timestamp": 0}), json.dumps([0.0, "o", text]), json.dumps([0.2, "o", ""])]
+    with tempfile.TemporaryDirectory() as tmp:
+        gif = Path(tmp) / "frame.gif"
+        agg(cast, gif)
+        subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", str(gif), "-vf",
+                        crop_filter(gif, header, args.crop), "-frames:v", "1", args.out], check=True)
+
+
 def gif(args):
     header, events, offset = load(args.name)
     raw = Path(args.out).with_suffix(".raw.gif")
@@ -114,8 +127,11 @@ def main():
     g = sub.add_parser("gif")
     g.add_argument("name"), g.add_argument("start", type=float), g.add_argument("end", type=float), g.add_argument("out")
     g.add_argument("--crop", **crop), g.add_argument("--speed", type=float, default=1.5)
+    f = sub.add_parser("frame")
+    f.add_argument("capture"), f.add_argument("cols", type=int), f.add_argument("rows", type=int), f.add_argument("out")
+    f.add_argument("--crop", **crop)
     args = parser.parse_args()
-    still(args) if args.cmd == "still" else gif(args)
+    {"still": still, "gif": gif, "frame": frame}[args.cmd](args)
 
 
 if __name__ == "__main__":
