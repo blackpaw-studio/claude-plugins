@@ -200,3 +200,16 @@ describe('the header and counts', () => {
     expect(snapshot).toMatchObject({ label: '', note: 'no GitHub remote', cards: [] })
   })
 })
+
+describe('an active run whose jobs are all complete', () => {
+  // Between `needs:` stages, a later matrix expansion or an approval wait, every job so far is done and the run is not.
+  const between = runOf({ id: 482, status: 'in_progress' })
+  const data = dataOf({ runs: [between], jobs: { 482: [jobOf('build'), jobOf('lint')] }, watched: { 482: null } })
+
+  test('stays active: running, ticking, and not yet a pass', () => {
+    const at = (ms: number) => buildSnapshot(inputs({ data, now: T0 + ms })).cards[0]
+    expect(at(20 * SECOND)).toMatchObject({ status: 'running', isActive: true, durationMs: 20 * SECOND })
+    expect(at(80 * SECOND)).toMatchObject({ status: 'running', isActive: true, durationMs: 80 * SECOND })
+    expect(buildSnapshot(inputs({ data, now: T0 + 80 * SECOND })).activeIds).toEqual([482])
+  })
+})

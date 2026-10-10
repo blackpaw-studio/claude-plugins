@@ -83,6 +83,18 @@ describe('watching a run', () => {
     expect(world.opens()).toBe(1)
   })
 
+  test('jobs all done while GitHub says the run is active: the pane stays open past the linger', async () => {
+    const { world, runtime } = setup()
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    await runtime.start()
+    // The first stage finished; the next has not been created yet.
+    jobsAre(world, 482, [jobOf('test', { completedAt: T0 + 8 * SECOND })])
+    await world.advance(90 * SECOND)
+    expect(world.closes()).toBe(0)
+    expect(world.statuses.at(-1)).toBe(undefined)
+  })
+
   test('a re-run of a finished run has its jobs read again when it finishes again', async () => {
     const { world, runtime } = setup()
     runsAre(world, [RUNNING])
