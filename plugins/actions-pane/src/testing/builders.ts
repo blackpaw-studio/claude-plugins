@@ -56,3 +56,45 @@ export const dataOf = (fields: Partial<ActionsData> = {}): ActionsData => ({
   disabled: null,
   ...fields,
 })
+
+const iso = (ms: number | null): string => (ms === null ? '0001-01-01T00:00:00Z' : new Date(ms).toISOString().replace('.000Z', 'Z'))
+
+/** A run as `gh run list --json …` prints it. */
+export const ghRun = (run: ActionsRun) => ({
+  databaseId: run.id,
+  number: run.number,
+  workflowName: run.workflow,
+  displayTitle: run.title,
+  event: run.event,
+  status: run.status,
+  conclusion: run.conclusion ?? '',
+  headBranch: run.branch,
+  headSha: run.sha,
+  createdAt: iso(run.createdAt),
+  startedAt: iso(run.startedAt),
+  updatedAt: iso(run.updatedAt),
+  url: run.url,
+})
+
+const ghStep = (step: ActionsStep) => ({
+  name: step.name,
+  number: step.number,
+  status: step.status,
+  conclusion: step.conclusion ?? '',
+  startedAt: iso(step.startedAt),
+  completedAt: iso(step.completedAt),
+})
+
+/** Jobs as `gh run view --json jobs` prints them. */
+export const ghJobs = (jobs: readonly ActionsJob[]) => ({
+  jobs: jobs.map(job => ({
+    databaseId: job.id,
+    name: job.name,
+    status: job.status,
+    conclusion: job.conclusion ?? '',
+    startedAt: iso(job.startedAt),
+    completedAt: iso(job.completedAt),
+    url: job.url,
+    steps: job.steps.map(ghStep),
+  })),
+})
