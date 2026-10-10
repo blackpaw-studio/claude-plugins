@@ -30,12 +30,12 @@ export const formatDuration = (ms: number | null): string => {
 /** Cells a text takes: one per code point (the pane draws no wide glyphs in names). */
 export const cellsOf = (text: string): number => [...text].length
 
-/** The text cut to `width` cells, its last an ellipsis; as is when it fits. */
+/** The text cut to `width` cells, ending in an ellipsis (no space before it); as is when it fits. */
 export const truncate = (text: string, width: number): string => {
   const cells = [...text]
   if (cells.length <= width) return text
   if (width <= 0) return ''
-  return cells.slice(0, width - 1).join('') + ELLIPSIS
+  return cells.slice(0, width - 1).join('').trimEnd() + ELLIPSIS
 }
 
 const FAILED = new Set(['failure', 'timed_out', 'startup_failure'])
