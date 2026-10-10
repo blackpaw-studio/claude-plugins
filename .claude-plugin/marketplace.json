@@ -43,7 +43,7 @@
       "name": "github-actions-pane",
       "source": "./plugins/github-actions-pane",
       "description": "Live GitHub Actions pane beside the transcript while workflow runs are active: run, jobs and steps with status icons and live durations, drawn like GitHub's run view; a status line hint where the pane cannot seat.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "category": "ui",
       "keywords": [
         "github",

@@ -148,7 +148,8 @@ describe('github-actions-pane in a session', () => {
   test('a git push through Bash polls at once', async ($, on) => {
     const world = installWorld(on)
     await startSession($, world)
-    const lists = () => world.argvs.filter(argv => argv.startsWith('gh run list')).length
+    // Branch scope lists twice per poll (branch, HEAD's commit): count the branch list.
+    const lists = () => world.argvs.filter(argv => argv.startsWith('gh run list') && argv.includes('--branch ')).length
     const before = lists()
     await $.tool.call({ tool: 'Bash', command: 'git push -u origin main' } as never)
     await world.clock.settle()

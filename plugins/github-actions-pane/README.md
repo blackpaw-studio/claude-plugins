@@ -67,7 +67,7 @@ These are the plugin's options. Set them when you enable it, or in `settings.jso
 
 | Setting | Default | |
 |---|---|---|
-| Scope | `branch` | `commit` (HEAD), `branch` (falls back to the commit on a detached HEAD) or `repo` |
+| Scope | `branch` | `commit` (HEAD), `branch` (the branch's runs plus any run on HEAD's commit, so a tag-push release run shows; falls back to the commit on a detached HEAD) or `repo` |
 | Linger seconds | 30 | How long finished runs stay before the pane closes; 0 closes at once |
 | Active poll seconds | 10 | Poll interval while a run is active; at least 5 |
 | Idle poll seconds | 60 | Poll interval while nothing is active; at least 15 |
@@ -76,7 +76,7 @@ These are the plugin's options. Set them when you enable it, or in `settings.jso
 ## Behaviour
 
 - **Polling:** each poll makes one `gh run list` (20 runs, filtered to the
-  scope), plus one `gh run view --json jobs` for each active run shown. When
+  scope; two under `branch`, by branch and by HEAD's commit, merged), plus one `gh run view --json jobs` for each active run shown. When
   those 20 are all newer than a run still going, two more lists
   (`--status in_progress`, `--status queued`) find it. A run that is
   `waiting`, `requested` or `pending` and older than the newest 20 is not
@@ -122,6 +122,9 @@ These are the plugin's options. Set them when you enable it, or in `settings.jso
 - A push is detected within about 5 seconds from any terminal, by the
   remote-tracking ref moving. A push that leaves the ref alone, to a remote
   other than the branch's push target, is only seen on the next idle poll.
+  The same goes for a tag pushed from outside Claude: it moves no branch ref,
+  so its run shows on the next idle poll. A `git push` through Claude's Bash,
+  tags included, polls at once.
 - The linger and the stale note use your local clock, measured from when a
   poll saw the change, not from GitHub's timestamps.
 - Some terminal setups (inside tmux, for one) do not support OSC 8
