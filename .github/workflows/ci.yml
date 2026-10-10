@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The build the mods are tested against (the minimum their READMEs state).
+  CLAUDE_CODE_VERSION: 2.1.296
+
+# `claude plugin validate` and `claude plugin test` run offline: no login, no
+# API key, no secrets. `tsc -p <plugin>` is not run here: the plugin API typings
+# (.claude-plugin/types/, gitignored) are written by a session that loads the
+# mod, which needs a logged-in Claude Code. Run `tsc -p` locally.
+
+jobs:
+  mod:
+    name: ${{ matrix.plugin }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: [rich-statusline, github-actions-pane]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Claude Code
+        run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+      - name: Validate
+        run: claude plugin validate "plugins/${{ matrix.plugin }}" --strict
+      - name: Test
+        run: claude plugin test "plugins/${{ matrix.plugin }}"
+
+  marketplace:
+    name: marketplace
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Claude Code
+        run: npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+      - name: Validate
+        run: claude plugin validate . --strict
