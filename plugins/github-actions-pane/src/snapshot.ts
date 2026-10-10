@@ -2,6 +2,7 @@
 // active or lingering, each as a card of jobs and steps, plus the header.
 // Every decision but the fit to the pane's size is here. Pure.
 import type { ActionsData, ActionsRun, ActionsScope } from '../types'
+import { estimateEta } from './eta'
 import { formatDuration, isActiveStatus, type RowStatus, statusOf } from './format'
 import { type JobBlock, jobsToBlocks } from './jobs'
 import { effectiveScope, isInScope, scopeLabel, shortSha } from './scope'
@@ -18,6 +19,8 @@ export type Card = {
   /** The commit or PR title, then the short sha (the branch in repo scope). */
   subtitle: string
   durationMs: number | null
+  /** Estimated time left (negative once over the estimate); set only on running cards with enough history. */
+  remainingMs?: number
   isActive: boolean
   /** Jobs and the steps they show, newest-run-first cards; the layout windows the steps. */
   jobs: JobBlock[]
@@ -54,9 +57,15 @@ const isLingering = (run: ActionsRun, data: ActionsData, now: number, lingerMs: 
   return typeof doneAt === 'number' && now - doneAt < lingerMs
 }
 
+/** Time left on a running run, from how long its workflow's past successes took; null when it can't be said. */
+const remainingOf = (run: ActionsRun, elapsedMs: number, data: ActionsData): number | null =>
+  run.status !== 'in_progress' || run.workflowId === null ? null : estimateEta(data.history[String(run.workflowId)] ?? [], elapsedMs)
+
 const cardOf = (run: ActionsRun, { data, now, scope }: SnapshotInputs): Card => {
   const isActive = isActiveStatus(run.status)
   const start = run.startedAt ?? run.createdAt
+  const durationMs = (isActive ? now : run.updatedAt) - start
+  const remainingMs = remainingOf(run, durationMs, data)
   const where = data.context !== null && effectiveScope(scope, data.context) === 'repo' ? run.branch : shortSha(run.sha)
   return {
     id: run.id,
@@ -64,7 +73,8 @@ const cardOf = (run: ActionsRun, { data, now, scope }: SnapshotInputs): Card => 
     name: `${run.workflow} #${run.number}`,
     event: run.event,
     subtitle: [run.title, where].filter(part => part !== '').join(' · '),
-    durationMs: (isActive ? now : run.updatedAt) - start,
+    durationMs,
+    ...(remainingMs === null ? {} : { remainingMs }),
     isActive,
     jobs: jobsToBlocks(data.jobs[String(run.id)] ?? [], now),
   }

@@ -220,3 +220,40 @@ describe('an active run whose jobs are all complete', () => {
     expect(buildSnapshot(inputs({ data, now: T0 + 80 * SECOND })).activeIds).toEqual([482])
   })
 })
+
+describe('time remaining', () => {
+  const HISTORY = { '1234': [100 * SECOND, 120 * SECOND, 140 * SECOND] }
+  const remainingOf = (run: Parameters<typeof dataOf>[0] & object, history = HISTORY, extra: Partial<SnapshotInputs> = {}) =>
+    buildSnapshot(inputs({ data: dataOf({ ...run, history }), ...extra })).cards[0]?.remainingMs
+
+  test('a running card gets the median of its workflow\'s history less its elapsed time', () => {
+    expect(remainingOf({ runs: [runOf()] })).toBe(48 * SECOND)
+  })
+
+  test('elapsed counts from createdAt when the run has not started', () => {
+    expect(remainingOf({ runs: [runOf({ startedAt: null, createdAt: T0 + 12 * SECOND })] })).toBe(60 * SECOND)
+  })
+
+  test('over the estimate, it is negative', () => {
+    expect(remainingOf({ runs: [runOf()] }, { '1234': [30 * SECOND, 30 * SECOND, 30 * SECOND] })).toBe(-42 * SECOND)
+  })
+
+  test('a queued run has none', () => {
+    expect(remainingOf({ runs: [runOf({ status: 'queued', startedAt: null })] })).toBe(undefined)
+  })
+
+  test('a finished run, lingering, has none', () => {
+    const done = runOf({ status: 'completed', conclusion: 'success', updatedAt: NOW })
+    expect(remainingOf({ runs: [done], watched: { 482: NOW } })).toBe(undefined)
+  })
+
+  test('a workflow with fewer than three samples, or none read, has none', () => {
+    expect(remainingOf({ runs: [runOf()] }, { '1234': [100 * SECOND, 120 * SECOND] })).toBe(undefined)
+    expect(remainingOf({ runs: [runOf()] }, {})).toBe(undefined)
+  })
+
+  test('history is the workflow\'s own; a run without a workflow id has none', () => {
+    expect(remainingOf({ runs: [runOf({ workflowId: 99 })] })).toBe(undefined)
+    expect(remainingOf({ runs: [runOf({ workflowId: null })] })).toBe(undefined)
+  })
+})
