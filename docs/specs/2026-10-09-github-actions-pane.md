@@ -37,12 +37,12 @@ Why `branch` default: it's what you're working on, catches push + PR runs for it
 ## Data flow
 
 1. **Context** (each poll): `git rev-parse --abbrev-ref HEAD` and `git rev-parse HEAD` in the session cwd. Detached HEAD under `branch` scope falls back to `commit`.
-2. **List**: `gh run list --limit 20 --json databaseId,number,workflowName,displayTitle,event,status,conclusion,headBranch,headSha,createdAt,startedAt,updatedAt,url` (+ `--branch <b>` or `--commit <sha>` per scope).
+2. **List**: `gh run list --limit 20 --json databaseId,number,workflowName,displayTitle,event,status,conclusion,headBranch,headSha,createdAt,startedAt,updatedAt,url` (+ `--branch <b>` or `--commit <sha>` per scope). When that page comes back full (20 runs), the same list is asked again with `--status in_progress` and `--status queued` and merged without repeats, so an active run older than the newest 20 still shows; a shorter page is already complete and costs nothing extra.
 3. **Filter**: active = status in `queued | in_progress | waiting | requested | pending`. Shown = active runs ∪ runs that completed within the linger window *and* were active while watched (no resurfacing old runs on startup).
 4. **Detail**: for each shown run, `gh run view <id> --json jobs` (jobs with steps, statuses, timestamps). Completed runs are fetched once more at completion, then cached.
 5. **Snapshot**: a pure function `(context, runs, jobsById, now, settings) → Snapshot` builds what the pane draws. All logic is here and tested.
 
-Rate budget: at 10s with 3 active runs ≈ 1,440 calls/hr, under gh's 5,000/hr. On a 403/429 rate-limit response, back off to `idlePollSeconds` and show `rate limited` in the header.
+Rate budget: at 10s with 3 active runs ≈ 1,440 calls/hr (1 list + 3 job reads per poll), or ≈ 2,160 calls/hr when the newest page is full (3 lists + 3 job reads), under gh's 5,000/hr. Runs `waiting` on an approval, `requested` or `pending` past the newest page are not asked for apart. On a 403/429 rate-limit response, back off to `idlePollSeconds` and show `rate limited` in the header.
 
 **Push kick**: a `tool.call` hook watches Bash calls matching `git push`, `gh workflow run`, `gh pr create`, `gh run rerun`; after each it polls at the active rate for 2 minutes so the pane opens within seconds of a push instead of up to 60s later.
 

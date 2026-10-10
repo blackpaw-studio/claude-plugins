@@ -75,7 +75,9 @@ These are the plugin's options. Set them when you enable it, or in `settings.jso
 ## Behaviour
 
 - **Polling:** each poll makes one `gh run list` (20 runs, filtered to the
-  scope), plus one `gh run view --json jobs` for each active run shown. A
+  scope), plus one `gh run view --json jobs` for each active run shown. When
+  those 20 are all newer than a run still going, two more lists
+  (`--status in_progress`, `--status queued`) find it. A
   finished run's jobs are read once and then cached. A `git push`,
   `gh workflow run`, `gh pr create` or `gh run rerun` through Claude's Bash
   tool polls at once, then at the active rate for two minutes.

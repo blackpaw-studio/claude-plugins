@@ -156,8 +156,27 @@ const gh = async <T>(run: Run, cwd: string, args: readonly string[], parse: (std
   return value === null ? { kind: 'transient', reason: `gh returned output that is not ${what}` } : { kind: 'ok', value }
 }
 
-export const listRuns = (run: Run, cwd: string, filter: ListFilter): Promise<GhResult<ActionsRun[]>> =>
-  gh(run, cwd, ['run', 'list', '--limit', String(LIST_LIMIT), '--json', RUN_FIELDS, ...filterArgs(filter)], parseRuns, 'a run list')
+/** The statuses asked for apart when the newest page is full, so a long run can't fall off it. */
+const ACTIVE_STATUSES = ['in_progress', 'queued'] as const
+
+const listPage = (run: Run, cwd: string, filter: ListFilter, extra: readonly string[] = []): Promise<GhResult<ActionsRun[]>> =>
+  gh(run, cwd, ['run', 'list', '--limit', String(LIST_LIMIT), '--json', RUN_FIELDS, ...filterArgs(filter), ...extra], parseRuns, 'a run list')
+
+/**
+ * The newest runs in the filter, plus, when that page is full, the active runs
+ * older than it (one more call per active status). Any failed call fails the list.
+ */
+export const listRuns = async (run: Run, cwd: string, filter: ListFilter): Promise<GhResult<ActionsRun[]>> => {
+  const newest = await listPage(run, cwd, filter)
+  if (newest.kind !== 'ok' || newest.value.length < LIST_LIMIT) return newest
+  const pages = await Promise.all(ACTIVE_STATUSES.map(status => listPage(run, cwd, filter, ['--status', status])))
+  const failed = pages.find(page => page.kind !== 'ok')
+  if (failed !== undefined) return failed
+  const onPage = new Set(newest.value.map(one => one.id))
+  const older = pages.flatMap(page => (page.kind === 'ok' ? page.value : [])).filter(one => !onPage.has(one.id))
+  const unique = older.filter((one, index) => older.findIndex(other => other.id === one.id) === index)
+  return { kind: 'ok', value: [...newest.value, ...unique] }
+}
 
 export const viewJobs = (run: Run, cwd: string, id: number): Promise<GhResult<ActionsJob[]>> =>
   gh(run, cwd, ['run', 'view', String(id), '--json', 'jobs'], parseJobs, 'a job list')

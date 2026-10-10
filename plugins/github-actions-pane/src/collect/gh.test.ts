@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import { JOBS_IN_PROGRESS, JOBS_LINT_FAILED, JOBS_NONE, RUN_LIST } from '../testing/gh-fixtures'
+import { ghRun, MINUTE, runOf, T0 } from '../testing/builders'
 import { fail, ok, runner } from '../testing/runner'
 import { classifyFailure, listRuns, parseJobs, parseRuns, repoName, viewJobs, RUN_FIELDS } from './gh'
 
@@ -88,6 +89,39 @@ describe('listRuns', () => {
     await listRuns(run, '/repo', { kind: 'branch', branch: 'main' })
     await listRuns(run, '/repo', { kind: 'commit', sha: 'abc123' })
     expect(asked.map(call => call.argv)).toEqual([`${LIST} --branch main`, `${LIST} --commit abc123`])
+  })
+
+  // A full page can hide an older run still going: ask for the active ones too.
+  const finished = Array.from({ length: 20 }, (_, i) =>
+    runOf({ id: 1000 + i, status: 'completed', conclusion: 'success', createdAt: T0 - i * MINUTE }))
+  const older = runOf({ id: 7, createdAt: T0 - 60 * MINUTE })
+  const pageOf = (runs: typeof finished) => ok(JSON.stringify(runs.map(ghRun)))
+  const BRANCH = `${LIST} --branch main`
+
+  test('a full page also lists the in-progress and queued runs, merged without repeats', async () => {
+    const { run, asked } = runner({
+      [BRANCH]: pageOf(finished),
+      [`${BRANCH} --status in_progress`]: pageOf([older]),
+      [`${BRANCH} --status queued`]: pageOf([older]),
+    })
+    const listed = await listRuns(run, '/repo', { kind: 'branch', branch: 'main' })
+    expect(listed.kind === 'ok' ? listed.value.map(one => one.id) : listed).toEqual([...finished.map(one => one.id), 7])
+    expect(asked.map(call => call.argv)).toEqual([BRANCH, `${BRANCH} --status in_progress`, `${BRANCH} --status queued`])
+  })
+
+  test('a page short of the limit is the whole list: one call', async () => {
+    const { run, asked } = runner({ [BRANCH]: pageOf(finished.slice(1)) })
+    await listRuns(run, '/repo', { kind: 'branch', branch: 'main' })
+    expect(asked).toHaveLength(1)
+  })
+
+  test('a failed active query fails the list rather than drop a running run', async () => {
+    const { run } = runner({
+      [BRANCH]: pageOf(finished),
+      [`${BRANCH} --status in_progress`]: fail('HTTP 403: API rate limit exceeded'),
+      [`${BRANCH} --status queued`]: pageOf([]),
+    })
+    expect((await listRuns(run, '/repo', { kind: 'branch', branch: 'main' })).kind).toBe('rate-limited')
   })
 
   test('output that does not parse is transient', async () => {
