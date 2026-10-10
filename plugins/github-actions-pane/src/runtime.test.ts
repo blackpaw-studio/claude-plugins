@@ -133,6 +133,71 @@ describe('watching a run', () => {
   })
 })
 
+describe('the band with the pane closed', () => {
+  const FAILED = { ...PASSED, conclusion: 'failure' }
+  const TICK = 1000
+  const bandOnly = () => setup({ ...DEFAULT_SETTINGS, autoOpen: false })
+
+  test('ticks the drawn clock while a run is running, though no pane is open', async () => {
+    const { world, runtime } = bandOnly()
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    await runtime.start()
+    expect(world.waiting()).toContain(TICK)
+    await world.advance(3 * SECOND)
+    expect(world.drawnNow()).toBe(T0 + 3 * SECOND)
+    expect(world.opens()).toBe(0)
+  })
+
+  test('the clock is brought up to date the moment the band appears', async () => {
+    const { world, runtime } = bandOnly()
+    await runtime.start()
+    await world.advance(5 * SECOND)
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    await runtime.poll()
+    expect(world.drawnNow()).toBe(world.now())
+  })
+
+  test('stops ticking once the run passes: nothing left to draw', async () => {
+    const { world, runtime } = bandOnly()
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    await runtime.start()
+    runsAre(world, [PASSED])
+    jobsAre(world, 482, [jobOf('test')])
+    await world.advance(10 * SECOND)
+    expect(world.waiting()).not.toContain(TICK)
+  })
+
+  test('keeps ticking through a failure linger, then stops', async () => {
+    const { world, runtime } = bandOnly()
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    await runtime.start()
+    runsAre(world, [FAILED])
+    jobsAre(world, 482, [jobOf('test', { conclusion: 'failure' })])
+    await world.advance(10 * SECOND)
+    expect(world.waiting()).toContain(TICK)
+    await world.advance(29 * SECOND)
+    expect(world.waiting()).toContain(TICK)
+    await world.advance(SECOND)
+    expect(world.drawnNow()).toBe(world.now())
+    expect(world.waiting()).not.toContain(TICK)
+  })
+
+  test('a rate-limited poll with no band does not tick', async () => {
+    const { world, runtime } = bandOnly()
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    await runtime.start()
+    world.answers.set(LIST, fail('HTTP 403: API rate limit exceeded for user ID 1.'))
+    await world.advance(10 * SECOND)
+    expect(world.data()?.isRateLimited).toBe(true)
+    expect(world.waiting()).not.toContain(TICK)
+  })
+})
+
 describe('a pane that cannot seat', () => {
   test('shows the status line instead, and clears it once the pane seats', async () => {
     const { world, runtime } = setup()

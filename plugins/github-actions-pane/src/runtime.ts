@@ -3,6 +3,7 @@
 // Everything outside reaches it through Ports, so tests drive it on a fake
 // clock; hooks/register.tsx wires the ports to `$`.
 import type { ActionsData, ActionsJob, ActionsScope } from '../types'
+import { bandAt } from './band'
 import { collectHead } from './collect/git'
 import { type GhFailure, type GhResult, listDurations, listRuns, repoName, viewJobs } from './collect/gh'
 import { readRef, trackingRefOf } from './collect/remote-ref'
@@ -86,6 +87,10 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     ports.status(isPaneShowing ? undefined : statusText(snapshot.counts))
   }
 
+  /** The band shows (a run runs, or a failure lingers): it needs the drawn clock moving, pane or no pane. */
+  const isBandShowing = async (now: number): Promise<boolean> =>
+    bandAt({ data, now, settings, scope: await scopeNow() }) !== null
+
   const startTick = (): void => {
     tickTimer ??= ports.every(TICK_MS, () => void tick().catch(fail('tick')))
   }
@@ -107,8 +112,19 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
       await ports.close()
       isPlaced = true
     }
-    if (lifecycle.mode === 'closed') stopTick()
     await ports.manual.set(lifecycle.mode === 'manual')
+  }
+
+  /** The status line, and the tick: running while the pane is open or the band shows. */
+  const refresh = async (now: number): Promise<void> => {
+    showStatus(await snapshotAt(now))
+    if (lifecycle.mode !== 'closed' || (await isBandShowing(now))) {
+      if (tickTimer === null) {
+        // The drawn clock stands still while nothing ticks: bring it up before the first frame.
+        await ports.clock.set(now)
+        startTick()
+      }
+    } else stopTick()
   }
 
   const step = async (event: (snapshot: Snapshot) => LifecycleEvent, now: number): Promise<void> => {
@@ -116,7 +132,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     const decision = decide(lifecycle, event(snapshot))
     lifecycle = decision.state
     await apply(decision.effect, now)
-    showStatus(await snapshotAt(now))
+    await refresh(now)
   }
 
   const viewOf = (snapshot: Snapshot) => ({ activeIds: snapshot.activeIds, shownIds: snapshot.shownIds })
@@ -325,7 +341,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
       const decision = decide(lifecycle, { kind: 'toggle', view: viewOf(await snapshotAt(now)), isPlaced })
       lifecycle = decision.state
       await apply(decision.effect, now, open)
-      showStatus(await snapshotAt(now))
+      await refresh(now)
       if (decision.effect === 'open') void poll().catch(fail('poll'))
       return { text: decision.effect === 'open' ? 'Actions pane opened.' : 'Actions pane closed.', isQuiet: true }
     },
@@ -341,9 +357,8 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
       const now = await ports.now()
       const decision = decide(lifecycle, { kind: 'closedByPerson', view: viewOf(await snapshotAt(now)) })
       lifecycle = decision.state
-      stopTick()
       await ports.manual.set(false)
-      showStatus(await snapshotAt(now))
+      await refresh(now)
     },
     /** A /clear emptied the session's state: put back what the pane draws from. */
     republish: async (): Promise<void> => {
