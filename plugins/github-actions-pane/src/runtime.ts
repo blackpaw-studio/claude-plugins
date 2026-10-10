@@ -5,6 +5,7 @@
 import type { ActionsData, ActionsJob, ActionsScope } from '../types'
 import { collectHead } from './collect/git'
 import { type GhFailure, type GhResult, listRuns, repoName, viewJobs } from './collect/gh'
+import { readRef, trackingRefOf } from './collect/remote-ref'
 import type { Run } from './collect/run'
 import { isActiveStatus } from './format'
 import { CLOSED, decide, type Effect, type Lifecycle, type LifecycleEvent, statusText } from './lifecycle'
@@ -15,6 +16,10 @@ import type { Settings } from './settings'
 import { buildSnapshot, type Snapshot } from './snapshot'
 
 export const TICK_MS = 1000
+/** How often the local remote-tracking ref is read: a push from any terminal moves it. Local git only. */
+export const REMOTE_WATCH_MS = 5000
+/** A ref that moves this soon after a kick is the push that was kicked. */
+const KICK_DEDUPE_MS = 2 * REMOTE_WATCH_MS
 
 export type Timer = { cancel: () => void }
 
@@ -50,8 +55,13 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
   let isPlaced = true
   let lastCwd: string | null = null
   let kickUntil = 0
+  let lastKickAt = Number.NEGATIVE_INFINITY
   let pollTimer: Timer | null = null
   let tickTimer: Timer | null = null
+  let remoteTimer: Timer | null = null
+  let isReadingRemote = false
+  /** The tracking ref being watched, for this branch in this cwd, and the sha it last held. */
+  let tracked: { key: string; ref: string; sha: string | null } | null = null
   let polling: Promise<void> | null = null
   let isPollQueued = false
   /** Finished runs whose jobs were read after they finished: never asked again. */
@@ -118,6 +128,42 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     if (data.disabled === null) pollTimer = ports.after(intervalAt(now), () => void poll().catch(fail('poll')))
   }
 
+  /**
+   * One look at the tracking ref of the scoped branch. The first look at a
+   * branch is a baseline; a later change is a push from outside Claude.
+   */
+  const watchRemote = async (): Promise<void> => {
+    const context = data.context
+    if (context === null || context.branch === null || isReadingRemote) return
+    isReadingRemote = true
+    try {
+      const key = `${context.cwd}\0${context.branch}`
+      const ref = tracked?.key === key ? tracked.ref : await trackingRefOf(ports.run, context.cwd, context.branch)
+      const read = await readRef(ports.run, context.cwd, ref)
+      if (read.kind === 'unknown') return
+      const isPush = tracked?.key === key && tracked.sha !== read.sha
+      tracked = { key, ref, sha: read.sha }
+      // A push through Claude's Bash was kicked the moment it ran: the ref moving is the same push.
+      if (isPush && (await ports.now()) - lastKickAt > KICK_DEDUPE_MS) await kick()
+    } finally {
+      isReadingRemote = false
+    }
+  }
+
+  /** The watch runs while a branch of a repository is in scope; one timer, never two. */
+  const syncRemoteWatch = (): void => {
+    const isWatchable = data.disabled === null && data.context?.branch != null
+    if (!isWatchable) {
+      remoteTimer?.cancel()
+      remoteTimer = null
+      tracked = null
+      return
+    }
+    if (remoteTimer === null) remoteTimer = ports.every(REMOTE_WATCH_MS, () => void watchRemote().catch(fail('remote')))
+    // A baseline now: a push before the first timer tick would otherwise go unseen.
+    if (tracked?.key !== `${data.context?.cwd}\0${data.context?.branch}`) void watchRemote().catch(fail('remote'))
+  }
+
   const disable = async (reason: string): Promise<void> => {
     final = new Set()
     await publish({ ...EMPTY_DATA, disabled: reason })
@@ -167,6 +213,13 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     await publish(withJobs(data, read))
   }
 
+  /** A push (or a command that starts runs): poll now and at the active rate for a while. */
+  const kick = async (): Promise<void> => {
+    lastKickAt = await ports.now()
+    kickUntil = lastKickAt + KICK_MS
+    await poll()
+  }
+
   const pollOnce = async (): Promise<void> => {
     const cwd = await ports.cwd()
     const now = await ports.now()
@@ -188,6 +241,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     const settled = await ports.now()
     await step(snapshot => ({ kind: 'poll', view: viewOf(snapshot), autoOpen: settings.autoOpen }), settled)
     schedule(settled)
+    syncRemoteWatch()
   }
 
   /** One poll at a time; a poll asked for meanwhile runs once, right after. */
@@ -227,10 +281,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     },
     poll,
     /** A command that starts runs ran: poll now and at the active rate for a while. */
-    kick: async (): Promise<void> => {
-      kickUntil = (await ports.now()) + KICK_MS
-      await poll()
-    },
+    kick,
     /** The session's cwd may have moved (a Bash call): a new place is checked afresh. */
     cwdMaybeChanged: async (): Promise<void> => {
       if ((await ports.cwd()) !== lastCwd) await poll()
@@ -272,6 +323,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     },
     stop: (): void => {
       pollTimer?.cancel()
+      remoteTimer?.cancel()
       stopTick()
     },
   }

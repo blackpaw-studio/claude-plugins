@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { ActionsJob, ActionsRun } from '../types'
 import { fail, ok } from './testing/runner'
-import { createRuntime } from './runtime'
+import { createRuntime, REMOTE_WATCH_MS } from './runtime'
 import { DEFAULT_SETTINGS, type Settings } from './settings'
 import { ghJobs, ghRun, jobOf, runOf, SECOND, T0 } from './testing/builders'
-import { fakeWorld, type FakeWorld, flush } from './testing/ports'
+import { fakeWorld, type FakeWorld, flush, SHA } from './testing/ports'
 
 const LIST = 'gh run list'
 const HEAD = 'git rev-parse HEAD --abbrev-ref HEAD'
@@ -39,7 +39,7 @@ describe('watching a run', () => {
     expect(world.data()?.jobs['482']?.map(job => job.name)).toEqual(['test'])
     expect(world.data()?.watched).toEqual({ 482: null })
     // The poll (10s) and the 1s tick.
-    expect(world.waiting()).toEqual([1000, 10_000])
+    expect(world.waiting()).toEqual([1000, REMOTE_WATCH_MS, 10_000])
   })
 
   test('an auto-open draws at the moment it opens, not at a stale clock', async () => {
@@ -77,8 +77,8 @@ describe('watching a run', () => {
     await world.advance(SECOND)
     expect(world.closes()).toBe(1)
     expect(views()).toBe(viewsAtFinish)
-    // Closed: no tick; the poll goes back to the idle rate.
-    expect(world.waiting()).toEqual([expect.any(Number)])
+    // Closed: no tick; the poll goes back to the idle rate; the push watch goes on.
+    expect(world.waiting()).toEqual([REMOTE_WATCH_MS, expect.any(Number)])
     await world.advance(60 * SECOND)
     expect(world.opens()).toBe(1)
   })
@@ -231,7 +231,7 @@ describe('when there is nothing to watch', () => {
     world.setCwd('/elsewhere')
     await runtime.cwdMaybeChanged()
     expect(world.data()?.disabled).toBe(null)
-    expect(world.waiting()).toEqual([60_000])
+    expect(world.waiting()).toEqual([REMOTE_WATCH_MS, 60_000])
   })
 
   test('a move to another repository drops the runs of the last, even when its list fails', async () => {
@@ -256,17 +256,136 @@ describe('when there is nothing to watch', () => {
   })
 })
 
+describe('pushes from outside Claude', () => {
+  const MAIN_REF = 'git rev-parse --verify -q refs/remotes/origin/main'
+  const lists = (world: FakeWorld) => gh(world).filter(argv => argv.startsWith(LIST)).length
+  const pushed = (world: FakeWorld, sha = 'b'.repeat(40)) => world.answers.set(MAIN_REF, ok(`${sha}\n`))
+
+  test('a moved tracking ref polls within 5s and holds the active rate for two minutes', async () => {
+    const { world, runtime } = setup()
+    await runtime.start()
+    expect(lists(world)).toBe(1)
+    await world.advance(3 * SECOND)
+    pushed(world)
+    await world.advance(2 * SECOND)
+    expect(lists(world)).toBe(2)
+    // Active rate from here: a poll every 10s until the kick lapses (a push at +3s, seen at +5s).
+    await world.advance(30 * SECOND)
+    expect(lists(world)).toBe(5)
+    await world.advance(100 * SECOND)
+    expect(lists(world)).toBe(14)
+    await world.advance(30 * SECOND)
+    expect(lists(world)).toBe(14)
+  })
+
+  test('a push through Claude is polled once, not again when the ref is seen to move', async () => {
+    const { world, runtime } = setup()
+    await runtime.start()
+    pushed(world)
+    await runtime.kick()
+    expect(lists(world)).toBe(2)
+    await world.advance(5 * SECOND)
+    expect(lists(world)).toBe(2)
+  })
+
+  test('nothing moving: no gh calls beyond the idle poll', async () => {
+    const { world, runtime } = setup()
+    await runtime.start()
+    await world.advance(55 * SECOND)
+    expect(lists(world)).toBe(1)
+    await world.advance(5 * SECOND)
+    expect(lists(world)).toBe(2)
+  })
+
+  test('the first read is a baseline, not a push', async () => {
+    const { world, runtime } = setup()
+    pushed(world, 'c'.repeat(40))
+    await runtime.start()
+    await world.advance(10 * SECOND)
+    expect(lists(world)).toBe(1)
+  })
+
+  test('the first push of a new branch creates the ref and counts', async () => {
+    const { world, runtime } = setup()
+    world.answers.set(MAIN_REF, fail('', 1))
+    await runtime.start()
+    await world.advance(5 * SECOND)
+    expect(lists(world)).toBe(1)
+    pushed(world)
+    await world.advance(5 * SECOND)
+    expect(lists(world)).toBe(2)
+  })
+
+  test('a git that cannot answer is not a push', async () => {
+    const { world, runtime } = setup()
+    await runtime.start()
+    world.answers.set(MAIN_REF, fail('fatal: bad object', 128))
+    await world.advance(10 * SECOND)
+    pushed(world, SHA)
+    await world.advance(10 * SECOND)
+    expect(lists(world)).toBe(1)
+  })
+
+  test('another branch is a new baseline, not a push', async () => {
+    const { world, runtime } = setup()
+    await runtime.start()
+    world.answers.set(HEAD, ok(`${SHA}\nfeature\n`))
+    world.answers.set('git rev-parse --symbolic-full-name @{push}', fail('fatal: no upstream', 128))
+    world.answers.set('git rev-parse --verify -q refs/remotes/origin/feature', ok(`${'d'.repeat(40)}\n`))
+    await runtime.poll()
+    const listed = lists(world)
+    await world.advance(10 * SECOND)
+    expect(lists(world)).toBe(listed)
+    world.answers.set('git rev-parse --verify -q refs/remotes/origin/feature', ok(`${'e'.repeat(40)}\n`))
+    await world.advance(5 * SECOND)
+    expect(lists(world)).toBe(listed + 1)
+  })
+
+  test('one watch timer however many polls and reloads of state', async () => {
+    const { world, runtime } = setup()
+    await runtime.start()
+    await runtime.poll()
+    await runtime.poll()
+    await runtime.republish()
+    const before = world.asked.filter(argv => argv === MAIN_REF).length
+    await world.advance(10 * SECOND)
+    expect(world.asked.filter(argv => argv === MAIN_REF).length - before).toBe(2)
+  })
+
+  test('without a repository the watch stops, and starts again in one', async () => {
+    const { world, runtime } = setup()
+    await runtime.start()
+    world.answers.set(HEAD, fail('fatal: not a git repository', 128))
+    await runtime.poll()
+    const asked = world.asked.length
+    await world.advance(20 * SECOND)
+    expect(world.asked.length).toBe(asked)
+    world.answers.set(HEAD, ok(`${SHA}\nmain\n`))
+    await runtime.poll()
+    await world.advance(5 * SECOND)
+    expect(world.asked.filter(argv => argv === MAIN_REF).length).toBeGreaterThan(1)
+  })
+
+  test('a detached HEAD has no branch to watch', async () => {
+    const { world, runtime } = setup()
+    world.answers.set(HEAD, ok(`${SHA}\nHEAD\n`))
+    await runtime.start()
+    await world.advance(20 * SECOND)
+    expect(world.asked.filter(argv => argv === MAIN_REF)).toEqual([])
+  })
+})
+
 describe('kicks and toggles', () => {
   test('a push polls at once, then at the active rate for two minutes', async () => {
     const { world, runtime } = setup()
     await runtime.start()
-    expect(world.waiting()).toEqual([60_000])
+    expect(world.waiting()).toEqual([REMOTE_WATCH_MS, 60_000])
     await world.advance(5 * SECOND)
     await runtime.kick()
     expect(gh(world).filter(argv => argv.startsWith(LIST)).length).toBe(2)
-    expect(world.waiting()).toEqual([10_000])
+    expect(world.waiting()).toEqual([REMOTE_WATCH_MS, 10_000])
     await world.advance(120 * SECOND)
-    expect(world.waiting()).toEqual([60_000])
+    expect(world.waiting()).toEqual([REMOTE_WATCH_MS, 60_000])
   })
 
   test('/actions opens by hand (asked), stays past the linger, closes on the second /actions', async () => {

@@ -84,6 +84,17 @@ These are the plugin's options. Set them when you enable it, or in `settings.jso
   finished run's jobs are read once and then cached. A `git push`,
   `gh workflow run`, `gh pr create` or `gh run rerun` through Claude's Bash
   tool polls at once, then at the active rate for two minutes.
+- **Pushes from any terminal:** every 5 seconds a local `git rev-parse` reads
+  the remote-tracking ref of the branch in scope (its push target, else
+  `origin/<branch>`; under `repo` scope the current branch's). When it moves,
+  the same kick happens: a poll at once, then the active rate for two
+  minutes. No GitHub calls are made while idle, and the watch is off when
+  there is no repository or the HEAD is detached.
+- **Run status lags its jobs:** GitHub can keep a run `in_progress` for up to
+  a poll after its last job finished. Such a run is drawn complete, with the
+  conclusion taken from its jobs, its duration frozen at the last job and its
+  linger counted from there. It is still read until GitHub itself says
+  completed.
 - **What shows:** runs that are active, plus the runs this session saw
   finish, for the linger window. A run that had already finished when it was
   first seen does not open the pane.
@@ -109,8 +120,9 @@ These are the plugin's options. Set them when you enable it, or in `settings.jso
 
 ## Limitations
 
-- Kicks only see commands run through Claude's Bash tool. A push from
-  another terminal shows up on the next idle poll.
+- A push is detected within about 5 seconds from any terminal, by the
+  remote-tracking ref moving. A push that leaves the ref alone, to a remote
+  other than the branch's push target, is only seen on the next idle poll.
 - The linger and the stale note use your local clock, measured from when a
   poll saw the change, not from GitHub's timestamps.
 - Some terminal setups (inside tmux, for one) do not support OSC 8

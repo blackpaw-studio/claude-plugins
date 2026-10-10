@@ -46,6 +46,10 @@ Rate budget: at 10s with 3 active runs ≈ 1,440 calls/hr (1 list + 3 job reads 
 
 **Push kick**: a `tool.call` hook watches Bash calls matching `git push`, `gh workflow run`, `gh pr create`, `gh run rerun`; after each it polls at the active rate for 2 minutes so the pane opens within seconds of a push instead of up to 60s later.
 
+**Push watch (any terminal)**: every 5s a local `git rev-parse --verify -q <ref>` reads the remote-tracking ref of the scoped branch (`@{push}`, else `refs/remotes/origin/<branch>`; resolved once per branch via `git rev-parse`, which also covers packed-refs and worktrees). The first read is a baseline; a change is a push and applies the same kick as above (a move within 10s of a Bash kick is the same push and is not kicked twice). Local git only, no GitHub calls while idle. One timer per module load; it stops when there is no repository or branch.
+
+**Run lag**: GitHub's run status can trail its jobs by a poll. In the snapshot, a run that reports active whose jobs are all completed (and at least one) is drawn complete: conclusion from the jobs (any `failure`/`timed_out` → failure, else any `cancelled` → cancelled, else success), duration frozen at the latest job `completedAt`, linger counted from there (a later GitHub completion never restarts it). The poller keeps reading the run until `gh` says completed, so the cached data ends as GitHub's.
+
 A 1s clock tick runs only while the pane is open, redrawing elapsed times and the spinner.
 
 ## Rendering

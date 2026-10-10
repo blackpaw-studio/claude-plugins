@@ -48,6 +48,8 @@ export const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
 export const baseAnswers = (): Map<string, RunResult | Error> =>
   new Map<string, RunResult | Error>([
     ['git rev-parse HEAD --abbrev-ref HEAD', ok(`${SHA}\nmain\n`)],
+    ['git rev-parse --symbolic-full-name @{push}', ok('refs/remotes/origin/main\n')],
+    ['git rev-parse --verify -q refs/remotes/origin/main', ok(`${SHA}\n`)],
     ['gh repo view', ok('{"nameWithOwner":"acme/widgets"}')],
     ['gh run list', ok('[]')],
   ])
