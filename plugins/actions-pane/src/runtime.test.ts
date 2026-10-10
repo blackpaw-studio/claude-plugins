@@ -42,6 +42,14 @@ describe('watching a run', () => {
     expect(world.waiting()).toEqual([1000, 10_000])
   })
 
+  test('an auto-open draws at the moment it opens, not at a stale clock', async () => {
+    const { world, runtime } = setup()
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    await runtime.start()
+    expect(world.drawnNow()).toBe(T0)
+  })
+
   test('the tick moves the drawn clock each second while the pane is open', async () => {
     const { world, runtime } = setup()
     runsAre(world, [RUNNING])

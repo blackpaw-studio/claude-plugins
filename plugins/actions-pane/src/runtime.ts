@@ -82,8 +82,10 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     tickTimer = null
   }
 
-  const apply = async (effect: Effect, open: () => Promise<{ isPlaced: boolean }> = ports.open): Promise<void> => {
+  const apply = async (effect: Effect, now: number, open: () => Promise<{ isPlaced: boolean }> = ports.open): Promise<void> => {
     if (effect === 'open') {
+      // The drawn clock stands still while closed: bring it up before the first frame.
+      await ports.clock.set(now)
       isPlaced = (await open()).isPlaced
       startTick()
     }
@@ -100,7 +102,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     const snapshot = await snapshotAt(now)
     const decision = decide(lifecycle, event(snapshot))
     lifecycle = decision.state
-    await apply(decision.effect)
+    await apply(decision.effect, now)
     showStatus(await snapshotAt(now))
   }
 
@@ -234,8 +236,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
       isPlaced = lifecycle.mode === 'closed' || (await ports.pane()).isPlaced
       const decision = decide(lifecycle, { kind: 'toggle', view: viewOf(await snapshotAt(now)), isPlaced })
       lifecycle = decision.state
-      await apply(decision.effect, open)
-      if (decision.effect === 'open') await ports.clock.set(now)
+      await apply(decision.effect, now, open)
       showStatus(await snapshotAt(now))
       if (decision.effect === 'open') void poll().catch(fail('poll'))
       return { text: decision.effect === 'open' ? 'Actions pane opened.' : 'Actions pane closed.', isQuiet: true }
