@@ -191,6 +191,19 @@ describe('when there is nothing to watch', () => {
     expect(world.waiting()).toEqual([60_000])
   })
 
+  test('a move to another repository drops the runs of the last, even when its list fails', async () => {
+    const { world, runtime } = setup()
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    await runtime.start()
+    world.setCwd('/other')
+    world.answers.set('gh repo view', ok('{"nameWithOwner":"acme/other"}'))
+    world.answers.set(LIST, fail('error connecting to api.github.com'))
+    await runtime.cwdMaybeChanged()
+    expect(world.data()?.context?.repo).toBe('acme/other')
+    expect([world.data()?.runs, world.data()?.jobs, world.data()?.watched]).toEqual([[], {}, {}])
+  })
+
   test('/actions says why, and does not open', async () => {
     const { world, runtime } = setup()
     world.answers.set('gh repo view', fail('To get started with GitHub CLI, please run:  gh auth login', 4))

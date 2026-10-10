@@ -172,7 +172,10 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     if (context !== null) {
       const filter = listFilter(await scopeNow(), context)
       const listed: GhResult<ActionsData['runs']> = filter === null ? { kind: 'ok', value: [] } : await listRuns(ports.run, cwd, filter)
-      await publish({ ...data, context, disabled: null })
+      // Another repository: nothing of the last one carries over, whatever the list says.
+      const isNewRepo = data.context !== null && data.context.repo !== context.repo
+      if (isNewRepo) final = new Set()
+      await publish({ ...(isNewRepo ? EMPTY_DATA : data), context, disabled: null })
       if (listed.kind === 'ok') await publish(withRuns(data, listed.value, now))
       else await onFailure(listed)
       await publish({ ...data, pollMs: intervalAt(now) })
