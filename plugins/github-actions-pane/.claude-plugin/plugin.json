@@ -1,0 +1,46 @@
+{
+  "name": "github-actions-pane",
+  "version": "0.1.0",
+  "description": "Live GitHub Actions pane beside the transcript while workflow runs are active: run, jobs and steps with status icons and live durations, drawn like GitHub's run view.",
+  "author": {
+    "name": "Evan Coleman"
+  },
+  "homepage": "https://github.com/blackpaw-studio/claude-plugins",
+  "repository": "https://github.com/blackpaw-studio/claude-plugins",
+  "license": "Apache-2.0",
+  "keywords": ["github", "actions", "ci", "pane", "ui", "mod"],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "scope": {
+      "type": "string",
+      "title": "Scope",
+      "description": "Which runs to watch: commit (HEAD), branch (current branch) or repo (every active run).",
+      "default": "branch",
+      "options": ["commit", "branch", "repo"]
+    },
+    "lingerSeconds": {
+      "type": "number",
+      "title": "Linger seconds",
+      "description": "How long finished runs stay shown before the pane closes itself. 0 closes at once.",
+      "default": 30
+    },
+    "activePollSeconds": {
+      "type": "number",
+      "title": "Active poll seconds",
+      "description": "Poll interval while a run in scope is active (at least 5).",
+      "default": 10
+    },
+    "idlePollSeconds": {
+      "type": "number",
+      "title": "Idle poll seconds",
+      "description": "Poll interval while nothing is active (at least 15).",
+      "default": 60
+    },
+    "autoOpen": {
+      "type": "boolean",
+      "title": "Open automatically",
+      "description": "Open the pane when a run starts. Off: status line hint only.",
+      "default": true
+    }
+  }
+}

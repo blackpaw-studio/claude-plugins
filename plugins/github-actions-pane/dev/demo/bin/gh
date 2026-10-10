@@ -1,0 +1,210 @@
+#!/usr/bin/env python3
+"""A fake `gh` for the github-actions-pane demo: replays a scripted run timeline.
+
+Answers only what the mod asks (`gh repo view`, `gh run list`, `gh run view
+<id> --json jobs`) in the JSON shapes real gh prints, as of the seconds since
+the start: epoch seconds read from the file ACTIONS_DEMO_START_FILE names
+(record.sh writes it once Claude is up), else ACTIONS_DEMO_START; with
+neither, the clock sits before the timeline. Nothing reaches GitHub.
+
+Timeline (seconds after the start):
+   4  CI #482 queued on push               60  CI #482 succeeds
+   6  its jobs start: lint, test x2         9  Deploy #77 queued, starts at 12
+  34  Deploy fails at "Upload artifacts"   47  build starts after the tests
+"""
+import json
+import os
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+
+REPO = "acme/widgets"
+ZERO = "0001-01-01T00:00:00Z"
+
+
+def start_time():
+    path = os.environ.get("ACTIONS_DEMO_START_FILE")
+    if path and os.path.exists(path):
+        with open(path) as f:
+            return float(f.read().strip())
+    value = os.environ.get("ACTIONS_DEMO_START")
+    return float(value) if value else None
+
+
+BEFORE = -1.0
+LOG = os.environ.get("ACTIONS_DEMO_LOG")
+
+
+def head_sha() -> str:
+    out = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True)
+    return out.stdout.strip() or "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
+
+
+def iso(offset):
+    if offset is None:
+        return ZERO
+    return datetime.fromtimestamp(ORIGIN + offset, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# step: (name, seconds, conclusion when it ends)
+def setup(node):
+    return [("Set up job", 2, "success"), ("Checkout", 1, "success"), (f"Setup Node.js {node}", 3, "success")]
+
+
+RUNS = [
+    {
+        "id": 18101,
+        "number": 481,
+        "workflow": "CI",
+        "title": "docs: changelog for 2.3",
+        "created": -3600,
+        "jobs": [{"name": "lint", "start": -3598, "steps": [("Set up job", 2, "success"), ("Lint", 20, "success")]}],
+    },
+    {
+        "id": 18240,
+        "number": 482,
+        "workflow": "CI",
+        "title": "fix: parser edge case",
+        "created": 4,
+        "jobs": [
+            {"name": "lint", "start": 6, "steps": setup(20) + [("Install dependencies", 6, "success"), ("Lint", 5, "success"),
+                                                     ("Post Checkout", 1, "success"), ("Complete job", 0, "success")]},
+            {"name": "test (node 20)", "start": 7, "steps": setup(20) + [("Install dependencies", 7, "success"),
+                                                               ("Run tests", 26, "success"), ("Post Checkout", 1, "success"),
+                                                               ("Complete job", 0, "success")]},
+            {"name": "test (node 22)", "start": 7, "steps": setup(22) + [("Install dependencies", 7, "success"),
+                                                               ("Run tests", 24, "success"), ("Post Checkout", 1, "success"),
+                                                               ("Complete job", 0, "success")]},
+            {"name": "build", "start": 47, "steps": [("Set up job", 1, "success"), ("Checkout", 1, "success"),
+                                                     ("Build", 8, "success"), ("Upload artifact", 3, "success"),
+                                                     ("Complete job", 0, "success")]},
+        ],
+    },
+    {
+        "id": 18243,
+        "number": 77,
+        "workflow": "Deploy",
+        "title": "fix: parser edge case",
+        "created": 9,
+        "jobs": [
+            {"name": "deploy", "start": 12, "steps": [("Set up job", 2, "success"), ("Checkout", 1, "success"),
+                                                      ("Configure AWS credentials", 4, "success"),
+                                                      ("Build image", 9, "success"), ("Upload artifacts", 6, "failure"),
+                                                      ("Post Checkout", 0, "success"), ("Complete job", 0, "success")]},
+        ],
+    },
+]
+
+
+def step_states(job, t):
+    """Each step's status, conclusion and times at t; steps after a failure are skipped."""
+    out, clock, failed = [], job["start"], False
+    for number, (name, seconds, conclusion) in enumerate(job["steps"], start=1):
+        if failed and not name.startswith(("Post", "Complete")):
+            out.append((number, name, "completed", "skipped", clock, clock))
+            continue
+        begin, end = clock, clock + seconds
+        if t < begin:
+            out.append((number, name, "pending", "", None, None))
+        elif t < end:
+            out.append((number, name, "in_progress", "", begin, None))
+        else:
+            out.append((number, name, "completed", conclusion, begin, end))
+            failed = failed or conclusion == "failure"
+        clock = end
+    return out
+
+
+def job_json(run, index, job, t):
+    url = f"https://github.com/{REPO}/actions/runs/{run['id']}/job/{run['id'] * 10 + index}"
+    base = {"databaseId": run["id"] * 10 + index, "name": job["name"], "url": url}
+    if t < job["start"]:
+        return {**base, "status": "queued", "conclusion": "", "startedAt": ZERO, "completedAt": ZERO, "steps": []}
+    steps = step_states(job, t)
+    done = all(status == "completed" for _, _, status, _, _, _ in steps)
+    failed = any(conclusion == "failure" for _, _, _, conclusion, _, _ in steps)
+    end = max(e for *_, e in steps if e is not None) if done else None
+    return {
+        **base,
+        "status": "completed" if done else "in_progress",
+        "conclusion": ("failure" if failed else "success") if done else "",
+        "startedAt": iso(job["start"]),
+        "completedAt": iso(end),
+        "steps": [{"name": name, "number": number, "status": status, "conclusion": conclusion,
+                   "startedAt": iso(begin), "completedAt": iso(end_)}
+                  for number, name, status, conclusion, begin, end_ in steps],
+    }
+
+
+def run_json(run, t, sha):
+    jobs = [job_json(run, i, job, t) for i, job in enumerate(run["jobs"])]
+    started = any(job["status"] != "queued" for job in jobs)
+    done = all(job["status"] == "completed" for job in jobs)
+    failed = any(job["conclusion"] == "failure" for job in jobs)
+    updated = max([run["created"]] + [job_end(run, j, t) for j in run["jobs"]])
+    return {
+        "databaseId": run["id"],
+        "number": run["number"],
+        "workflowName": run["workflow"],
+        "displayTitle": run["title"],
+        "event": "push",
+        "status": "completed" if done else ("in_progress" if started else "queued"),
+        "conclusion": ("failure" if failed else "success") if done else "",
+        "headBranch": "main",
+        "headSha": sha,
+        "createdAt": iso(run["created"]),
+        "startedAt": iso(run["created"]),
+        "updatedAt": iso(min(updated, t)),
+        "url": f"https://github.com/{REPO}/actions/runs/{run['id']}",
+    }, jobs
+
+
+def job_end(run, job, t):
+    steps = step_states(job, t)
+    ends = [e for *_, e in steps if e is not None]
+    return max(ends) if ends else job["start"]
+
+
+def visible(t):
+    return [run for run in RUNS if run["created"] <= t]
+
+
+def arg_after(args, flag):
+    return args[args.index(flag) + 1] if flag in args else None
+
+
+ORIGIN = time.time()
+
+
+def main(args):
+    global ORIGIN
+    start = start_time()
+    ORIGIN = start if start is not None else time.time() - BEFORE
+    t = time.time() - ORIGIN
+    if LOG:
+        with open(LOG, "a") as log:
+            log.write(f"{t:7.1f} gh {' '.join(args)}\n")
+    if args[:2] == ["repo", "view"]:
+        print(json.dumps({"nameWithOwner": REPO}))
+        return 0
+    if args[:2] == ["run", "list"]:
+        sha = head_sha()
+        branch, commit = arg_after(args, "--branch"), arg_after(args, "--commit")
+        runs = [run_json(run, t, sha)[0] for run in sorted(visible(t), key=lambda r: -r["created"])]
+        runs = [r for r in runs if (branch is None or r["headBranch"] == branch) and (commit is None or r["headSha"] == commit)]
+        print(json.dumps(runs))
+        return 0
+    if args[:2] == ["run", "view"] and "jobs" in args:
+        match = [run for run in visible(t) if str(run["id"]) == args[2]]
+        if not match:
+            print(f"could not find any workflow run with ID {args[2]}", file=sys.stderr)
+            return 1
+        print(json.dumps({"jobs": run_json(match[0], t, head_sha())[1]}))
+        return 0
+    print(f"github-actions-pane demo gh: unsupported: gh {' '.join(args)}", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
