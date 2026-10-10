@@ -7,9 +7,11 @@ import { type Ran, type Run, type RunInit, tryRun } from './run'
 const GH_TIMEOUT_MS = 10_000
 const GH_ENV = { GH_PROMPT_DISABLED: '1' }
 const LIST_LIMIT = 20
+const HISTORY_LIMIT = 10
+const HISTORY_FIELDS = 'startedAt,createdAt,updatedAt,conclusion'
 
 export const RUN_FIELDS =
-  'databaseId,number,workflowName,displayTitle,event,status,conclusion,headBranch,headSha,createdAt,startedAt,updatedAt,url'
+  'databaseId,number,workflowName,displayTitle,event,status,conclusion,headBranch,headSha,createdAt,startedAt,updatedAt,url,workflowDatabaseId'
 
 /** One `gh run list` filter; gh cannot OR `--branch` with `--commit`. */
 export type LeafFilter = { kind: 'repo' } | { kind: 'branch'; branch: string } | { kind: 'commit'; sha: string }
@@ -86,6 +88,7 @@ const toRun = (value: unknown): ActionsRun | null => {
     id,
     number,
     workflow: stringOf(value, 'workflowName') ?? 'workflow',
+    workflowId: integerOf(value, 'workflowDatabaseId'),
     title: stringOf(value, 'displayTitle') ?? '',
     event: stringOf(value, 'event') ?? '',
     status,
@@ -148,6 +151,20 @@ export const parseJobs = (stdout: string): ActionsJob[] | null => {
   return isFields(parsed) && Array.isArray(parsed.jobs) ? parsed.jobs.map(toJob).filter(isPresent) : null
 }
 
+/** How long a successful run took: from `startedAt` (else `createdAt`) to `updatedAt`; null if the times don't say. */
+const durationOf = (value: unknown): number | null => {
+  if (!isFields(value) || conclusionOf(value) !== 'success') return null
+  const start = timeOf(value, 'startedAt') ?? timeOf(value, 'createdAt')
+  const end = timeOf(value, 'updatedAt')
+  return start === null || end === null || end < start ? null : end - start
+}
+
+/** `gh run list --json startedAt,createdAt,updatedAt,conclusion` output to run durations in ms; null when it is no list. Pure. */
+export const parseDurations = (stdout: string): number[] | null => {
+  const parsed = parseJson(stdout)
+  return Array.isArray(parsed) ? parsed.map(durationOf).filter(isPresent) : null
+}
+
 const filterArgs = (filter: LeafFilter): string[] =>
   filter.kind === 'branch' ? ['--branch', filter.branch] : filter.kind === 'commit' ? ['--commit', filter.sha] : []
 
@@ -192,6 +209,10 @@ export const listRuns = async (run: Run, cwd: string, repo: string, filter: List
   const unique = all.filter((one, index) => all.findIndex(other => other.id === one.id) === index)
   return { kind: 'ok', value: [...unique].sort((a, b) => b.createdAt - a.createdAt) }
 }
+
+/** The last successful runs of a workflow (any branch or event) as durations in ms, newest first. */
+export const listDurations = (run: Run, cwd: string, repo: string, workflowId: number): Promise<GhResult<number[]>> =>
+  gh(run, cwd, ['run', 'list', '--repo', repo, '--workflow', String(workflowId), '--status', 'success', '--limit', String(HISTORY_LIMIT), '--json', HISTORY_FIELDS], parseDurations, 'a run list')
 
 export const viewJobs = (run: Run, cwd: string, repo: string, id: number): Promise<GhResult<ActionsJob[]>> =>
   gh(run, cwd, ['run', 'view', String(id), '--repo', repo, '--json', 'jobs'], parseJobs, 'a job list')

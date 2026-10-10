@@ -32,6 +32,8 @@ export type ActionsRun = {
   /** The run number within its workflow (`#482`). */
   number: number
   workflow: string
+  /** GitHub's id for the workflow; null if gh left it out. */
+  workflowId: number | null
   /** The commit or PR title GitHub shows for the run. */
   title: string
   event: string
@@ -66,6 +68,12 @@ export type ActionsData = {
    * time their completion was first seen (the linger window counts from it).
    */
   watched: Record<string, number | null>
+  /**
+   * How long the last successful runs of each workflow took, in ms, by
+   * workflow id: the basis of the time-remaining estimate. A workflow with no
+   * entry has not been read yet; kept only for workflows among `runs`.
+   */
+  history: Record<string, number[]>
   /** Local time of the last successful list; null before one. */
   fetchedAt: number | null
   /** The interval the poller runs at now, for the stale check. */

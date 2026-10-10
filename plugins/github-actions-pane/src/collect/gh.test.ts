@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { JOBS_IN_PROGRESS, JOBS_LINT_FAILED, JOBS_NONE, RUN_LIST } from '../testing/gh-fixtures'
+import { JOBS_IN_PROGRESS, JOBS_LINT_FAILED, JOBS_NONE, RUN_HISTORY, RUN_LIST } from '../testing/gh-fixtures'
 import { ghRun, MINUTE, runOf, T0 } from '../testing/builders'
 import { fail, ok, runner } from '../testing/runner'
-import { classifyFailure, listRuns, parseJobs, parseRuns, repoName, viewJobs, RUN_FIELDS } from './gh'
+import { classifyFailure, listDurations, listRuns, parseDurations, parseJobs, parseRuns, repoName, viewJobs, RUN_FIELDS } from './gh'
 
 const at = (iso: string) => Date.parse(iso)
 const GH_INIT = { cwd: '/repo', timeoutMs: 10_000, env: { GH_PROMPT_DISABLED: '1' } }
@@ -17,6 +17,7 @@ describe('parseRuns', () => {
       id: 38015447143,
       number: 1637,
       workflow: 'Dependabot PR Triage (skills-driven)',
+      workflowId: 323696448,
       title: 'Dependabot PR Triage (skills-driven)',
       event: 'schedule',
       status: 'queued',
@@ -33,11 +34,49 @@ describe('parseRuns', () => {
     )
   })
 
+  test('a run without a workflow id keeps it as null', () => {
+    const { workflowDatabaseId: _omitted, ...bare } = JSON.parse(RUN_LIST)[0]
+    expect(parseRuns(JSON.stringify([bare]))?.[0]?.workflowId).toBe(null)
+  })
+
   test('drops malformed entries; output that is not a list is null', () => {
     const one = JSON.stringify([{ databaseId: 'x' }, ...JSON.parse(RUN_LIST).slice(0, 1)])
     expect(parseRuns(one)?.map(run => run.id)).toEqual([38015447143])
     expect(parseRuns('{"message":"Not Found"}')).toBe(null)
     expect(parseRuns('not json')).toBe(null)
+  })
+})
+
+describe('parseDurations', () => {
+  test('reads how long each run took, newest first, from real gh output', () => {
+    const durations = parseDurations(RUN_HISTORY)
+    expect(durations?.length).toBe(10)
+    expect(durations?.slice(0, 2)).toEqual([10_000, 12_000])
+  })
+
+  test('counts from createdAt when startedAt is missing; skips runs that did not succeed or have no sane times', () => {
+    const entry = (fields: Record<string, unknown>) => ({
+      conclusion: 'success',
+      createdAt: '2026-10-10T10:00:00Z',
+      startedAt: '2026-10-10T10:00:05Z',
+      updatedAt: '2026-10-10T10:01:05Z',
+      ...fields,
+    })
+    const text = JSON.stringify([
+      entry({}),
+      entry({ startedAt: '0001-01-01T00:00:00Z' }),
+      entry({ conclusion: 'failure' }),
+      entry({ conclusion: '' }),
+      entry({ updatedAt: '2026-10-10T09:00:00Z' }),
+      entry({ updatedAt: 'junk' }),
+      'junk',
+    ])
+    expect(parseDurations(text)).toEqual([60_000, 65_000])
+  })
+
+  test('output that is not a list is null', () => {
+    expect(parseDurations('{"message":"Not Found"}')).toBe(null)
+    expect(parseDurations('not json')).toBe(null)
   })
 })
 
@@ -150,6 +189,22 @@ describe('listRuns', () => {
   test('output that does not parse is transient', async () => {
     const { run } = runner({ [LIST]: ok('<html>') })
     expect(await listRuns(run, '/repo', REPO, { kind: 'repo' })).toEqual({ kind: 'transient', reason: 'gh returned output that is not a run list' })
+  })
+})
+
+describe('listDurations', () => {
+  const HISTORY = `gh run list --repo ${REPO} --workflow 323696448 --status success --limit 10 --json startedAt,createdAt,updatedAt,conclusion`
+
+  test('asks for the last ten successes of the workflow by id, read-only, in the cwd', async () => {
+    const { run, asked } = runner({ [HISTORY]: ok(RUN_HISTORY) })
+    const result = await listDurations(run, '/repo', REPO, 323696448)
+    expect(result.kind).toBe('ok')
+    expect(asked).toEqual([{ argv: HISTORY, init: GH_INIT }])
+  })
+
+  test('a failed call is classified; output that does not parse is transient', async () => {
+    expect((await listDurations(runner({ [HISTORY]: fail('HTTP 429: rate limit') }).run, '/repo', REPO, 323696448)).kind).toBe('rate-limited')
+    expect((await listDurations(runner({ [HISTORY]: ok('nope') }).run, '/repo', REPO, 323696448)).kind).toBe('transient')
   })
 })
 
