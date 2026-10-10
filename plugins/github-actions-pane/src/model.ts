@@ -15,6 +15,13 @@ export const EMPTY_DATA: ActionsData = {
 }
 
 /**
+ * State read back from a session: one saved before `history` or `workflowId`
+ * existed (0.1.2) gets them empty, so nothing downstream meets a missing field.
+ */
+export const restoredData = (saved: ActionsData | null): ActionsData =>
+  saved === null ? EMPTY_DATA : { ...saved, history: saved.history ?? {}, runs: saved.runs.map(run => ({ ...run, workflowId: run.workflowId ?? null })) }
+
+/**
  * The history kept for the workflows among `runs`, less those with a run seen
  * finishing in this list (it is a new sample: read again when next needed).
  */

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { withHistory, withRuns, workflowsToRead } from './model'
+import type { ActionsData } from '../types'
+import { EMPTY_DATA, restoredData, withHistory, withRuns, workflowsToRead } from './model'
 import { dataOf, MINUTE, runOf, T0 } from './testing/builders'
 
 const RUNNING = runOf({ id: 1, workflowId: 10 })
@@ -52,5 +53,26 @@ describe('workflowsToRead', () => {
       history: { '10': [] },
     })
     expect(workflowsToRead(data)).toEqual([])
+  })
+})
+
+describe('restoredData', () => {
+  // What a 0.1.2 session left in state: no history, runs without a workflow id.
+  const legacy = (): ActionsData => {
+    const { history: _history, ...rest } = dataOf({ runs: [RUNNING] })
+    return { ...rest, runs: [{ ...RUNNING, workflowId: undefined }] } as unknown as ActionsData
+  }
+
+  test('state saved before the history existed gets an empty history and null workflow ids', () => {
+    const restored = restoredData(legacy())
+    expect(restored.history).toEqual({})
+    expect(restored.runs.map(run => run.workflowId)).toEqual([null])
+    expect(() => withRuns(restored, restored.runs, T0)).not.toThrow()
+  })
+
+  test('current state is kept as is; none restores to the empty data', () => {
+    const current = dataOf({ runs: [RUNNING], history: { '10': [MINUTE] } })
+    expect(restoredData(current)).toEqual(current)
+    expect(restoredData(null)).toBe(EMPTY_DATA)
   })
 })

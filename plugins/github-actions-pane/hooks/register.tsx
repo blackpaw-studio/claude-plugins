@@ -5,7 +5,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 import { isKickCommand } from '../src/kick'
 import { layoutPane } from '../src/layout'
-import { EMPTY_DATA } from '../src/model'
+import { restoredData } from '../src/model'
 import { bodyWidth, paneTree } from '../src/pane'
 import { createRuntime, type Ports, type Runtime, TICK_MS } from '../src/runtime'
 import { isScope, parseSettings } from '../src/settings'
@@ -120,7 +120,7 @@ export const register: Register = (on, options) => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
     if (e.surface !== 'terminal') return next(e)
     const [data, now, scope, isManual] = await Promise.all([read($, dataAtom), read($, nowAtom), read($, scopeAtom), read($, manualAtom)])
-    const snapshot = buildSnapshot({ data: data ?? EMPTY_DATA, now, settings, scope: scope ?? settings.scope, isManual })
+    const snapshot = buildSnapshot({ data: restoredData(data), now, settings, scope: scope ?? settings.scope, isManual })
     const lines = layoutPane(snapshot, { width: bodyWidth(e.props.bodyColumns), rows: e.props.scroll.bodyRows, frame: Math.floor(now / TICK_MS) })
     const repoArgs = data?.context?.repo === undefined ? [] : ['--repo', data.context.repo]
     const open = (runId: number) =>

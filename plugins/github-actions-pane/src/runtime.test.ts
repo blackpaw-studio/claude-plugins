@@ -3,7 +3,7 @@ import type { ActionsData, ActionsJob, ActionsRun } from '../types'
 import { fail, ok } from './testing/runner'
 import { createRuntime, REMOTE_WATCH_MS } from './runtime'
 import { DEFAULT_SETTINGS, type Settings } from './settings'
-import { ghJobs, ghRun, jobOf, runOf, SECOND, T0 } from './testing/builders'
+import { dataOf, ghJobs, ghRun, jobOf, runOf, SECOND, T0 } from './testing/builders'
 import { fakeWorld, type FakeWorld, flush, SHA } from './testing/ports'
 
 const LIST = 'gh run list'
@@ -623,6 +623,18 @@ describe('run ETA history', () => {
     await world.advance(60 * SECOND)
     expect(world.data()?.isRateLimited).toBe(false)
     expect(world.data()?.history).toEqual({ '1234': [100_000, 120_000, 140_000] })
+  })
+
+  test('state saved by 0.1.2, with no history, starts and polls like fresh state', async () => {
+    const { world, runtime } = setup()
+    const { history: _history, ...legacy } = dataOf({ runs: [{ ...RUNNING, workflowId: undefined as unknown as null }] })
+    await world.ports.data.set(legacy as unknown as ActionsData)
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    historyIs(world, 1234, 100, 120, 140)
+    await runtime.start()
+    expect(world.data()?.history).toEqual({ '1234': [100_000, 120_000, 140_000] })
+    expect(world.waiting()).toContain(10_000)
   })
 
   test('a rate limit on the read itself marks the pane rate limited and leaves no history', async () => {

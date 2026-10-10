@@ -10,7 +10,7 @@ import { repoFromRemotes } from './collect/repo'
 import type { Run } from './collect/run'
 import { isActiveStatus } from './format'
 import { CLOSED, decide, type Effect, type Lifecycle, type LifecycleEvent, statusText } from './lifecycle'
-import { EMPTY_DATA, runsToDetail, withHistory, withJobs, withRuns, workflowsToRead } from './model'
+import { EMPTY_DATA, restoredData, runsToDetail, withHistory, withJobs, withRuns, workflowsToRead } from './model'
 import { KICK_MS, nextPollMs } from './schedule'
 import { listFilter } from './scope'
 import type { Settings } from './settings'
@@ -300,7 +300,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
   return {
     /** Starts watching: restores what a reload left in state, then polls. */
     start: async (): Promise<void> => {
-      data = (await ports.data.get()) ?? EMPTY_DATA
+      data = restoredData(await ports.data.get())
       const pane = await ports.pane()
       if (pane.isOpen) {
         lifecycle = { mode: (await ports.manual.get()) ? 'manual' : 'auto', dismissed: [] }
