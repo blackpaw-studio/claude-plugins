@@ -4,6 +4,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 import { bandAt } from '../src/band'
+import { createFooterGate, fitsTail, type FooterGate } from '../src/footer'
 import { isKickCommand } from '../src/kick'
 import { layoutPane } from '../src/layout'
 import { restoredData } from '../src/model'
@@ -29,7 +30,7 @@ const manualAtom = atom({ plugin: 'github-actions-pane', key: 'isManual' } as co
 const describeError = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 /** The runtime's view of the engine: every `$` call it makes, as closures. */
-function portsOf($: EngineInterface): Ports {
+function portsOf($: EngineInterface, footer: FooterGate): Ports {
   return {
     run: (argv, init) => $.process.run(argv, init),
     cwd: () => $.session.cwd(),
@@ -47,6 +48,7 @@ function portsOf($: EngineInterface): Ports {
       return { isOpen: pane !== undefined, isPlaced: pane?.isPlaced ?? false }
     },
     status: text => $.ui.status(text),
+    isFooterShowing: footer.isShowing,
     log: text => $.ui.log(text, { to: 'debug' }),
   }
 }
@@ -64,6 +66,7 @@ function registerCommand($: EngineInterface) {
 export const register: Register = (on, options) => {
   const settings = parseSettings(options)
   let runtime: Runtime | null = null
+  const footer = createFooterGate()
 
   /** The runtime over these ports, started once per module load. */
   const attach = (ports: Ports): Runtime => {
@@ -77,7 +80,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     await registerCommand($)
-    attach(portsOf($))
+    attach(portsOf($, footer))
     return started
   })
 
@@ -96,14 +99,14 @@ export const register: Register = (on, options) => {
   // After a push (or a run started from gh), poll at once; any other Bash call may have moved the cwd.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const ran = await next(e)
-    const watcher = attach(portsOf($))
+    const watcher = attach(portsOf($, footer))
     const work = isKickCommand(e.command) ? watcher.kick() : watcher.cwdMaybeChanged()
     work.catch(error => $.ui.log(`github-actions-pane: bash: ${describeError(error)}`, { to: 'debug' }))
     return ran
   }).catch(($, e, next) => next(e))
 
   on('command.run', { command: 'actions' }, async ($, e) => {
-    const watcher = attach(portsOf($))
+    const watcher = attach(portsOf($, footer))
     const arg = e.args.trim()
     if (arg === '') {
       // Opened here, in the person's command, so it seats at any width.
@@ -133,12 +136,21 @@ export const register: Register = (on, options) => {
     return paneTree($.ui.resolve(e), lines, open)
   })
   // The footer text shares the poller's data and clock: it draws, and the runtime ticks, with the pane closed.
-  // Only `tail` is set, so the engine's line (live pills, permission mode) stays whole.
+  // Only `tail` is set, so the engine's line (live pills, permission mode) stays whole. The terminal alone draws
+  // it, and only when it fits; the footer gate tells the runtime, which re-reads it on its next tick.
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
-    if (e.surface !== 'terminal' && e.surface !== 'desktop') return next(e)
+    if (e.surface !== 'terminal') {
+      footer.report(false)
+      return next(e)
+    }
     const [data, now, scope] = await Promise.all([read($, dataAtom), read($, nowAtom), read($, scopeAtom)])
     const text = bandAt({ data: restoredData(data), now, settings, scope: scope ?? settings.scope })
-    if (text === null) return next(e)
-    return next({ ...e, props: { ...e.props, tail: `${e.props.tail ?? ''}${TAIL_SEPARATOR}${text}` } })
+    if (text === null) {
+      footer.report(false)
+      return next(e)
+    }
+    const { hint, tail } = e.props
+    footer.report(fitsTail({ columns: e.viewport?.columns, hint, tail, separator: TAIL_SEPARATOR }))
+    return next({ ...e, props: { ...e.props, tail: `${tail ?? ''}${TAIL_SEPARATOR}${text}` } })
   })
 }

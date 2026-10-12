@@ -229,6 +229,31 @@ describe('the band and the status line', () => {
   })
 })
 
+describe('the status line while the footer tail may not show', () => {
+  test('a tail that is not on screen (desktop, a narrow row) leaves the running count in the status line', async () => {
+    const { world, runtime } = setup(DEFAULT_SETTINGS)
+    world.setFooterShowing(false)
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    await runtime.start()
+    expect(world.statuses.at(-1)).toBe('◐ 1 running')
+  })
+
+  test('once the tail shows, the next tick clears the running count', async () => {
+    const { world, runtime } = setup(DEFAULT_SETTINGS)
+    world.setFooterShowing(false)
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    await runtime.start()
+    world.setFooterShowing(true)
+    await world.advance(SECOND)
+    expect(world.statuses.at(-1)).toBe(undefined)
+    world.setFooterShowing(false)
+    await world.advance(SECOND)
+    expect(world.statuses.at(-1)).toBe('◐ 1 running')
+  })
+})
+
 describe('a poll with requests still pending', () => {
   test('the band ticks as soon as the runs are published, not when the poll ends', async () => {
     const world = fakeWorld(T0)

@@ -111,8 +111,8 @@ const findNode = (node: unknown, type: string): Node | undefined => {
 
 const HINT_PROPS = { isDraft: false, isWorking: false, hint: ENGINE_HINT }
 
-const mountHint = ($: Engine, props: Record<string, unknown> = HINT_PROPS) =>
-  $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'PromptHint', props, viewport: { columns: 100, rows: 40 } })
+const mountHint = ($: Engine, props: Record<string, unknown> = HINT_PROPS, surface: 'terminal' | 'desktop' = 'terminal', columns = 100) =>
+  $.ui.mount({ plugin: PLUGIN, surface, component: 'PromptHint', props, viewport: { columns, rows: 40 } })
 
 const command = (args: string) => ({
   command: 'actions',
@@ -226,7 +226,41 @@ describe('the actions text on the footer hint line', () => {
   test('the status line stays quiet about running while the tail shows it', async ($, on) => {
     const world = installWorld(on)
     await startSession($, world)
+    await mountHint($)
     await world.clock.advance(3 * SECOND)
+    expect(world.statuses.at(-1)).toBeUndefined()
+  })
+
+  test('before any footer has drawn, the status line carries the running count', async ($, on) => {
+    const world = installWorld(on)
+    await startSession($, world)
+    await world.clock.advance(3 * SECOND)
+    expect(world.statuses.at(-1)).toBe('◐ 1 running')
+  })
+
+  test('desktop draws no tail, so the status line keeps the running count', async ($, on) => {
+    const world = installWorld(on)
+    await startSession($, world)
+    expect(textOfNode(await (await mountHint($, HINT_PROPS, 'desktop')).drawn())).toBe(ENGINE_HINT)
+    await world.clock.advance(3 * SECOND)
+    expect(world.statuses.at(-1)).toBe('◐ 1 running')
+  })
+
+  test('a row too narrow for the tail keeps the running count in the status line', async ($, on) => {
+    const world = installWorld(on)
+    await startSession($, world)
+    await mountHint($, HINT_PROPS, 'terminal', 40)
+    await world.clock.advance(3 * SECOND)
+    expect(world.statuses.at(-1)).toBe('◐ 1 running')
+  })
+
+  test('widening the row hands the running count to the footer on the next tick', async ($, on) => {
+    const world = installWorld(on)
+    await startSession($, world)
+    await mountHint($, HINT_PROPS, 'terminal', 40)
+    await world.clock.advance(SECOND)
+    await mountHint($, HINT_PROPS, 'terminal', 100)
+    await world.clock.advance(SECOND)
     expect(world.statuses.at(-1)).toBeUndefined()
   })
 })

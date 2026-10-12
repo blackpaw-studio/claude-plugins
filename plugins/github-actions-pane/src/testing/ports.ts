@@ -29,6 +29,8 @@ export type FakeWorld = {
   setPane: (pane: PaneState) => void
   /** The next unasked open is not placed (a narrow terminal). */
   setPlaced: (isPlaced: boolean) => void
+  /** Whether the footer tail is on screen (it is, until a test says otherwise). */
+  setFooterShowing: (isShowing: boolean) => void
 }
 
 /** Lets every pending promise chain run. */
@@ -68,6 +70,7 @@ export const fakeWorld = (start: number, overrides: Partial<Ports> = {}): FakeWo
   let closes = 0
   let pane: PaneState = { isOpen: false, isPlaced: false }
   let isNextPlaced = true
+  let isFooterShowing = true
   const asked: string[] = []
   const statuses: (string | undefined)[] = []
   const answers = baseAnswers()
@@ -108,6 +111,7 @@ export const fakeWorld = (start: number, overrides: Partial<Ports> = {}): FakeWo
     },
     pane: async () => pane,
     status: text => void statuses.push(text),
+    isFooterShowing: () => isFooterShowing,
     log: () => undefined,
     ...overrides,
   }
@@ -144,5 +148,6 @@ export const fakeWorld = (start: number, overrides: Partial<Ports> = {}): FakeWo
     setCwd: next => void (cwd = next),
     setPane: next => void (pane = next),
     setPlaced: next => void (isNextPlaced = next),
+    setFooterShowing: next => void (isFooterShowing = next),
   }
 }

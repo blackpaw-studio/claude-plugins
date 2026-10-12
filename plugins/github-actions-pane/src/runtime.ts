@@ -43,6 +43,8 @@ export type Ports = {
   close: () => Promise<void>
   pane: () => Promise<PaneState>
   status: (text: string | undefined) => void
+  /** Whether the footer tail (the band's text) is on screen right now. */
+  isFooterShowing: () => boolean
   log: (text: string) => void
 }
 
@@ -84,8 +86,8 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
 
   const showStatus = (snapshot: Snapshot, isRunningInBand: boolean): void => {
     const isPaneShowing = lifecycle.mode !== 'closed' && isPlaced
-    // The footer line says what runs; the status line keeps what it does not (failures).
-    const counts = isRunningInBand ? { ...snapshot.counts, running: 0, passed: 0 } : snapshot.counts
+    // The footer line says what runs, when it is on screen; the status line keeps what it does not (failures).
+    const counts = isRunningInBand && ports.isFooterShowing() ? { ...snapshot.counts, running: 0, passed: 0 } : snapshot.counts
     ports.status(isPaneShowing ? undefined : statusText(counts))
   }
 
