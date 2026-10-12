@@ -15,8 +15,8 @@ describe('fitsTail', () => {
   })
 
   test('a tail another hook set takes room too', () => {
-    expect(fitsTail({ columns: 70, hint: HINT, separator: '  ' })).toBe(true)
-    expect(fitsTail({ columns: 70, hint: HINT, tail: '5h 40% · 7d 12%', separator: '  ' })).toBe(false)
+    expect(fitsTail({ columns: 55, hint: HINT, separator: '  ' })).toBe(true)
+    expect(fitsTail({ columns: 55, hint: HINT, tail: '5h 40% · 7d 12%', separator: '  ' })).toBe(false)
   })
 
   test('an unknown width does not fit', () => {
