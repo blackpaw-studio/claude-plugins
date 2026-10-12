@@ -4,7 +4,7 @@ import type { Engine } from 'claude-code/testing'
 import { ghJobs, ghRun, jobOf, runOf, SECOND, stepOf, T0 } from '../src/testing/builders'
 
 const PLUGIN = 'github-actions-pane'
-const ENGINE_BAND = 'engine band'
+const ENGINE_HINT = '⏵⏵ accept edits on (shift+tab to cycle)'
 const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
 
 const RUN = runOf({ id: 482, createdAt: T0, startedAt: T0 })
@@ -68,9 +68,15 @@ const installWorld = (on: On): World => {
     if (command === 'gh run view 482 --repo acme/widgets --web') return answer('')
     return answer('', 1, `unexpected: ${command}`)
   })
-  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+  // The engine's line, as the terminal draws it: the hint, then the hook's tail.
+  on('ui.render', { component: 'PromptHint' }, ($, e) => {
     const { Text } = $.ui.resolve(e)
-    return <Text key="engine-band">{ENGINE_BAND}</Text>
+    return (
+      <Text>
+        {e.props.hint}
+        {e.props.tail === undefined ? null : `|tail:${e.props.tail}`}
+      </Text>
+    )
   })
   on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } }) as never)
   return { argvs, opens, registered, statuses, clock, setRepo: value => void (isRepo = value) }
@@ -103,10 +109,10 @@ const findNode = (node: unknown, type: string): Node | undefined => {
   return kind === type ? (node as Node) : children.map(child => findNode(child, type)).find(found => found !== undefined)
 }
 
-const BAND_PROPS = { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 95, scroll: { offset: 0, bodyRows: 11 }, view: {} }
+const HINT_PROPS = { isDraft: false, isWorking: false, hint: ENGINE_HINT }
 
-const mountBand = ($: Engine) =>
-  $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'AbovePrompt', props: BAND_PROPS, viewport: { columns: 100, rows: 40 } })
+const mountHint = ($: Engine, props: Record<string, unknown> = HINT_PROPS) =>
+  $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'PromptHint', props, viewport: { columns: 100, rows: 40 } })
 
 const command = (args: string) => ({
   command: 'actions',
@@ -185,35 +191,42 @@ describe('github-actions-pane in a session', () => {
   })
 })
 
-describe('the band above the prompt', () => {
-  test('a run in flight draws a counting line, and the engine band stays beneath it', async ($, on) => {
+describe('the actions text on the footer hint line', () => {
+  test('a run in flight adds a counting tail; the engine hint stays whole', async ($, on) => {
     const world = installWorld(on)
     await startSession($, world)
-    const band = await mountBand($)
-    expect(textOfNode(await band.drawn())).toBe(`⟳ 1 running · 0s${ENGINE_BAND}`)
+    const hint = await mountHint($)
+    expect(textOfNode(await hint.drawn())).toBe(`${ENGINE_HINT}|tail:  ⟳ 1 running · 0s`)
     await world.clock.advance(3 * SECOND)
-    expect(textOfNode(await band.drawn())).toBe(`⟳ 1 running · 3s${ENGINE_BAND}`)
+    expect(textOfNode(await hint.drawn())).toBe(`${ENGINE_HINT}|tail:  ⟳ 1 running · 3s`)
     expect(world.opens).toEqual([])
   })
 
-  test('nothing to say: the engine band alone', async ($, on) => {
+  test('a tail another hook set is kept, ours follows it', async ($, on) => {
+    const world = installWorld(on)
+    await startSession($, world)
+    const hint = await mountHint($, { ...HINT_PROPS, tail: '5h 40%' })
+    expect(textOfNode(await hint.drawn())).toBe(`${ENGINE_HINT}|tail:5h 40%  ⟳ 1 running · 0s`)
+  })
+
+  test('nothing to say: the engine line alone, no tail', async ($, on) => {
     const world = installWorld(on)
     world.setRepo(false)
     await startSession($, world)
-    expect(textOfNode(await (await mountBand($)).drawn())).toBe(ENGINE_BAND)
+    expect(textOfNode(await (await mountHint($)).drawn())).toBe(ENGINE_HINT)
   })
 
-  test('a survey keeps the band to itself', async ($, on) => {
-    const world = installWorld(on)
-    await startSession($, world)
-    const band = await $.ui.mount({ plugin: PLUGIN, surface: 'terminal', component: 'AbovePrompt', props: { ...BAND_PROPS, hasSurvey: true }, viewport: { columns: 100, rows: 40 } })
-    expect(textOfNode(await band.drawn())).toBe(ENGINE_BAND)
-  })
-
-  test('with the pane open too, the band still draws', async ($, on) => {
+  test('with the pane open too, the tail still draws', async ($, on) => {
     const world = installWorld(on)
     await startSession($, world)
     await $.command.run(command(''))
-    expect(textOfNode(await (await mountBand($)).drawn())).toContain('⟳ 1 running')
+    expect(textOfNode(await (await mountHint($)).drawn())).toContain('⟳ 1 running')
+  })
+
+  test('the status line stays quiet about running while the tail shows it', async ($, on) => {
+    const world = installWorld(on)
+    await startSession($, world)
+    await world.clock.advance(3 * SECOND)
+    expect(world.statuses.at(-1)).toBeUndefined()
   })
 })

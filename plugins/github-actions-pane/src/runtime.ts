@@ -84,7 +84,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
 
   const showStatus = (snapshot: Snapshot, isRunningInBand: boolean): void => {
     const isPaneShowing = lifecycle.mode !== 'closed' && isPlaced
-    // The band says what runs; the status line keeps what it does not (failures).
+    // The footer line says what runs; the status line keeps what it does not (failures).
     const counts = isRunningInBand ? { ...snapshot.counts, running: 0, passed: 0 } : snapshot.counts
     ports.status(isPaneShowing ? undefined : statusText(counts))
   }
@@ -115,7 +115,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     await ports.manual.set(lifecycle.mode === 'manual')
   }
 
-  /** The tick runs while the pane is open or the band shows; the clock is brought up when it starts. */
+  /** The tick runs while the pane is open or the footer line shows; the clock is brought up when it starts. */
   const syncTick = async (now: number, isBandShowing: boolean): Promise<void> => {
     if (lifecycle.mode === 'closed' && !isBandShowing) return stopTick()
     if (tickTimer !== null) return
@@ -282,7 +282,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
       await publish({ ...(isNewRepo ? EMPTY_DATA : data), context, disabled: null })
       if (listed.kind === 'ok') await publish(withRuns(data, listed.value, now))
       else await onFailure(listed)
-      // The band shows from here, while history and job reads are still out: tick now.
+      // The footer line shows from here, while history and job reads are still out: tick now.
       if (tickTimer === null && data.runs.some(run => isActiveStatus(run.status))) await syncTick(await ports.now(), true)
       await publish({ ...data, pollMs: intervalAt(now) })
       if (data.disabled === null) await readHistory(cwd, context.repo)

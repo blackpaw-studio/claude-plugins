@@ -16,6 +16,8 @@ const PANE = 'actions'
 const TITLE = 'Actions'
 /** Body rows asked for when seated inline above the prompt (the frame still fits the tree). */
 const INLINE_ROWS = 24
+/** Between the engine's footer line (or another hook's tail) and the actions text. */
+const TAIL_SEPARATOR = '  '
 
 // The $.state values (contract: types/index.d.ts). Written here, beside their
 // readers, so the engine's scan can read every reference.
@@ -130,22 +132,13 @@ export const register: Register = (on, options) => {
         .catch(error => $.ui.log(`github-actions-pane: open: ${describeError(error)}`, { to: 'debug' }))
     return paneTree($.ui.resolve(e), lines, open)
   })
-  // The band shares the poller's data and clock: it draws, and the runtime ticks, with the pane closed.
-  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const below = await next(e)
-    if (e.surface !== 'terminal' && e.surface !== 'desktop') return below
-    if (e.props.hasSurvey) return below
+  // The footer text shares the poller's data and clock: it draws, and the runtime ticks, with the pane closed.
+  // Only `tail` is set, so the engine's line (live pills, permission mode) stays whole.
+  on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
+    if (e.surface !== 'terminal' && e.surface !== 'desktop') return next(e)
     const [data, now, scope] = await Promise.all([read($, dataAtom), read($, nowAtom), read($, scopeAtom)])
     const text = bandAt({ data: restoredData(data), now, settings, scope: scope ?? settings.scope })
-    if (text === null) return below
-    const { Box, Text } = $.ui.resolve(e)
-    return (
-      <Box flexDirection="column">
-        <Text dimColor wrap="truncate">
-          {text}
-        </Text>
-        {below}
-      </Box>
-    )
+    if (text === null) return next(e)
+    return next({ ...e, props: { ...e.props, tail: `${e.props.tail ?? ''}${TAIL_SEPARATOR}${text}` } })
   })
 }

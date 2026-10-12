@@ -1,4 +1,4 @@
-// The one-line band above the prompt: what is running, or what just failed.
+// The one-line text on the footer hint line below the prompt: what is running, or what just failed.
 // Drawn from the same snapshot as the pane, whose linger already decides how
 // long a finished run stays. Pure.
 import { etaLabel } from './eta'
