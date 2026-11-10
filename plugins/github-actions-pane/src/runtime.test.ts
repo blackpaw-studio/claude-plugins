@@ -952,6 +952,45 @@ describe('rate limit backoff', () => {
     expect(world.data()).toMatchObject({ isRateLimited: false, rateLimitedUntil: null })
   })
 
+  test('a timer that fires 1ms early still runs the first poll after the window, not a cadence later', async () => {
+    const world = fakeWorld(T0)
+    const early: Ports = { ...world.ports, after: (ms, fn) => world.ports.after(Math.max(0, ms - 1), fn) }
+    const runtime = createRuntime(early, DEFAULT_SETTINGS)
+    resetAt(world, T0 + 30 * MINUTE)
+    world.answers.set(LIST, fail(PRIMARY))
+    await runtime.start()
+    const until = world.data()?.rateLimitedUntil ?? 0
+    runsAre(world, [])
+    await world.advance(until - world.now())
+    expect(pollsOf(world)).toBe(2)
+    expect(world.data()).toMatchObject({ isRateLimited: false, rateLimitedUntil: null })
+  })
+
+  test('a reset in the past is no reset: the backoff ladder decides', async () => {
+    const { world, runtime } = limited()
+    resetAt(world, T0 - MINUTE)
+    world.answers.set(LIST, fail(PRIMARY))
+    await runtime.start()
+    expect(world.data()?.rateLimitedUntil).toBe(T0 + 60 * SECOND)
+  })
+
+  test('a reset hours away is clamped to an hour plus jitter', async () => {
+    const { world, runtime } = limited()
+    resetAt(world, T0 + 5 * 60 * MINUTE)
+    world.answers.set(LIST, fail(PRIMARY))
+    await runtime.start()
+    expect(world.data()?.rateLimitedUntil).toBe(T0 + 60 * MINUTE + RATE_LIMIT_JITTER_MS / 2)
+  })
+
+  test('a window saved by a reload is clamped the same way', async () => {
+    const { world, runtime } = limited()
+    await world.ports.data.set(dataOf({ isRateLimited: true, rateLimitedUntil: T0 + 24 * 60 * MINUTE }))
+    await runtime.start()
+    expect(gh(world)).toEqual([])
+    expect(world.data()?.rateLimitedUntil).toBe(T0 + 60 * MINUTE + RATE_LIMIT_JITTER_MS)
+    expect(world.waiting()).toContain(60 * MINUTE + RATE_LIMIT_JITTER_MS)
+  })
+
   test('a reload inside a backoff window does not poll before it ends', async () => {
     const { world, runtime } = limited()
     await world.ports.data.set(dataOf({ isRateLimited: true, rateLimitedUntil: T0 + 20 * MINUTE }))

@@ -29,6 +29,10 @@ const BACKOFF_CAP_MS = 15 * 60 * 1000
 const RETRY_AFTER_CAP_MS = 60 * 60 * 1000
 /** Added after a quota reset so sessions sharing one token don't all resume on the same second. */
 export const RATE_LIMIT_JITTER_MS = 10 * 1000
+/** A quota resets hourly: a reset further off than this is skew or junk, and is not waited for. */
+const MAX_SUSPEND_MS = 60 * 60 * 1000
+/** Timers fire a hair early; a poll this close to the window's end counts as past it. */
+const TIMER_SLACK_MS = 50
 
 /** Where a rate limit holds polling off until, and how many times in a row it has been met. */
 type Backoff = { until: number; attempts: number }
@@ -163,6 +167,9 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
 
   const viewOf = (snapshot: Snapshot) => ({ activeIds: snapshot.activeIds, shownIds: snapshot.shownIds })
 
+  /** Whether a rate-limit window still holds polling off at `now`. */
+  const isInWindow = (now: number): boolean => backoff !== null && now + TIMER_SLACK_MS < backoff.until
+
   const isPaneOpen = (): boolean => lifecycle.mode !== 'closed'
 
   const intervalAt = (now: number): number =>
@@ -234,7 +241,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
   /** When polling may resume: a primary limit at its quota reset (plus jitter), else the backoff ladder. */
   const resumeAt = async (failure: Extract<GhFailure, { kind: 'rate-limited' }>, attempts: number, now: number): Promise<number> => {
     const reset = failure.limit === 'primary' ? await rateLimitReset(ports.run, await ports.cwd()) : null
-    if (reset !== null && reset > now) return reset + Math.floor(ports.random() * RATE_LIMIT_JITTER_MS)
+    if (reset !== null && reset > now) return Math.min(reset, now + MAX_SUSPEND_MS) + Math.floor(ports.random() * RATE_LIMIT_JITTER_MS)
     const retryAfter = Math.min(failure.retryAfterMs ?? 0, RETRY_AFTER_CAP_MS)
     return now + Math.max(backoffMs(attempts), retryAfter)
   }
@@ -242,7 +249,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
   const holdOff = async (failure: Extract<GhFailure, { kind: 'rate-limited' }>): Promise<void> => {
     const now = await ports.now()
     // Met again inside a window already set: the same limit, not a new one.
-    if (backoff !== null && now < backoff.until) return
+    if (isInWindow(now)) return
     const attempts = (backoff?.attempts ?? 0) + 1
     const until = await resumeAt(failure, attempts, now)
     backoff = { until, attempts }
@@ -259,7 +266,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
 
   /** A poll that listed cleanly, started past the window and met no limit, ends the backoff. */
   const settleBackoff = async (startedAt: number, isListed: boolean): Promise<void> => {
-    if (backoff === null || hitLimit || !isListed || startedAt < backoff.until) return
+    if (backoff === null || hitLimit || !isListed || isInWindow(startedAt)) return
     backoff = null
     await publish({ ...data, isRateLimited: false, rateLimitedUntil: null })
   }
@@ -340,7 +347,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     const cwd = await ports.cwd()
     const now = await ports.now()
     // A rate limit holds every gh call off, kicks included, until its window ends.
-    if (backoff !== null && now < backoff.until) return schedule(now)
+    if (isInWindow(now)) return schedule(now)
     hitLimit = false
     let isListed = false
     if (cwd !== lastCwd) final = new Set()
@@ -398,7 +405,12 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     start: async (): Promise<void> => {
       data = restoredData(await ports.data.get())
       // A reload inside a backoff window keeps it: the quota did not come back with the module.
-      if (data.rateLimitedUntil !== null && data.rateLimitedUntil > (await ports.now())) backoff = { until: data.rateLimitedUntil, attempts: 1 }
+      const restoredAt = await ports.now()
+      if (data.rateLimitedUntil !== null && data.rateLimitedUntil > restoredAt) {
+        const until = Math.min(data.rateLimitedUntil, restoredAt + MAX_SUSPEND_MS + RATE_LIMIT_JITTER_MS)
+        backoff = { until, attempts: 1 }
+        await publish({ ...data, rateLimitedUntil: until })
+      }
       const pane = await ports.pane()
       if (pane.isOpen) {
         lifecycle = { mode: (await ports.manual.get()) ? 'manual' : 'auto', dismissed: [] }
