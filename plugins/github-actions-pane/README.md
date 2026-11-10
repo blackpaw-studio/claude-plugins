@@ -88,11 +88,13 @@ These are the plugin's options. Set them when you enable it, or in `settings.jso
   found until it moves to queued or in progress. A
   finished run's jobs are read once and then cached. A `git push`,
   `gh workflow run`, `gh pr create` or `gh run rerun` through Claude's Bash
-  tool polls at once, then at the active rate for two minutes. With nothing
-  active the poll rate depends on the pane: the idle rate while it is open,
-  the hidden idle rate (10 minutes) while it is closed. Opening the pane polls
-  at once; an active run polls at the active rate either way, since the footer
-  shows it.
+  tool polls at once, then at the active rate for two minutes. A run in
+  progress polls at the active rate, pane open or not, since the footer shows
+  it. A run that is only queued, waiting for approval, requested or pending
+  polls at the idle rate, so one stuck for hours does not poll every 10
+  seconds. With no unfinished run the rate depends on the pane: the idle rate
+  while it is open, the hidden idle rate (10 minutes) while it is closed.
+  Opening the pane polls at once.
 - **Pushes from any terminal:** every 5 seconds a local `git rev-parse` reads
   the remote-tracking ref of the branch in scope (its push target, else
   `origin/<branch>`, re-read on every poll and on every look while it is only

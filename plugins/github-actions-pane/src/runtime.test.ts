@@ -858,6 +858,47 @@ describe('idle polling follows visibility', () => {
   })
 })
 
+describe('runs that are not executing', () => {
+  const QUEUED = runOf({ id: 483, number: 483, status: 'queued', startedAt: null })
+  const WAITING = runOf({ id: 484, number: 484, status: 'waiting', startedAt: null })
+  const idle = async (runs: ActionsRun[]) => {
+    const { world, runtime } = setup(DEFAULT_SETTINGS)
+    runsAre(world, runs)
+    for (const run of runs) jobsAre(world, run.id, [TEST_JOB])
+    await runtime.start()
+    return { world, runtime }
+  }
+
+  test('only queued runs, pane closed: the idle rate, not the active one', async () => {
+    const { world } = await idle([QUEUED])
+    expect(world.waiting()).toContain(60_000)
+    expect(world.waiting()).not.toContain(10_000)
+    expect(world.data()?.runs.map(run => run.status)).toEqual(['queued'])
+  })
+
+  test('a run waiting on approval polls at the idle rate', async () => {
+    const { world } = await idle([WAITING])
+    expect(world.waiting()).toContain(60_000)
+  })
+
+  test('one run in progress among queued ones: the active rate', async () => {
+    const { world } = await idle([QUEUED, RUNNING])
+    expect(world.waiting()).toContain(10_000)
+  })
+
+  test('a run queued inside the kick window polls at the active rate until it ends, then the idle rate', async () => {
+    const { world, runtime } = await idle([])
+    await world.advance(5 * SECOND)
+    runsAre(world, [QUEUED])
+    jobsAre(world, 483, [TEST_JOB])
+    await runtime.kick()
+    expect(world.waiting()).toContain(10_000)
+    await world.advance(120 * SECOND)
+    expect(world.waiting()).toContain(60_000)
+    expect(world.waiting()).not.toContain(10_000)
+  })
+})
+
 describe('rate limit backoff', () => {
   const PRIMARY = 'HTTP 403: API rate limit exceeded for user ID 1.'
   const SECONDARY = 'HTTP 403: You have exceeded a secondary rate limit. Please wait a few minutes before you try again.'

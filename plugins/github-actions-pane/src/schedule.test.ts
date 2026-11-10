@@ -3,7 +3,7 @@ import { DEFAULT_SETTINGS } from './settings'
 import { KICK_MS, nextPollMs } from './schedule'
 
 const NOW = 1_000_000
-const base = { settings: DEFAULT_SETTINGS, isActive: false, isPaneOpen: true, suspendedForMs: 0, kickUntil: 0, now: NOW }
+const base = { settings: DEFAULT_SETTINGS, isActive: false, isWaiting: false, isPaneOpen: true, suspendedForMs: 0, kickUntil: 0, now: NOW }
 
 describe('nextPollMs', () => {
   test('idle rate with nothing active and the pane open, active rate while a run is', () => {
@@ -21,6 +21,12 @@ describe('nextPollMs', () => {
     expect(KICK_MS).toBe(120_000)
     expect(nextPollMs({ ...base, isPaneOpen: false, kickUntil: NOW + 1 })).toBe(10_000)
     expect(nextPollMs({ ...base, isPaneOpen: false, kickUntil: NOW })).toBe(600_000)
+  })
+  test('runs only waiting to start (queued, approval, pending) poll at the idle rate, pane or not', () => {
+    expect(nextPollMs({ ...base, isWaiting: true, isPaneOpen: false })).toBe(60_000)
+    expect(nextPollMs({ ...base, isWaiting: true, isPaneOpen: true })).toBe(60_000)
+    expect(nextPollMs({ ...base, isWaiting: true, isActive: true, isPaneOpen: false })).toBe(10_000)
+    expect(nextPollMs({ ...base, isWaiting: true, isPaneOpen: false, kickUntil: NOW + 1 })).toBe(10_000)
   })
   test('a suspension holds the next poll until it ends, whatever the cadence', () => {
     expect(nextPollMs({ ...base, isActive: true, kickUntil: NOW + 1, suspendedForMs: 90_000 })).toBe(90_000)

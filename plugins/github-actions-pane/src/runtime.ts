@@ -12,7 +12,7 @@ import type { Run } from './collect/run'
 import { isActiveStatus } from './format'
 import { CLOSED, decide, type Effect, type Lifecycle, type LifecycleEvent, statusText } from './lifecycle'
 import { EMPTY_DATA, restoredData, runsToDetail, withHistory, withJobs, withRuns, workflowsToRead } from './model'
-import { KICK_MS, nextPollMs } from './schedule'
+import { EXECUTING_STATUSES, KICK_MS, nextPollMs } from './schedule'
 import { listFilter } from './scope'
 import type { Settings } from './settings'
 import { buildSnapshot, type Snapshot } from './snapshot'
@@ -175,7 +175,8 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
   const intervalAt = (now: number): number =>
     nextPollMs({
       settings,
-      isActive: data.runs.some(run => run.status !== 'completed'),
+      isActive: data.runs.some(run => EXECUTING_STATUSES.has(run.status)),
+      isWaiting: data.runs.some(run => isActiveStatus(run.status) && !EXECUTING_STATUSES.has(run.status)),
       isPaneOpen: isPaneOpen(),
       suspendedForMs: backoff === null ? 0 : Math.max(0, backoff.until - now),
       kickUntil,
