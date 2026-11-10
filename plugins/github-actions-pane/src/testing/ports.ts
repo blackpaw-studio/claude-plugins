@@ -112,6 +112,7 @@ export const fakeWorld = (start: number, overrides: Partial<Ports> = {}): FakeWo
     pane: async () => pane,
     status: text => void statuses.push(text),
     isFooterShowing: () => isFooterShowing,
+    random: () => 0.5,
     log: () => undefined,
     ...overrides,
   }

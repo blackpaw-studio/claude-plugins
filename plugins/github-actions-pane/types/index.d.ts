@@ -80,6 +80,8 @@ export type ActionsData = {
   pollMs: number
   /** The last list was refused by GitHub's rate limit. */
   isRateLimited: boolean
+  /** Local time GitHub polling resumes after a rate limit; null when not limited. */
+  rateLimitedUntil: number | null
   /** Why the mod is idle (not a repo, no gh…); null when it is watching. */
   disabled: string | null
 }

@@ -3,12 +3,17 @@
 // Every decision but the fit to the pane's size is here. Pure.
 import type { ActionsData, ActionsRun, ActionsScope } from '../types'
 import { estimateEta } from './eta'
-import { formatDuration, isActiveStatus, type RowStatus, statusOf } from './format'
+import { clockTimeOf, formatDuration, isActiveStatus, type RowStatus, statusOf } from './format'
 import { type JobBlock, jobsToBlocks } from './jobs'
 import { effectiveScope, isInScope, scopeLabel, shortSha } from './scope'
 import type { Settings } from './settings'
 
 export type { JobBlock, Row } from './jobs'
+
+const RATE_LIMITED = 'rate limited'
+
+/** Whether a note is the rate-limit one, with or without its resume time. */
+export const isRateLimitedNote = (note: string | null): boolean => note?.startsWith(RATE_LIMITED) === true
 
 export type Card = {
   id: number
@@ -31,7 +36,7 @@ export type Counts = { running: number; failed: number; passed: number }
 export type Snapshot = {
   /** The branch, short sha or owner/repo the pane watches; '' while disabled. */
   label: string
-  /** `rate limited`, `stale · 40s`, or why the mod is idle; null when all is well. */
+  /** `rate limited · resumes 14:05`, `stale · 40s`, or why the mod is idle; null when all is well. */
   note: string | null
   cards: Card[]
   counts: Counts
@@ -82,7 +87,7 @@ const cardOf = (run: ActionsRun, { data, now, scope }: SnapshotInputs): Card => 
 
 const noteOf = ({ data, now }: SnapshotInputs): string | null => {
   if (data.disabled !== null) return data.disabled
-  if (data.isRateLimited) return 'rate limited'
+  if (data.isRateLimited) return data.rateLimitedUntil === null ? RATE_LIMITED : `${RATE_LIMITED} · resumes ${clockTimeOf(data.rateLimitedUntil)}`
   const age = data.fetchedAt === null ? 0 : now - data.fetchedAt
   return age > STALE_POLLS * data.pollMs ? `stale · ${formatDuration(age)}` : null
 }

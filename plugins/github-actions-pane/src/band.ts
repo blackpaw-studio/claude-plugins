@@ -3,7 +3,7 @@
 // long a finished run stays. Pure.
 import { etaLabel } from './eta'
 import { formatDuration } from './format'
-import { buildSnapshot, type Card, type Snapshot, type SnapshotInputs } from './snapshot'
+import { buildSnapshot, type Card, isRateLimitedNote, type Snapshot, type SnapshotInputs } from './snapshot'
 
 const RUNNING_GLYPH = '⟳'
 const FAILED_GLYPH = '✗'
@@ -21,7 +21,7 @@ const failedText = (failed: readonly Card[]): string =>
 
 /** The band's text, or null when nothing is worth a line (a rate-limited or idle poller says nothing). */
 export const bandText = (snapshot: Snapshot): string | null => {
-  if (snapshot.note === 'rate limited' || snapshot.cards.length === 0) return null
+  if (isRateLimitedNote(snapshot.note) || snapshot.cards.length === 0) return null
   const running = snapshot.cards.filter(card => card.isActive)
   if (running.length > 0) return runningText(running)
   const failed = snapshot.cards.filter(card => card.status === 'failure')

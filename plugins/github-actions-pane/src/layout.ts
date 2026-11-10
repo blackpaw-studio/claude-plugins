@@ -3,7 +3,7 @@
 import { etaLabel } from './eta'
 import { formatDuration, glyphOf, type RowLevel, type RowStatus, truncate, cellsOf } from './format'
 import { BLANK, justify, type Line, span, type Span, widthOf } from './line'
-import type { Card, Row, Snapshot } from './snapshot'
+import { type Card, isRateLimitedNote, type Row, type Snapshot } from './snapshot'
 import { rowsAt, type Window, WINDOWS } from './window'
 
 export type Frame = {
@@ -76,7 +76,7 @@ const cardLines = (card: Card, window: Window, width: number, frame: number): Li
 
 const headerLine = ({ label, note }: Snapshot, width: number): Line => {
   const title = label === '' ? TITLE : `${TITLE} · ${label}`
-  const right: Line = note === null ? [] : [span(note, note === 'rate limited' ? { color: 'warning' } : { dim: true })]
+  const right: Line = note === null ? [] : [span(note, isRateLimitedNote(note) ? { color: 'warning' } : { dim: true })]
   const room = Math.max(1, width - (note === null ? 0 : cellsOf(note) + 1))
   return justify([span(truncate(title, room), { dim: true })], right, width)
 }

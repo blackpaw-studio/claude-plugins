@@ -27,6 +27,12 @@ export const formatDuration = (ms: number | null): string => {
   return `${Math.floor(clamped / HOUR)}h ${pad2(Math.floor((clamped % HOUR) / MINUTE))}m`
 }
 
+/** Local time of day as `HH:MM`. */
+export const clockTimeOf = (ms: number): string => {
+  const date = new Date(ms)
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`
+}
+
 /** Cells a text takes: one per code point (the pane draws no wide glyphs in names). */
 export const cellsOf = (text: string): number => [...text].length
 

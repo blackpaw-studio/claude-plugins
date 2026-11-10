@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { formatDuration, glyphOf, SPINNER, statusOf, truncate } from './format'
+import { clockTimeOf, formatDuration, glyphOf, SPINNER, statusOf, truncate } from './format'
 
 const SECOND = 1000
 const MINUTE = 60 * SECOND
@@ -70,5 +70,12 @@ describe('glyphOf', () => {
     expect(glyphOf('running', 'step', 0)).toEqual({ glyph: '⠋', color: 'warning' })
     expect(glyphOf('running', 'step', 1)).toEqual({ glyph: '⠙', color: 'warning' })
     expect(glyphOf('running', 'step', SPINNER.length + 1)).toEqual({ glyph: '⠙', color: 'warning' })
+  })
+})
+
+describe('clockTimeOf', () => {
+  test('local time as zero-padded HH:MM', () => {
+    expect(clockTimeOf(new Date(2026, 9, 9, 7, 5, 59).getTime())).toBe('07:05')
+    expect(clockTimeOf(new Date(2026, 9, 9, 23, 41).getTime())).toBe('23:41')
   })
 })

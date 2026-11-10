@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'claude-code/testing'
 import type { ActionsData, ActionsJob, ActionsRun } from '../types'
 import { fail, ok } from './testing/runner'
-import { createRuntime, type Ports, REMOTE_WATCH_MS } from './runtime'
+import { createRuntime, type Ports, RATE_LIMIT_JITTER_MS, REMOTE_WATCH_MS } from './runtime'
 import { DEFAULT_SETTINGS, type Settings } from './settings'
-import { dataOf, ghJobs, ghRun, jobOf, runOf, SECOND, T0 } from './testing/builders'
+import { dataOf, ghJobs, ghRun, jobOf, MINUTE, runOf, SECOND, T0 } from './testing/builders'
 import { fakeWorld, type FakeWorld, flush, SHA } from './testing/ports'
 
 const LIST = 'gh run list'
@@ -115,10 +115,10 @@ describe('watching a run', () => {
     runsAre(world, [PASSED])
     jobsAre(world, 482, [jobOf('test')])
     await world.advance(10 * SECOND)
-    // Nothing active: the re-run is seen at the idle rate.
+    // Nothing active, the pane closed after its linger: the re-run is seen at the hidden-idle rate.
     runsAre(world, [RUNNING])
     jobsAre(world, 482, [TEST_JOB])
-    await world.advance(60 * SECOND)
+    await world.advance(640 * SECOND)
     expect(world.data()?.jobs['482']?.[0]?.status).toBe('in_progress')
     runsAre(world, [PASSED])
     jobsAre(world, 482, [jobOf('test')])
@@ -366,7 +366,7 @@ describe('when there is nothing to watch', () => {
     world.setCwd('/elsewhere')
     await runtime.cwdMaybeChanged()
     expect(world.data()?.disabled).toBe(null)
-    expect(world.waiting()).toEqual([REMOTE_WATCH_MS, 60_000])
+    expect(world.waiting()).toEqual([REMOTE_WATCH_MS, 600_000])
   })
 
   test('a move to another repository drops the runs of the last, even when its list fails', async () => {
@@ -466,10 +466,10 @@ describe('pushes from outside Claude', () => {
     expect(lists(world)).toBe(2)
   })
 
-  test('nothing moving: no gh calls beyond the idle poll', async () => {
+  test('nothing moving: no gh calls beyond the hidden-idle poll', async () => {
     const { world, runtime } = setup()
     await runtime.start()
-    await world.advance(55 * SECOND)
+    await world.advance(595 * SECOND)
     expect(lists(world)).toBe(1)
     await world.advance(5 * SECOND)
     expect(lists(world)).toBe(2)
@@ -592,13 +592,13 @@ describe('kicks and toggles', () => {
   test('a push polls at once, then at the active rate for two minutes', async () => {
     const { world, runtime } = setup()
     await runtime.start()
-    expect(world.waiting()).toEqual([REMOTE_WATCH_MS, 60_000])
+    expect(world.waiting()).toEqual([REMOTE_WATCH_MS, 600_000])
     await world.advance(5 * SECOND)
     await runtime.kick()
     expect(pollsOf(world)).toBe(2)
     expect(world.waiting()).toEqual([REMOTE_WATCH_MS, 10_000])
     await world.advance(120 * SECOND)
-    expect(world.waiting()).toEqual([REMOTE_WATCH_MS, 60_000])
+    expect(world.waiting()).toEqual([REMOTE_WATCH_MS, 600_000])
   })
 
   test('/actions opens by hand (asked), stays past the linger, closes on the second /actions', async () => {
@@ -726,7 +726,7 @@ describe('run ETA history', () => {
     historyIs(world, 1234, 90, 100, 120, 140)
     runsAre(world, [PASSED, runOf({ id: 483, number: 483, createdAt: T0 + 70 * SECOND, startedAt: T0 + 70 * SECOND })])
     jobsAre(world, 483, [TEST_JOB])
-    await world.advance(60 * SECOND)
+    await world.advance(640 * SECOND)
     expect(historyCalls(world)).toHaveLength(2)
     expect(world.data()?.history).toEqual({ '1234': [90_000, 100_000, 120_000, 140_000] })
   })
@@ -792,5 +792,171 @@ describe('run ETA history', () => {
     world.answers.set(`${HISTORY} 1234 `, fail('API rate limit exceeded'))
     await runtime.start()
     expect(gh(world).filter(argv => argv.startsWith('gh run view'))).toEqual([])
+  })
+})
+
+describe('idle polling follows visibility', () => {
+  const hidden = () => setup(DEFAULT_SETTINGS)
+  const openByHand = (world: FakeWorld) => async () => {
+    world.setPane({ isOpen: true, isPlaced: true })
+    return { isPlaced: true }
+  }
+
+  test('nothing active and no pane: the next poll is the 600s hidden-idle one', async () => {
+    const { world, runtime } = hidden()
+    await runtime.start()
+    expect(world.waiting()).toEqual([REMOTE_WATCH_MS, 600_000])
+    await world.advance(599 * SECOND)
+    expect(pollsOf(world)).toBe(1)
+    await world.advance(SECOND)
+    expect(pollsOf(world)).toBe(2)
+  })
+
+  test('a run started elsewhere surfaces at the hidden-idle poll, then polls at the active rate', async () => {
+    const { world, runtime } = hidden()
+    await runtime.start()
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    await world.advance(600 * SECOND)
+    expect(world.data()?.runs.map(run => run.id)).toEqual([482])
+    expect(world.waiting()).toContain(10_000)
+  })
+
+  test('opening the pane polls at once and resumes the idle cadence; closing goes back to hidden-idle', async () => {
+    const { world, runtime } = hidden()
+    await runtime.start()
+    await runtime.toggle(openByHand(world))
+    await flush()
+    expect(pollsOf(world)).toBe(2)
+    expect(world.waiting()).toContain(60_000)
+    expect(world.waiting()).not.toContain(600_000)
+    await runtime.toggle(async () => ({ isPlaced: true }))
+    expect(world.waiting()).toContain(600_000)
+    expect(world.waiting()).not.toContain(60_000)
+  })
+
+  test('an active run polls at the active rate with the pane closed', async () => {
+    const { world, runtime } = hidden()
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    await runtime.start()
+    expect(world.opens()).toBe(0)
+    expect(world.waiting()).toContain(10_000)
+    await world.advance(10 * SECOND)
+    expect(pollsOf(world)).toBe(2)
+  })
+
+  test('a kick polls at once and holds the active rate for two minutes, pane closed, then hidden-idle', async () => {
+    const { world, runtime } = hidden()
+    await runtime.start()
+    await world.advance(5 * SECOND)
+    await runtime.kick()
+    expect(pollsOf(world)).toBe(2)
+    expect(world.waiting()).toEqual([REMOTE_WATCH_MS, 10_000])
+    await world.advance(120 * SECOND)
+    expect(world.waiting()).toEqual([REMOTE_WATCH_MS, 600_000])
+  })
+})
+
+describe('rate limit backoff', () => {
+  const PRIMARY = 'HTTP 403: API rate limit exceeded for user ID 1.'
+  const SECONDARY = 'HTTP 403: You have exceeded a secondary rate limit. Please wait a few minutes before you try again.'
+  const RATE = 'gh api rate_limit'
+  const limited = () => setup(DEFAULT_SETTINGS)
+  const resetAt = (world: FakeWorld, ms: number) =>
+    world.answers.set(RATE, ok(JSON.stringify({ resources: { core: { reset: Math.floor(ms / 1000) } } })))
+  const lookups = (world: FakeWorld) => gh(world).filter(argv => argv.startsWith(RATE)).length
+
+  test('a primary limit suspends every gh call, kicks included, until the quota resets', async () => {
+    const { world, runtime } = limited()
+    const reset = T0 + 30 * MINUTE
+    resetAt(world, reset)
+    world.answers.set(LIST, fail(PRIMARY))
+    await runtime.start()
+    // Both lists of the poll failed: one lookup, one window.
+    expect(lookups(world)).toBe(1)
+    expect(world.data()).toMatchObject({ isRateLimited: true, rateLimitedUntil: reset + RATE_LIMIT_JITTER_MS / 2 })
+    const callsBefore = gh(world).length
+    await world.advance(29 * MINUTE)
+    await runtime.kick()
+    expect(gh(world).length).toBe(callsBefore)
+    runsAre(world, [])
+    await world.advance(MINUTE + RATE_LIMIT_JITTER_MS)
+    expect(pollsOf(world)).toBe(2)
+    expect(world.data()).toMatchObject({ isRateLimited: false, rateLimitedUntil: null })
+  })
+
+  /** A poll that sees a run, then one at the active rate that GitHub refuses with `stderr`. */
+  const refusedWith = async (stderr: string) => {
+    const { world, runtime } = limited()
+    runsAre(world, [RUNNING])
+    jobsAre(world, 482, [TEST_JOB])
+    await runtime.start()
+    world.answers.set(LIST, fail(stderr))
+    await world.advance(10 * SECOND)
+    return { world, runtime }
+  }
+
+  test('a primary limit whose reset cannot be read backs off exponentially instead', async () => {
+    const { world } = await refusedWith(PRIMARY)
+    expect(world.data()?.rateLimitedUntil).toBe(world.now() + 60 * SECOND)
+    await world.advance(59 * SECOND)
+    expect(pollsOf(world)).toBe(2)
+    await world.advance(SECOND)
+    expect(pollsOf(world)).toBe(3)
+    expect(world.data()?.rateLimitedUntil).toBe(world.now() + 120 * SECOND)
+  })
+
+  test('a secondary limit backs off from 60s, doubling to a 15 minute cap, without the rate_limit lookup', async () => {
+    const { world } = await refusedWith(SECONDARY)
+    let polls = pollsOf(world)
+    for (const gap of [60, 120, 240, 480, 900, 900]) {
+      await world.advance((gap - 1) * SECOND)
+      expect(pollsOf(world)).toBe(polls)
+      await world.advance(SECOND)
+      polls += 1
+      expect(pollsOf(world)).toBe(polls)
+    }
+    expect(lookups(world)).toBe(0)
+  })
+
+  test('Retry-After on a secondary limit is honored when it is longer than the backoff', async () => {
+    const { world } = await refusedWith(`${SECONDARY}\nRetry-After: 300`)
+    const polls = pollsOf(world)
+    await world.advance(299 * SECOND)
+    expect(pollsOf(world)).toBe(polls)
+    await world.advance(SECOND)
+    expect(pollsOf(world)).toBe(polls + 1)
+  })
+
+  test('the backoff clears after a clean poll past its window, and a new limit restarts the ladder', async () => {
+    const { world } = await refusedWith(SECONDARY)
+    await world.advance(60 * SECOND)
+    expect(world.data()?.rateLimitedUntil).toBe(world.now() + 120 * SECOND)
+    runsAre(world, [RUNNING])
+    await world.advance(120 * SECOND)
+    expect(world.data()).toMatchObject({ isRateLimited: false, rateLimitedUntil: null })
+    world.answers.set(LIST, fail(SECONDARY))
+    await world.advance(10 * SECOND)
+    expect(world.data()?.rateLimitedUntil).toBe(world.now() + 60 * SECOND)
+  })
+
+  test('a good list does not clear the backoff while another call of the poll is still limited', async () => {
+    const { world } = await refusedWith(SECONDARY)
+    runsAre(world, [RUNNING])
+    world.answers.set('gh run view 482 --repo', fail(SECONDARY))
+    await world.advance(60 * SECOND)
+    expect(world.data()).toMatchObject({ isRateLimited: true, rateLimitedUntil: world.now() + 120 * SECOND })
+    jobsAre(world, 482, [TEST_JOB])
+    await world.advance(120 * SECOND)
+    expect(world.data()).toMatchObject({ isRateLimited: false, rateLimitedUntil: null })
+  })
+
+  test('a reload inside a backoff window does not poll before it ends', async () => {
+    const { world, runtime } = limited()
+    await world.ports.data.set(dataOf({ isRateLimited: true, rateLimitedUntil: T0 + 20 * MINUTE }))
+    await runtime.start()
+    expect(gh(world)).toEqual([])
+    expect(world.waiting()).toContain(20 * MINUTE)
   })
 })

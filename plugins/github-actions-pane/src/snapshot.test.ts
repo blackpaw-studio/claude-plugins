@@ -197,6 +197,8 @@ describe('the header and counts', () => {
 
   test('rate limited, else stale once the data is two polls old', () => {
     expect(buildSnapshot(inputs({ data: dataOf({ isRateLimited: true }) })).note).toBe('rate limited')
+    const until = NOW + 20 * 60 * SECOND
+    expect(buildSnapshot(inputs({ data: dataOf({ isRateLimited: true, rateLimitedUntil: until }) })).note).toMatch(/^rate limited · resumes \d\d:\d\d$/)
     const fetchedAt = NOW - 40 * SECOND
     expect(buildSnapshot(inputs({ data: dataOf({ fetchedAt, pollMs: 10_000 }) })).note).toBe('stale · 40s')
     expect(buildSnapshot(inputs({ data: dataOf({ fetchedAt, pollMs: 20_000 }) })).note).toBe(null)

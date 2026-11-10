@@ -6,12 +6,15 @@ export type Settings = {
   lingerMs: number
   activePollMs: number
   idlePollMs: number
+  /** Poll interval with nothing active and no pane open: a slow sweep for runs started elsewhere. */
+  hiddenIdlePollMs: number
   autoOpen: boolean
 }
 
 const SECOND = 1000
 const ACTIVE_FLOOR_MS = 5 * SECOND
 const IDLE_FLOOR_MS = 15 * SECOND
+const HIDDEN_IDLE_FLOOR_MS = 60 * SECOND
 export const SCOPES: readonly ActionsScope[] = ['commit', 'branch', 'repo']
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -19,6 +22,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lingerMs: 30 * SECOND,
   activePollMs: 10 * SECOND,
   idlePollMs: 60 * SECOND,
+  hiddenIdlePollMs: 600 * SECOND,
   autoOpen: false,
 }
 
@@ -32,5 +36,6 @@ export const parseSettings = (options: Readonly<Record<string, unknown>>): Setti
   lingerMs: secondsOf(options.lingerSeconds, DEFAULT_SETTINGS.lingerMs, 0),
   activePollMs: secondsOf(options.activePollSeconds, DEFAULT_SETTINGS.activePollMs, ACTIVE_FLOOR_MS),
   idlePollMs: secondsOf(options.idlePollSeconds, DEFAULT_SETTINGS.idlePollMs, IDLE_FLOOR_MS),
+  hiddenIdlePollMs: secondsOf(options.hiddenIdlePollSeconds, DEFAULT_SETTINGS.hiddenIdlePollMs, HIDDEN_IDLE_FLOOR_MS),
   autoOpen: typeof options.autoOpen === 'boolean' ? options.autoOpen : DEFAULT_SETTINGS.autoOpen,
 })

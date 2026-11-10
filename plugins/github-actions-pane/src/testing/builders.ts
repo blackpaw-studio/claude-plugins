@@ -55,6 +55,7 @@ export const dataOf = (fields: Partial<ActionsData> = {}): ActionsData => ({
   fetchedAt: null,
   pollMs: 10_000,
   isRateLimited: false,
+  rateLimitedUntil: null,
   disabled: null,
   ...fields,
 })

@@ -35,6 +35,7 @@ function portsOf($: EngineInterface, footer: FooterGate): Ports {
     run: (argv, init) => $.process.run(argv, init),
     cwd: () => $.session.cwd(),
     now: () => $.clock.now(),
+    random: () => Math.random(),
     after: (ms, fn) => $.clock.after(ms, fn),
     every: (ms, fn) => $.clock.every(ms, fn),
     data: { get: () => read($, dataAtom), set: value => update($, dataAtom, () => value).then(() => undefined) },

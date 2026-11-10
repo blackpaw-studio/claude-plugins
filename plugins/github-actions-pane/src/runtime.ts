@@ -5,7 +5,7 @@
 import type { ActionsData, ActionsJob, ActionsScope } from '../types'
 import { bandAt, isRunningBand } from './band'
 import { collectHead } from './collect/git'
-import { type GhFailure, type GhResult, listDurations, listRuns, repoName, viewJobs } from './collect/gh'
+import { type GhFailure, type GhResult, listDurations, listRuns, rateLimitReset, repoName, viewJobs } from './collect/gh'
 import { readRef, trackingRefOf } from './collect/remote-ref'
 import { repoFromRemotes } from './collect/repo'
 import type { Run } from './collect/run'
@@ -22,6 +22,18 @@ export const TICK_MS = 1000
 export const REMOTE_WATCH_MS = 5000
 /** A ref that moves this soon after a kick is the push that was kicked. */
 const KICK_DEDUPE_MS = 2 * REMOTE_WATCH_MS
+/** A secondary limit (or a primary one whose reset can't be read) waits this long first, then doubles. */
+const BACKOFF_START_MS = 60 * 1000
+const BACKOFF_CAP_MS = 15 * 60 * 1000
+/** A Retry-After longer than this is not believed. */
+const RETRY_AFTER_CAP_MS = 60 * 60 * 1000
+/** Added after a quota reset so sessions sharing one token don't all resume on the same second. */
+export const RATE_LIMIT_JITTER_MS = 10 * 1000
+
+/** Where a rate limit holds polling off until, and how many times in a row it has been met. */
+type Backoff = { until: number; attempts: number }
+
+const backoffMs = (attempts: number): number => Math.min(BACKOFF_CAP_MS, BACKOFF_START_MS * 2 ** (attempts - 1))
 
 export type Timer = { cancel: () => void }
 
@@ -31,6 +43,8 @@ export type Ports = {
   run: Run
   cwd: () => Promise<string>
   now: () => Promise<number>
+  /** In [0, 1): spreads the resume time after a quota reset. */
+  random: () => number
   after: (ms: number, fn: () => void) => Timer
   every: (ms: number, fn: () => void) => Timer
   /** The $.state values the pane draws from. */
@@ -68,6 +82,11 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
   /** The tracking ref being watched, for this branch in this cwd, and the sha it last held. */
   let tracked: { key: string; ref: string; isConfigured: boolean; sha: string | null } | null = null
   let polling: Promise<void> | null = null
+  /** Set while a rate limit holds gh polling off; cleared by the first clean poll after its window. */
+  let backoff: Backoff | null = null
+  /** The rate-limit answer in flight: the failures of one poll share it, so they count as one hit. */
+  let limiting: Promise<void> | null = null
+  let hitLimit = false
   let isPollQueued = false
   /** Finished runs whose jobs were read after they finished: never asked again. */
   let final = new Set<number>()
@@ -130,6 +149,8 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     const band = await bandTextAt(now)
     showStatus(await snapshotAt(now), isRunningBand(band))
     await syncTick(now, band !== null)
+    // The pane opened or closed since the next poll was set: it waits as long as the new state says.
+    if (pollTimer !== null && isPaneOpen() !== scheduledOpen) schedule(now)
   }
 
   const step = async (event: (snapshot: Snapshot) => LifecycleEvent, now: number): Promise<void> => {
@@ -142,10 +163,23 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
 
   const viewOf = (snapshot: Snapshot) => ({ activeIds: snapshot.activeIds, shownIds: snapshot.shownIds })
 
+  const isPaneOpen = (): boolean => lifecycle.mode !== 'closed'
+
   const intervalAt = (now: number): number =>
-    nextPollMs({ settings, isActive: data.runs.some(run => run.status !== 'completed'), isRateLimited: data.isRateLimited, kickUntil, now })
+    nextPollMs({
+      settings,
+      isActive: data.runs.some(run => run.status !== 'completed'),
+      isPaneOpen: isPaneOpen(),
+      suspendedForMs: backoff === null ? 0 : Math.max(0, backoff.until - now),
+      kickUntil,
+      now,
+    })
+
+  /** Whether the pane was open when the poll timer was set: its cadence depends on it. */
+  let scheduledOpen = false
 
   const schedule = (now: number): void => {
+    scheduledOpen = isPaneOpen()
     pollTimer?.cancel()
     pollTimer = null
     if (data.disabled === null) pollTimer = ports.after(intervalAt(now), () => void poll().catch(fail('poll')))
@@ -197,9 +231,42 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     await publish({ ...EMPTY_DATA, disabled: reason })
   }
 
+  /** When polling may resume: a primary limit at its quota reset (plus jitter), else the backoff ladder. */
+  const resumeAt = async (failure: Extract<GhFailure, { kind: 'rate-limited' }>, attempts: number, now: number): Promise<number> => {
+    const reset = failure.limit === 'primary' ? await rateLimitReset(ports.run, await ports.cwd()) : null
+    if (reset !== null && reset > now) return reset + Math.floor(ports.random() * RATE_LIMIT_JITTER_MS)
+    const retryAfter = Math.min(failure.retryAfterMs ?? 0, RETRY_AFTER_CAP_MS)
+    return now + Math.max(backoffMs(attempts), retryAfter)
+  }
+
+  const holdOff = async (failure: Extract<GhFailure, { kind: 'rate-limited' }>): Promise<void> => {
+    const now = await ports.now()
+    // Met again inside a window already set: the same limit, not a new one.
+    if (backoff !== null && now < backoff.until) return
+    const attempts = (backoff?.attempts ?? 0) + 1
+    const until = await resumeAt(failure, attempts, now)
+    backoff = { until, attempts }
+    await publish({ ...data, isRateLimited: true, rateLimitedUntil: until })
+  }
+
+  const onRateLimited = (failure: Extract<GhFailure, { kind: 'rate-limited' }>): Promise<void> => {
+    hitLimit = true
+    limiting ??= holdOff(failure).finally(() => {
+      limiting = null
+    })
+    return limiting
+  }
+
+  /** A poll that listed cleanly, started past the window and met no limit, ends the backoff. */
+  const settleBackoff = async (startedAt: number, isListed: boolean): Promise<void> => {
+    if (backoff === null || hitLimit || !isListed || startedAt < backoff.until) return
+    backoff = null
+    await publish({ ...data, isRateLimited: false, rateLimitedUntil: null })
+  }
+
   const onFailure = async (failure: GhFailure): Promise<void> => {
     if (failure.kind === 'fatal') return disable(failure.reason)
-    if (failure.kind === 'rate-limited') return publish({ ...data, isRateLimited: true })
+    if (failure.kind === 'rate-limited') return onRateLimited(failure)
     ports.log(`github-actions-pane: gh: ${failure.reason}`)
   }
 
@@ -272,6 +339,10 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
   const pollOnce = async (): Promise<void> => {
     const cwd = await ports.cwd()
     const now = await ports.now()
+    // A rate limit holds every gh call off, kicks included, until its window ends.
+    if (backoff !== null && now < backoff.until) return schedule(now)
+    hitLimit = false
+    let isListed = false
     if (cwd !== lastCwd) final = new Set()
     lastCwd = cwd
     const context = await readContext(cwd)
@@ -282,6 +353,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
       const isNewRepo = data.context !== null && data.context.repo !== context.repo
       if (isNewRepo) final = new Set()
       await publish({ ...(isNewRepo ? EMPTY_DATA : data), context, disabled: null })
+      isListed = listed.kind === 'ok'
       if (listed.kind === 'ok') await publish(withRuns(data, listed.value, now))
       else await onFailure(listed)
       // The footer line shows from here, while history and job reads are still out: tick now.
@@ -291,6 +363,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
       // A rate limit met by the history read stops this poll's job reads too.
       if (data.disabled === null && !data.isRateLimited) await detail(cwd, context.repo, now)
     }
+    await settleBackoff(now, isListed)
     const settled = await ports.now()
     await step(snapshot => ({ kind: 'poll', view: viewOf(snapshot), autoOpen: settings.autoOpen }), settled)
     schedule(settled)
@@ -324,6 +397,8 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     /** Starts watching: restores what a reload left in state, then polls. */
     start: async (): Promise<void> => {
       data = restoredData(await ports.data.get())
+      // A reload inside a backoff window keeps it: the quota did not come back with the module.
+      if (data.rateLimitedUntil !== null && data.rateLimitedUntil > (await ports.now())) backoff = { until: data.rateLimitedUntil, attempts: 1 }
       const pane = await ports.pane()
       if (pane.isOpen) {
         lifecycle = { mode: (await ports.manual.get()) ? 'manual' : 'auto', dismissed: [] }
