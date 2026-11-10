@@ -2,7 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 import { JOBS_IN_PROGRESS, JOBS_LINT_FAILED, JOBS_NONE, RUN_HISTORY, RUN_LIST } from '../testing/gh-fixtures'
 import { ghRun, MINUTE, runOf, T0 } from '../testing/builders'
 import { fail, ok, runner } from '../testing/runner'
-import { classifyFailure, listDurations, listRuns, parseDurations, parseJobs, parseRuns, repoName, viewJobs, RUN_FIELDS } from './gh'
+import { classifyFailure, listDurations, listRuns, parseDurations, parseJobs, parseRuns, rateLimitReset, repoName, viewJobs, RUN_FIELDS } from './gh'
 
 const at = (iso: string) => Date.parse(iso)
 const GH_INIT = { cwd: '/repo', timeoutMs: 10_000, env: { GH_PROMPT_DISABLED: '1' } }
@@ -222,13 +222,39 @@ describe('viewJobs and repoName', () => {
   })
 })
 
+describe('rateLimitReset', () => {
+  const RATE = 'gh api rate_limit'
+  const reply = (core: unknown) => ok(JSON.stringify({ resources: { core }, rate: core }))
+
+  test('the core quota reset, in epoch ms, read from gh api rate_limit', async () => {
+    const { run, asked } = runner({ [RATE]: reply({ limit: 5000, remaining: 0, reset: 1_760_000_000 }) })
+    expect(await rateLimitReset(run, '/repo')).toBe(1_760_000_000_000)
+    expect(asked).toEqual([{ argv: RATE, init: GH_INIT }])
+  })
+
+  test('null when the call fails, or the answer has no core reset', async () => {
+    expect(await rateLimitReset(runner({ [RATE]: fail('HTTP 403') }).run, '/repo')).toBe(null)
+    expect(await rateLimitReset(runner({ [RATE]: new Error('timed out') }).run, '/repo')).toBe(null)
+    expect(await rateLimitReset(runner({ [RATE]: ok('{"resources":{}}') }).run, '/repo')).toBe(null)
+    expect(await rateLimitReset(runner({ [RATE]: reply({ reset: 'soon' }) }).run, '/repo')).toBe(null)
+  })
+})
+
 describe('classifyFailure', () => {
   const ran = (stderr: string, exitCode = 1) => ({ kind: 'ran' as const, result: fail(stderr, exitCode) })
 
-  test('rate limits, primary and secondary, by status or words', () => {
-    expect(classifyFailure(ran('HTTP 403: API rate limit exceeded for user ID 1234.'))).toEqual({ kind: 'rate-limited' })
-    expect(classifyFailure(ran('HTTP 429: Too Many Requests'))).toEqual({ kind: 'rate-limited' })
-    expect(classifyFailure(ran('HTTP 403: You have exceeded a secondary rate limit.'))).toEqual({ kind: 'rate-limited' })
+  test('a primary rate limit, by its words, 403 or 429', () => {
+    const primary = { kind: 'rate-limited', limit: 'primary', retryAfterMs: null }
+    expect(classifyFailure(ran('HTTP 403: API rate limit exceeded for user ID 1234.'))).toEqual(primary)
+    expect(classifyFailure(ran('HTTP 429: API rate limit exceeded'))).toEqual(primary)
+  })
+
+  test('a secondary rate limit, by its words or a bare 429, with Retry-After when stderr has it', () => {
+    const secondary = { kind: 'rate-limited', limit: 'secondary', retryAfterMs: null }
+    expect(classifyFailure(ran('HTTP 403: You have exceeded a secondary rate limit.'))).toEqual(secondary)
+    expect(classifyFailure(ran('HTTP 403: You have triggered an abuse detection mechanism.'))).toEqual(secondary)
+    expect(classifyFailure(ran('HTTP 429: Too Many Requests'))).toEqual(secondary)
+    expect(classifyFailure(ran('HTTP 403: secondary rate limit\nRetry-After: 120'))).toEqual({ ...secondary, retryAfterMs: 120_000 })
   })
 
   test('missing gh, no login, no GitHub remote are fatal with a reason to show', () => {

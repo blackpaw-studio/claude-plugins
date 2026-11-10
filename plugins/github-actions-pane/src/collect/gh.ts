@@ -19,8 +19,13 @@ export type LeafFilter = { kind: 'repo' } | { kind: 'branch'; branch: string } |
 /** A leaf, or the union of several: a run matching any part belongs. */
 export type ListFilter = LeafFilter | { kind: 'any'; of: readonly LeafFilter[] }
 
+/**
+ * `primary`: the hourly quota is spent (it resets at a known time). `secondary`:
+ * GitHub's burst/abuse guard (no fixed reset; wait it out, longer on repeat).
+ * `retryAfterMs` is the wait gh's stderr asked for, when it carried one.
+ */
 export type GhFailure =
-  | { kind: 'rate-limited' }
+  | { kind: 'rate-limited'; limit: 'primary' | 'secondary'; retryAfterMs: number | null }
   | { kind: 'fatal'; reason: string }
   | { kind: 'transient'; reason: string }
 
@@ -28,7 +33,11 @@ export type GhResult<T> = { kind: 'ok'; value: T } | GhFailure
 
 type Fields = Record<string, unknown>
 
-const RATE_LIMIT = /rate limit|HTTP 429/i
+const RATE_LIMIT = /rate limit|HTTP 429|abuse detection/i
+const SECONDARY_LIMIT = /secondary rate limit|abuse detection/i
+/** A 429 or a 403 with no quota wording is the guard, not the quota. */
+const PRIMARY_LIMIT = /rate limit/i
+const RETRY_AFTER = /retry-after:?\s*(\d+)/i
 const NOT_LOGGED_IN = /gh auth login|not logged in/i
 const NO_REMOTE = /no git remotes|none of the git remotes|could not determine (base|current) repo|not a git repository/i
 const NOT_INSTALLED = /ENOENT|not found|no such file/i
@@ -36,13 +45,19 @@ const AUTH_EXIT = 4
 
 const firstLine = (text: string): string => text.trim().split('\n')[0]?.trim() ?? ''
 
+const rateLimitOf = (stderr: string): GhFailure => {
+  const limit = !SECONDARY_LIMIT.test(stderr) && PRIMARY_LIMIT.test(stderr) ? 'primary' : 'secondary'
+  const seconds = RETRY_AFTER.exec(stderr)?.[1]
+  return { kind: 'rate-limited', limit, retryAfterMs: seconds === undefined ? null : Number(seconds) * 1000 }
+}
+
 /** Why a gh call failed, sorted by what the poller does next. Pure. */
 export const classifyFailure = (ran: Ran): GhFailure => {
   if (ran.kind === 'failed') {
     return NOT_INSTALLED.test(ran.message) ? { kind: 'fatal', reason: 'gh is not installed' } : { kind: 'transient', reason: ran.message }
   }
   const { exitCode, stderr } = ran.result
-  if (RATE_LIMIT.test(stderr)) return { kind: 'rate-limited' }
+  if (RATE_LIMIT.test(stderr)) return rateLimitOf(stderr)
   if (exitCode === AUTH_EXIT || NOT_LOGGED_IN.test(stderr)) return { kind: 'fatal', reason: 'gh is not logged in (run gh auth login)' }
   if (NO_REMOTE.test(stderr)) return { kind: 'fatal', reason: 'no GitHub remote' }
   return { kind: 'transient', reason: firstLine(stderr) || `gh exited ${exitCode}` }
@@ -225,3 +240,16 @@ const parseRepo = (stdout: string): string | null => {
 /** `owner/repo` for the cwd's remote: also the check that gh is installed, logged in and pointed at GitHub. */
 export const repoName = (run: Run, cwd: string): Promise<GhResult<string>> =>
   gh(run, cwd, ['repo', 'view', '--json', 'nameWithOwner'], parseRepo, 'a repository')
+
+/**
+ * When the core REST quota next resets, in epoch ms; null when it cannot be
+ * read. `gh api rate_limit` is not counted against the quota it reports.
+ */
+export const rateLimitReset = async (run: Run, cwd: string): Promise<number | null> => {
+  const ran = await tryRun(run, ['gh', 'api', 'rate_limit'], { cwd, timeoutMs: GH_TIMEOUT_MS, env: GH_ENV })
+  if (ran.kind !== 'ran' || ran.result.exitCode !== 0) return null
+  const parsed = parseJson(ran.result.stdout)
+  const core = isFields(parsed) && isFields(parsed.resources) ? parsed.resources.core : undefined
+  const reset = isFields(core) ? integerOf(core, 'reset') : null
+  return reset === null ? null : reset * 1000
+}
