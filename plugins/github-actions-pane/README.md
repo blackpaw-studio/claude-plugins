@@ -67,14 +67,15 @@ new run opens it again.
 
 These are the plugin's options. Set them when you enable it, or in `settings.json` under
 `pluginConfigs["github-actions-pane"].options` (`scope`, `lingerSeconds`,
-`activePollSeconds`, `idlePollSeconds`, `autoOpen`).
+`activePollSeconds`, `idlePollSeconds`, `hiddenIdlePollSeconds`, `autoOpen`).
 
 | Setting | Default | |
 |---|---|---|
 | Scope | `branch` | `commit` (HEAD), `branch` (the branch's runs plus any run on HEAD's commit, so a tag-push release run shows; falls back to the commit on a detached HEAD) or `repo` |
 | Linger seconds | 30 | How long finished runs stay before the pane closes; 0 closes at once |
 | Active poll seconds | 10 | Poll interval while a run is active; at least 5 |
-| Idle poll seconds | 60 | Poll interval while nothing is active; at least 15 |
+| Idle poll seconds | 60 | Poll interval while nothing is active and the pane is open; at least 15 |
+| Hidden idle poll seconds | 600 | Poll interval while nothing is active and the pane is closed, so a run started elsewhere still reaches the footer; at least 60 |
 | Open automatically | off | On: the pane opens by itself when a run starts. Off: the footer line below the prompt and the status line show what is running, and `/actions` opens the pane |
 
 ## Behaviour
@@ -87,7 +88,11 @@ These are the plugin's options. Set them when you enable it, or in `settings.jso
   found until it moves to queued or in progress. A
   finished run's jobs are read once and then cached. A `git push`,
   `gh workflow run`, `gh pr create` or `gh run rerun` through Claude's Bash
-  tool polls at once, then at the active rate for two minutes.
+  tool polls at once, then at the active rate for two minutes. With nothing
+  active the poll rate depends on the pane: the idle rate while it is open,
+  the hidden idle rate (10 minutes) while it is closed. Opening the pane polls
+  at once; an active run polls at the active rate either way, since the footer
+  shows it.
 - **Pushes from any terminal:** every 5 seconds a local `git rev-parse` reads
   the remote-tracking ref of the branch in scope (its push target, else
   `origin/<branch>`, re-read on every poll and on every look while it is only
@@ -119,8 +124,15 @@ These are the plugin's options. Set them when you enable it, or in `settings.jso
   and the status line shows `◐ 2 running · ✗ 1 failed` instead. A pane
   you open with `/actions` seats at any width. In the main-screen layout it
   draws inline above the prompt, with the body capped at 96 columns.
-- **Rate limits:** a rate-limited `gh` drops polling to the idle rate, and
-  the header shows `rate limited` until a poll succeeds. When the data is
+- **Rate limits:** when `gh` is refused for the hourly quota ("API rate limit
+  exceeded"), every `gh` poll stops, kicks included, until the quota resets
+  (read with `gh api rate_limit`, which costs no quota) plus up to 10 seconds
+  of jitter. If the reset cannot be read, or GitHub's secondary limit
+  ("secondary rate limit", abuse detection, a bare 429) answers, polling
+  backs off 60 seconds, doubling on each repeat up to 15 minutes, or for
+  `Retry-After` when `gh` printed one. The backoff ends only at the first
+  clean poll after its window, and a reload keeps a window still running. The
+  header shows `rate limited · resumes 14:05` meanwhile. When the data is
   more than two polls old, the header shows `stale · 40s`.
 - **Off quietly:** outside a git repository, without `gh`, logged out of
   `gh`, or with no GitHub remote, nothing opens and `gh` is not polled.
@@ -134,7 +146,8 @@ These are the plugin's options. Set them when you enable it, or in `settings.jso
   ticking for up to one poll after its last job finished.
 - A push is detected within about 5 seconds from any terminal, by the
   remote-tracking ref moving. A push that leaves the ref alone, to a remote
-  other than the branch's push target, is only seen on the next idle poll.
+  other than the branch's push target, is only seen on the next idle poll
+  (up to 10 minutes with the pane closed).
   The same goes for a tag pushed from outside Claude: it moves no branch ref,
   so its run shows on the next idle poll. A `git push` through Claude's Bash,
   tags included, polls at once.
@@ -174,7 +187,7 @@ plugin folder.
 The screenshots and GIF come from a real Claude Code session. That session
 watches a scripted timeline that a fake `gh` (`dev/demo/bin/gh`) replays: CI
 #482 with four jobs, and Deploy #77 failing at "Upload artifacts". Nothing
-reaches GitHub. The demo polls at the floors (5 s active, 15 s idle).
+reaches GitHub. The demo polls at the floors (5 s active, 15 s idle, 60 s hidden idle).
 
 ```sh
 dev/demo/record.sh full150 fullscreen 150 40 100   # also: main, other sizes

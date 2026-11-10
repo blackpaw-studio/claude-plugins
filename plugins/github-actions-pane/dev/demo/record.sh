@@ -39,10 +39,10 @@ git -C $REPO init -q -b main
 git -C $REPO -c user.name=demo -c user.email=demo@example.com commit -q --allow-empty -m "fix: parser edge case"
 git -C $REPO remote add origin https://github.com/acme/widgets.git
 
-# The demo polls at the floors (5s active, 15s idle) so the pane opens soon
+# The demo polls at the floors (5s active, 15s idle, 60s hidden idle) so the pane opens soon
 # after the scripted run starts; lingerSeconds and the rest are the defaults.
 cat > $OUT/settings.json <<EOF
-{ "pluginConfigs": { "github-actions-pane": { "options": { "activePollSeconds": ${ACTIVE_POLL:-5}, "idlePollSeconds": ${IDLE_POLL:-15} } } } }
+{ "pluginConfigs": { "github-actions-pane": { "options": { "activePollSeconds": ${ACTIVE_POLL:-5}, "idlePollSeconds": ${IDLE_POLL:-15}, "hiddenIdlePollSeconds": ${HIDDEN_IDLE_POLL:-60} } } } }
 EOF
 
 NO_FLICKER=0

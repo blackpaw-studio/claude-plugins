@@ -1,6 +1,6 @@
 {
   "name": "github-actions-pane",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Live GitHub Actions pane beside the transcript while workflow runs are active: run, jobs and steps with status icons and live durations, drawn like GitHub's run view.",
   "author": {
     "name": "Evan Coleman"
@@ -35,6 +35,12 @@
       "title": "Idle poll seconds",
       "description": "Poll interval while nothing is active (at least 15).",
       "default": 60
+    },
+    "hiddenIdlePollSeconds": {
+      "type": "number",
+      "title": "Hidden idle poll seconds",
+      "description": "Poll interval while nothing is active and the pane is closed, so a run started elsewhere still reaches the footer (at least 60).",
+      "default": 600
     },
     "autoOpen": {
       "type": "boolean",
