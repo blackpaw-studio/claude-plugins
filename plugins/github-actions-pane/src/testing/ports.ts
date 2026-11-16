@@ -2,7 +2,9 @@
 // test advances them, state in memory, and git/gh answered from a table the
 // test edits as the scenario moves on.
 import type { ActionsData, ActionsScope } from '../../types'
+import { memoryBackoff } from '../collect/backoff-store'
 import type { RunInit, RunResult } from '../collect/run'
+import { directGh } from '../collect/shared-gh'
 import type { PaneState, Ports, Timer } from '../runtime'
 import { ok } from './runner'
 
@@ -35,7 +37,7 @@ export type FakeWorld = {
 
 /** Lets every pending promise chain run. */
 export const flush = async (): Promise<void> => {
-  for (let i = 0; i < 50; i += 1) await Promise.resolve()
+  for (let i = 0; i < 200; i += 1) await Promise.resolve()
 }
 
 const longestPrefix = (answers: Map<string, RunResult | Error>, argv: string): RunResult | Error | undefined =>
@@ -130,6 +132,8 @@ export const fakeWorld = (start: number, overrides: Partial<Ports> = {}, clock: 
 
   const ports: Ports = {
     run,
+    gh: directGh(overrides.run ?? run),
+    backoff: memoryBackoff(),
     cwd: async () => cwd,
     now: async () => clock.now(),
     after: clock.after,

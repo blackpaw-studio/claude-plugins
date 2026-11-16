@@ -5,22 +5,21 @@
 import type { ActionsData, ActionsJob, ActionsScope } from '../types'
 import { bandAt, isRunningBand } from './band'
 import { collectHead } from './collect/git'
+import { type BackoffStore, isInWindow, MAX_SUSPEND_MS, RATE_LIMIT_JITTER_MS, type SharedBackoff } from './collect/backoff-store'
 import { type GhFailure, type GhResult, listDurations, listRuns, rateLimitReset, repoName, viewJobs } from './collect/gh'
 import { readRef, trackingRefOf } from './collect/remote-ref'
 import { repoFromRemotes } from './collect/repo'
 import type { Run } from './collect/run'
-import { directGh } from './collect/shared-gh'
+import type { Freshness, GhPort } from './collect/shared-gh'
 import { isActiveStatus } from './format'
 import { CLOSED, decide, type Effect, type Lifecycle, type LifecycleEvent, statusText } from './lifecycle'
 import { EMPTY_DATA, restoredData, runsToDetail, withHistory, withJobs, withRuns, workflowsToRead } from './model'
-import { EXECUTING_STATUSES, KICK_MS, nextPollMs } from './schedule'
+import { cadenceMs, EXECUTING_STATUSES, KICK_MS, nextPollMs, type ScheduleInputs } from './schedule'
 import { listFilter } from './scope'
 import type { Settings } from './settings'
 import { buildSnapshot, type Snapshot } from './snapshot'
 
 export const TICK_MS = 1000
-// Step-5 bridge: replaced by the poll's real freshness in step 6.
-const BRIDGE_FRESH = { maxAgeMs: 0, isKick: true }
 /** How often the local remote-tracking ref is read: a push from any terminal moves it. Local git only. */
 export const REMOTE_WATCH_MS = 5000
 /** A ref that moves this soon after a kick is the push that was kicked. */
@@ -30,15 +29,7 @@ const BACKOFF_START_MS = 60 * 1000
 const BACKOFF_CAP_MS = 15 * 60 * 1000
 /** A Retry-After longer than this is not believed. */
 const RETRY_AFTER_CAP_MS = 60 * 60 * 1000
-/** Added after a quota reset so sessions sharing one token don't all resume on the same second. */
-export const RATE_LIMIT_JITTER_MS = 10 * 1000
-/** A quota resets hourly: a reset further off than this is skew or junk, and is not waited for. */
-const MAX_SUSPEND_MS = 60 * 60 * 1000
-/** Timers fire a hair early; a poll this close to the window's end counts as past it. */
-const TIMER_SLACK_MS = 50
-
-/** Where a rate limit holds polling off until, and how many times in a row it has been met. */
-type Backoff = { until: number; attempts: number }
+export { RATE_LIMIT_JITTER_MS }
 
 const backoffMs = (attempts: number): number => Math.min(BACKOFF_CAP_MS, BACKOFF_START_MS * 2 ** (attempts - 1))
 
@@ -48,6 +39,10 @@ export type PaneState = { isOpen: boolean; isPlaced: boolean }
 
 export type Ports = {
   run: Run
+  /** gh through the machine-wide cache (or straight, in tests). */
+  gh: GhPort
+  /** The rate-limit window every session on the machine shares. */
+  backoff: BackoffStore
   cwd: () => Promise<string>
   now: () => Promise<number>
   /** In [0, 1): spreads the resume time after a quota reset. */
@@ -81,6 +76,8 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
   let lastCwd: string | null = null
   let ghRepo: { cwd: string; repo: string } | null = null
   let kickUntil = 0
+  /** A kick asked for a poll that has not started yet: that poll bypasses the cache's freshness. */
+  let isKickPending = false
   let lastKickAt = Number.NEGATIVE_INFINITY
   let pollTimer: Timer | null = null
   let tickTimer: Timer | null = null
@@ -89,8 +86,8 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
   /** The tracking ref being watched, for this branch in this cwd, and the sha it last held. */
   let tracked: { key: string; ref: string; isConfigured: boolean; sha: string | null } | null = null
   let polling: Promise<void> | null = null
-  /** Set while a rate limit holds gh polling off; cleared by the first clean poll after its window. */
-  let backoff: Backoff | null = null
+  /** This session's view of the shared window, read from the store at each poll; the store is the truth. */
+  let backoff: SharedBackoff | null = null
   /** The rate-limit answer in flight: the failures of one poll share it, so they count as one hit. */
   let limiting: Promise<void> | null = null
   let hitLimit = false
@@ -170,21 +167,19 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
 
   const viewOf = (snapshot: Snapshot) => ({ activeIds: snapshot.activeIds, shownIds: snapshot.shownIds })
 
-  /** Whether a rate-limit window still holds polling off at `now`. */
-  const isInWindow = (now: number): boolean => backoff !== null && now + TIMER_SLACK_MS < backoff.until
-
   const isPaneOpen = (): boolean => lifecycle.mode !== 'closed'
 
-  const intervalAt = (now: number): number =>
-    nextPollMs({
-      settings,
-      isActive: data.runs.some(run => EXECUTING_STATUSES.has(run.status)),
-      isWaiting: data.runs.some(run => isActiveStatus(run.status) && !EXECUTING_STATUSES.has(run.status)),
-      isPaneOpen: isPaneOpen(),
-      suspendedForMs: backoff === null ? 0 : Math.max(0, backoff.until - now),
-      kickUntil,
-      now,
-    })
+  const scheduleInputs = (now: number): ScheduleInputs => ({
+    settings,
+    isActive: data.runs.some(run => EXECUTING_STATUSES.has(run.status)),
+    isWaiting: data.runs.some(run => isActiveStatus(run.status) && !EXECUTING_STATUSES.has(run.status)),
+    isPaneOpen: isPaneOpen(),
+    suspendedForMs: backoff === null ? 0 : Math.max(0, backoff.until - now),
+    kickUntil,
+    now,
+  })
+
+  const intervalAt = (now: number): number => nextPollMs(scheduleInputs(now))
 
   /** Whether the pane was open when the poll timer was set: its cadence depends on it. */
   let scheduledOpen = false
@@ -250,14 +245,25 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     return now + Math.max(backoffMs(attempts), retryAfter)
   }
 
+  /** What the pane says about a window: limited, until when. */
+  const showWindow = async (until: number): Promise<void> => {
+    if (data.isRateLimited && data.rateLimitedUntil === until) return
+    await publish({ ...data, isRateLimited: true, rateLimitedUntil: until })
+  }
+
   const holdOff = async (failure: Extract<GhFailure, { kind: 'rate-limited' }>): Promise<void> => {
     const now = await ports.now()
-    // Met again inside a window already set: the same limit, not a new one.
-    if (isInWindow(now)) return
-    const attempts = (backoff?.attempts ?? 0) + 1
+    const stored = await ports.backoff.read()
+    // Met again inside a window already set (here or by another session): the same limit, not a new one.
+    if (stored !== null && isInWindow(stored, now)) {
+      backoff = stored
+      return showWindow(stored.until)
+    }
+    const attempts = (stored?.attempts ?? 0) + 1
     const until = await resumeAt(failure, attempts, now)
-    backoff = { until, attempts }
-    await publish({ ...data, isRateLimited: true, rateLimitedUntil: until })
+    backoff = { until, attempts, limit: failure.limit }
+    await ports.backoff.write(backoff)
+    await showWindow(until)
   }
 
   const onRateLimited = (failure: Extract<GhFailure, { kind: 'rate-limited' }>): Promise<void> => {
@@ -270,9 +276,13 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
 
   /** A poll that listed cleanly, started past the window and met no limit, ends the backoff. */
   const settleBackoff = async (startedAt: number, isListed: boolean): Promise<void> => {
-    if (backoff === null || hitLimit || !isListed || isInWindow(startedAt)) return
+    if (hitLimit || !isListed) return
+    const stored = await ports.backoff.read()
+    // A window another session set while this poll ran is still its own to end.
+    if (isInWindow(stored, startedAt)) return
+    if (stored !== null) await ports.backoff.clearIf(stored.until)
     backoff = null
-    await publish({ ...data, isRateLimited: false, rateLimitedUntil: null })
+    if (data.isRateLimited || data.rateLimitedUntil !== null) await publish({ ...data, isRateLimited: false, rateLimitedUntil: null })
   }
 
   const onFailure = async (failure: GhFailure): Promise<void> => {
@@ -310,12 +320,12 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     return { cwd, branch: head.branch, sha: head.sha, repo: repo.value }
   }
 
-  const detail = async (cwd: string, repo: string, now: number): Promise<void> => {
+  const detail = async (cwd: string, repo: string, now: number, fresh: Freshness): Promise<void> => {
     // A re-run makes a finished run active again: read it afresh when it finishes again.
     const active = new Set(data.runs.filter(run => isActiveStatus(run.status)).map(run => run.id))
     final = new Set([...final].filter(id => !active.has(id)))
     const wanted = runsToDetail(data, (await snapshotAt(now)).shownIds, final)
-    const answers = await Promise.all(wanted.map(async id => [id, await viewJobs(directGh(ports.run), cwd, repo, id, BRIDGE_FRESH)] as const))
+    const answers = await Promise.all(wanted.map(async id => [id, await viewJobs(ports.gh, cwd, repo, id, fresh)] as const))
     const read = new Map<number, ActionsJob[]>()
     for (const [id, answer] of answers) {
       if (answer.kind !== 'ok') {
@@ -329,9 +339,9 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
   }
 
   /** Past durations of the active runs' workflows, for the ETA: not while rate limited; a failed read is retried next poll. */
-  const readHistory = async (cwd: string, repo: string): Promise<void> => {
+  const readHistory = async (cwd: string, repo: string, fresh: Freshness): Promise<void> => {
     if (data.isRateLimited) return
-    const answers = await Promise.all(workflowsToRead(data).map(async id => [id, await listDurations(directGh(ports.run), cwd, repo, id, BRIDGE_FRESH)] as const))
+    const answers = await Promise.all(workflowsToRead(data).map(async id => [id, await listDurations(ports.gh, cwd, repo, id, fresh)] as const))
     const read = new Map<number, number[]>()
     for (const [id, answer] of answers) {
       if (answer.kind === 'ok') read.set(id, answer.value)
@@ -344,14 +354,23 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
   const kick = async (): Promise<void> => {
     lastKickAt = await ports.now()
     kickUntil = lastKickAt + KICK_MS
+    isKickPending = true
     await poll()
   }
 
   const pollOnce = async (): Promise<void> => {
     const cwd = await ports.cwd()
     const now = await ports.now()
-    // A rate limit holds every gh call off, kicks included, until its window ends.
-    if (isInWindow(now)) return schedule(now)
+    const isKick = isKickPending
+    isKickPending = false
+    // A rate limit (this session's or another's) holds every gh call off, kicks included, until its window ends.
+    backoff = await ports.backoff.read()
+    if (backoff !== null && isInWindow(backoff, now)) {
+      await showWindow(backoff.until)
+      return schedule(now)
+    }
+    // Each call accepts a cached answer as young as this session's own cadence.
+    const fresh: Freshness = { maxAgeMs: cadenceMs(scheduleInputs(now)), isKick }
     hitLimit = false
     let isListed = false
     if (cwd !== lastCwd) final = new Set()
@@ -359,7 +378,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     const context = await readContext(cwd)
     if (context !== null) {
       const filter = listFilter(await scopeNow(), context)
-      const listed: GhResult<ActionsData['runs']> = filter === null ? { kind: 'ok', value: [] } : await listRuns(directGh(ports.run), cwd, context.repo, filter, BRIDGE_FRESH)
+      const listed: GhResult<ActionsData['runs']> = filter === null ? { kind: 'ok', value: [] } : await listRuns(ports.gh, cwd, context.repo, filter, fresh)
       // Another repository: nothing of the last one carries over, whatever the list says.
       const isNewRepo = data.context !== null && data.context.repo !== context.repo
       if (isNewRepo) final = new Set()
@@ -370,9 +389,9 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
       // The footer line shows from here, while history and job reads are still out: tick now.
       if (tickTimer === null && data.runs.some(run => isActiveStatus(run.status))) await syncTick(await ports.now(), true)
       await publish({ ...data, pollMs: intervalAt(now) })
-      if (data.disabled === null) await readHistory(cwd, context.repo)
+      if (data.disabled === null) await readHistory(cwd, context.repo, fresh)
       // A rate limit met by the history read stops this poll's job reads too.
-      if (data.disabled === null && !data.isRateLimited) await detail(cwd, context.repo, now)
+      if (data.disabled === null && !data.isRateLimited) await detail(cwd, context.repo, now, fresh)
     }
     await settleBackoff(now, isListed)
     const settled = await ports.now()
@@ -412,8 +431,10 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
       const restoredAt = await ports.now()
       if (data.rateLimitedUntil !== null && data.rateLimitedUntil > restoredAt) {
         const until = Math.min(data.rateLimitedUntil, restoredAt + MAX_SUSPEND_MS + RATE_LIMIT_JITTER_MS)
-        backoff = { until, attempts: 1 }
         await publish({ ...data, rateLimitedUntil: until })
+        // Shared only when nobody has a window that lasts as long: this one must not shorten theirs.
+        const stored = await ports.backoff.read()
+        if (stored === null || stored.until < until) await ports.backoff.write({ until, attempts: 1, limit: 'secondary' })
       }
       const pane = await ports.pane()
       if (pane.isOpen) {

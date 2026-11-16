@@ -4,6 +4,8 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 import { bandAt } from '../src/band'
+import { memoryBackoff } from '../src/collect/backoff-store'
+import { directGh } from '../src/collect/shared-gh'
 import { createFooterGate, fitsTail, type FooterGate } from '../src/footer'
 import { isKickCommand } from '../src/kick'
 import { layoutPane } from '../src/layout'
@@ -27,12 +29,18 @@ const nowAtom = atom({ plugin: 'github-actions-pane', key: 'now' } as const, 0)
 const scopeAtom = atom({ plugin: 'github-actions-pane', key: 'scope' } as const, null)
 const manualAtom = atom({ plugin: 'github-actions-pane', key: 'isManual' } as const, false)
 
+// Transitional (step 8 shares both across sessions): one window per module load.
+const sessionBackoff = memoryBackoff()
+
 const describeError = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 /** The runtime's view of the engine: every `$` call it makes, as closures. */
 function portsOf($: EngineInterface, footer: FooterGate): Ports {
+  const run: Ports['run'] = (argv, init) => $.process.run(argv, init)
   return {
-    run: (argv, init) => $.process.run(argv, init),
+    run,
+    gh: directGh(run),
+    backoff: sessionBackoff,
     cwd: () => $.session.cwd(),
     now: () => $.clock.now(),
     random: () => Math.random(),
