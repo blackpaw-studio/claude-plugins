@@ -2,7 +2,7 @@
 
 export type RunResult = { exitCode: number; stdout: string; stderr: string }
 
-export type RunInit = { cwd?: string; timeoutMs?: number; env?: Record<string, string> }
+export type RunInit = { cwd?: string; timeoutMs?: number; env?: Record<string, string>; /** Written to the child's stdin, then closed. */ stdin?: string }
 
 export type Run = (argv: readonly string[], init?: RunInit) => Promise<RunResult>
 

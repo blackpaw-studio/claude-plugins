@@ -29,12 +29,41 @@ type World = {
   statuses: (string | undefined)[]
   clock: ReturnType<typeof mock.clock>
   setRepo: (isRepo: boolean) => void
+  /** The cache dir's files, as the `sh` scripts and `$.fs` leave them. */
+  files: Map<string, string>
 }
 
 const done = { stderr: '', isStdoutTruncated: false, isStderrTruncated: false }
 
+type Answer = (stdout: string, exitCode?: number, stderr?: string) => { value: { exitCode: number; stdout: string; stderr: string; isStdoutTruncated: boolean; isStderrTruncated: boolean } }
+
+/** The cache's `sh` helpers, played in memory: the script says which one, the last argument is the path. */
+const shAnswer = (argv: readonly string[], stdin: string | undefined, files: Map<string, string>, answer: Answer) => {
+  const script = argv[2] ?? ''
+  const path = argv[4] ?? ''
+  if (script === 'echo $PPID') return answer('4242\n')
+  if (script.startsWith('kill -0')) return answer('')
+  if (script.startsWith('umask 077; mkdir')) return answer('')
+  if (script.includes('ln "$t"')) {
+    if (files.has(path)) return answer('', 1)
+    files.set(path, stdin ?? '')
+    return answer('')
+  }
+  if (script.includes('mv -f')) {
+    files.set(path, stdin ?? '')
+    return answer('')
+  }
+  if (script.startsWith('rm -f')) {
+    files.delete(path)
+    return answer('')
+  }
+  return answer('', 1, `unexpected sh: ${script}`)
+}
+
 /** The session beneath the plugin: a repo on main with one run in flight. */
-const installWorld = (on: On): World => {
+/** `cacheHome` is $XDG_CACHE_HOME; with none (and no HOME) the plugin runs gh uncached. */
+const installWorld = (on: On, cacheHome?: string): World => {
+  const files = new Map<string, string>()
   const argvs: string[] = []
   const opens: { id: string; title?: string }[] = []
   const statuses: (string | undefined)[] = []
@@ -57,10 +86,18 @@ const installWorld = (on: On): World => {
   on('ui.panes', () => ({
     value: isOpen ? [{ id: 'actions', title: 'Actions', isShown: true, isFocused: false, isPlaced: true }] : [],
   }))
+  on('env.get', (_$, e) => ({ value: e.name === 'XDG_CACHE_HOME' ? cacheHome : undefined }))
+  on('fs.read', (_$, e) => {
+    const text = files.get(e.path)
+    if (text === undefined) throw new Error(`ENOENT: ${e.path}`)
+    return { value: text }
+  })
+  on('fs.list', () => ({ value: [] }))
   on('process.run', (_$, e) => {
     const command = e.argv.join(' ')
-    argvs.push(command)
     const answer = (stdout: string, exitCode = 0, stderr = '') => ({ value: { ...done, exitCode, stdout, stderr } })
+    if (e.argv[0] === 'sh') return shAnswer(e.argv, e.init?.stdin, files, answer)
+    argvs.push(command)
     if (e.argv[0] === 'git') return isRepo ? answer(`${SHA}\nmain\n`) : answer('', 128, 'fatal: not a git repository')
     if (command.startsWith('gh repo view')) return answer('{"nameWithOwner":"acme/widgets"}')
     if (command.startsWith('gh run list')) return answer(JSON.stringify([ghRun(RUN)]))
@@ -79,7 +116,7 @@ const installWorld = (on: On): World => {
     )
   })
   on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } }) as never)
-  return { argvs, opens, registered, statuses, clock, setRepo: value => void (isRepo = value) }
+  return { argvs, opens, registered, statuses, clock, setRepo: value => void (isRepo = value), files }
 }
 
 const startSession = async ($: Engine, world: World) => {
@@ -262,5 +299,25 @@ describe('the actions text on the footer hint line', () => {
     await mountHint($, HINT_PROPS, 'terminal', 100)
     await world.clock.advance(SECOND)
     expect(world.statuses.at(-1)).toBeUndefined()
+  })
+})
+
+describe('the shared cache in a session', () => {
+  const CACHE = '/xdg/github-actions-pane'
+
+  test('with a cache dir, a poll stores gh output there and leaves no lock', async ($, on) => {
+    const world = installWorld(on, '/xdg')
+    await startSession($, world)
+    const stored = [...world.files.entries()].filter(([path]) => path.startsWith(`${CACHE}/`) && path.endsWith('.json'))
+    expect(stored.length).toBeGreaterThan(0)
+    expect(stored.some(([, text]) => text.includes('"stdout"') && text.includes('"host":"github.com"'))).toBe(true)
+    expect([...world.files.keys()].some(path => path.endsWith('.lock'))).toBe(false)
+  })
+
+  test('without one, gh runs uncached and nothing is written', async ($, on) => {
+    const world = installWorld(on)
+    await startSession($, world)
+    expect(world.files.size).toBe(0)
+    expect(world.argvs.some(argv => argv.startsWith('gh run list'))).toBe(true)
   })
 })

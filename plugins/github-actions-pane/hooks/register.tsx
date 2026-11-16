@@ -4,8 +4,10 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 import { bandAt } from '../src/band'
-import { memoryBackoff } from '../src/collect/backoff-store'
-import { directGh } from '../src/collect/shared-gh'
+import { type BackoffStore, fileBackoff } from '../src/collect/backoff-store'
+import { cacheDir } from '../src/collect/cache-entry'
+import { createHostCacheFs } from '../src/collect/cache-fs'
+import { createSharedGh, type GhPort } from '../src/collect/shared-gh'
 import { createFooterGate, fitsTail, type FooterGate } from '../src/footer'
 import { isKickCommand } from '../src/kick'
 import { layoutPane } from '../src/layout'
@@ -29,18 +31,67 @@ const nowAtom = atom({ plugin: 'github-actions-pane', key: 'now' } as const, 0)
 const scopeAtom = atom({ plugin: 'github-actions-pane', key: 'scope' } as const, null)
 const manualAtom = atom({ plugin: 'github-actions-pane', key: 'isManual' } as const, false)
 
-// Transitional (step 8 shares both across sessions): one window per module load.
-const sessionBackoff = memoryBackoff()
-
 const describeError = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
-/** The runtime's view of the engine: every `$` call it makes, as closures. */
-function portsOf($: EngineInterface, footer: FooterGate): Ports {
+const DEFAULT_GH_HOST = 'github.com'
+
+/** The machine-wide cache over `$`: gh behind it, and the rate-limit window beside it. */
+type SharedCache = { gh: GhPort; backoff: BackoffStore }
+
+/** Whether `pid` is a running process of this user (`kill -0`; nothing is signalled). */
+async function isProcessAlive($: EngineInterface, pid: number): Promise<boolean> {
+  if (!Number.isInteger(pid) || pid <= 0) return false
+  const ran = await $.process.run(['sh', '-c', 'kill -0 "$1" 2>/dev/null', 'sh', String(pid)], { timeoutMs: 5000 })
+  return ran.exitCode === 0
+}
+
+/** The pid lock files carry: `sh`'s parent, which is a process of this session; null when it can't be read. */
+async function ownPid($: EngineInterface): Promise<number | null> {
+  const ran = await $.process.run(['sh', '-c', 'echo $PPID'], { timeoutMs: 5000 }).catch(() => null)
+  const text = ran?.exitCode === 0 ? ran.stdout.trim() : ''
+  return /^[1-9][0-9]*$/.test(text) ? Number(text) : null
+}
+
+/** Built once per module load. The env names are spelled literally so validate lists them. */
+function createCache($: EngineInterface): SharedCache {
   const run: Ports['run'] = (argv, init) => $.process.run(argv, init)
-  return {
+  const fs = createHostCacheFs({ readText: path => $.fs.read(path), list: dir => $.fs.list(dir), run })
+  const now = () => $.clock.now()
+  const dir = once(async () => cacheDir({ xdg: await $.env.get('XDG_CACHE_HOME'), home: await $.env.get('HOME') }))
+  const host = once(async () => (await $.env.get('GH_HOST')) || DEFAULT_GH_HOST)
+  const pid = once(() => ownPid($))
+  const backoff = fileBackoff(fs, dir, now)
+  const gh = createSharedGh({
     run,
-    gh: directGh(run),
-    backoff: sessionBackoff,
+    fs,
+    backoff,
+    now,
+    sleep: ms => new Promise<void>(resolve => void $.clock.after(ms, resolve)),
+    isAlive: candidate => isProcessAlive($, candidate),
+    pid,
+    host,
+    dir,
+    log: text => $.ui.log(text, { to: 'debug' }),
+  })
+  return { gh, backoff }
+}
+
+/** The first call's answer, kept: the environment and our own pid don't change under a running module. */
+function once<T>(make: () => Promise<T>): () => Promise<T> {
+  let made: Promise<T> | null = null
+  return () => (made ??= make())
+}
+
+/** Holds the module's one shared cache, made from the first `$` that asks. */
+type CacheSlot = { current: SharedCache | null }
+
+/** The runtime's view of the engine: every `$` call it makes, as closures. */
+function portsOf($: EngineInterface, footer: FooterGate, slot: CacheSlot): Ports {
+  const cache = (slot.current ??= createCache($))
+  return {
+    run: (argv, init) => $.process.run(argv, init),
+    gh: cache.gh,
+    backoff: cache.backoff,
     cwd: () => $.session.cwd(),
     now: () => $.clock.now(),
     random: () => Math.random(),
@@ -76,6 +127,8 @@ export const register: Register = (on, options) => {
   const settings = parseSettings(options)
   let runtime: Runtime | null = null
   const footer = createFooterGate()
+  /** One shared cache per module load. */
+  const slot: CacheSlot = { current: null }
 
   /** The runtime over these ports, started once per module load. */
   const attach = (ports: Ports): Runtime => {
@@ -89,7 +142,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     await registerCommand($)
-    attach(portsOf($, footer))
+    attach(portsOf($, footer, slot))
     return started
   })
 
@@ -108,14 +161,14 @@ export const register: Register = (on, options) => {
   // After a push (or a run started from gh), poll at once; any other Bash call may have moved the cwd.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const ran = await next(e)
-    const watcher = attach(portsOf($, footer))
+    const watcher = attach(portsOf($, footer, slot))
     const work = isKickCommand(e.command) ? watcher.kick() : watcher.cwdMaybeChanged()
     work.catch(error => $.ui.log(`github-actions-pane: bash: ${describeError(error)}`, { to: 'debug' }))
     return ran
   }).catch(($, e, next) => next(e))
 
   on('command.run', { command: 'actions' }, async ($, e) => {
-    const watcher = attach(portsOf($, footer))
+    const watcher = attach(portsOf($, footer, slot))
     const arg = e.args.trim()
     if (arg === '') {
       // Opened here, in the person's command, so it seats at any width.
