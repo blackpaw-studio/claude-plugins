@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 import { DEFAULT_SETTINGS } from './settings'
-import { KICK_MS, nextPollMs } from './schedule'
+import { cadenceMs, KICK_MS, nextPollMs } from './schedule'
 
 const NOW = 1_000_000
 const base = { settings: DEFAULT_SETTINGS, isActive: false, isWaiting: false, isPaneOpen: true, suspendedForMs: 0, kickUntil: 0, now: NOW }
@@ -31,5 +31,15 @@ describe('nextPollMs', () => {
   test('a suspension holds the next poll until it ends, whatever the cadence', () => {
     expect(nextPollMs({ ...base, isActive: true, kickUntil: NOW + 1, suspendedForMs: 90_000 })).toBe(90_000)
     expect(nextPollMs({ ...base, isPaneOpen: false, suspendedForMs: 90_000 })).toBe(600_000)
+  })
+})
+
+describe('cadenceMs', () => {
+  test('is the poll rate of the state, ignoring any suspension', () => {
+    expect(cadenceMs({ ...base, isActive: true, suspendedForMs: 90_000 })).toBe(10_000)
+    expect(cadenceMs({ ...base, kickUntil: NOW + 1, suspendedForMs: 90_000 })).toBe(10_000)
+    expect(cadenceMs({ ...base, isWaiting: true, isPaneOpen: false, suspendedForMs: 90_000 })).toBe(60_000)
+    expect(cadenceMs({ ...base, suspendedForMs: 90_000 })).toBe(60_000)
+    expect(cadenceMs({ ...base, isPaneOpen: false, suspendedForMs: 90_000 })).toBe(600_000)
   })
 })

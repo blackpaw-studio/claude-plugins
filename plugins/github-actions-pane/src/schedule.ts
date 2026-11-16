@@ -26,7 +26,8 @@ export type ScheduleInputs = {
   now: number
 }
 
-const cadenceMs = ({ settings, isActive, isWaiting, isPaneOpen, kickUntil, now }: ScheduleInputs): number => {
+/** The poll interval the state asks for, before any rate-limit suspension. */
+export const cadenceMs = ({ settings, isActive, isWaiting, isPaneOpen, kickUntil, now }: ScheduleInputs): number => {
   if (isActive || now < kickUntil) return settings.activePollMs
   // A run about to start is worth noticing within a poll, pane or not.
   return isWaiting || isPaneOpen ? settings.idlePollMs : settings.hiddenIdlePollMs
