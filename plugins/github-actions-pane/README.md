@@ -136,6 +136,26 @@ These are the plugin's options. Set them when you enable it, or in `settings.jso
   clean poll after its window, and a reload keeps a window still running. The
   header shows `rate limited · resumes 14:05` meanwhile. When the data is
   more than two polls old, the header shows `stale · 40s`.
+- **Shared cache:** every session on the machine shares what `gh` returns, so
+  the cost scales with the number of repositories you watch, not with the
+  number of sessions. Answers are kept in `$XDG_CACHE_HOME/github-actions-pane/`
+  (`~/.cache/github-actions-pane/` when it is unset or not an absolute path),
+  a directory only you can open (mode 700, files 600). One file per exact `gh`
+  call (host and arguments), holding the successful output only; a failure is
+  never stored. A call accepts an answer as young as the session's own poll
+  interval (10 s while a run is active, 60 s idle, 600 s hidden), less a second
+  of slack, so the session polling fastest makes the fetches and the others reuse
+  them. When several sessions find an answer stale together, the first takes a
+  lock for that call and fetches; the rest use the stale answer, or wait up to
+  two seconds for the fresh one, and fetch for themselves after that. A lock
+  from a crashed session (its process gone, or older than 30 seconds) is
+  ignored. A push kick skips the cache unless the answer is under 3 seconds old,
+  so sessions kicked by the same push make one request. The rate-limit window
+  above is shared too: when one session meets a limit, none polls until it
+  ends. Entries over a day old are pruned. Deleting the directory is always
+  safe, and a missing or unreadable one only means a live fetch. `gh repo view`
+  and `gh api rate_limit` are never cached. With no usable cache directory
+  (no `HOME`), each session polls on its own as before.
 - **Off quietly:** outside a git repository, without `gh`, logged out of
   `gh`, or with no GitHub remote, nothing opens and `gh` is not polled.
   `/actions` says which one applies. A Bash `cd` into a repository starts
