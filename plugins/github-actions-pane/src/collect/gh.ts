@@ -185,7 +185,7 @@ const filterArgs = (filter: LeafFilter): string[] =>
   filter.kind === 'branch' ? ['--branch', filter.branch] : filter.kind === 'commit' ? ['--commit', filter.sha] : []
 
 /** Not cached (see `repoName`): the freshness the port is told is moot. */
-const UNCACHED: Freshness = { maxAgeMs: 0, isKick: true }
+const UNCACHED: Freshness = { maxAgeMs: 0, kickAt: null }
 
 /**
  * Runs gh in `cwd` through the port and parses its stdout; any failure

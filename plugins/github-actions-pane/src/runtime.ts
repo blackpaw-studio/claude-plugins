@@ -76,8 +76,8 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
   let lastCwd: string | null = null
   let ghRepo: { cwd: string; repo: string } | null = null
   let kickUntil = 0
-  /** A kick asked for a poll that has not started yet: that poll bypasses the cache's freshness. */
-  let isKickPending = false
+  /** When a kick asked for a poll that has not started yet: that poll takes only answers written after it. */
+  let kickAtPending: number | null = null
   let lastKickAt = Number.NEGATIVE_INFINITY
   let pollTimer: Timer | null = null
   let tickTimer: Timer | null = null
@@ -357,15 +357,15 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
   const kick = async (): Promise<void> => {
     lastKickAt = await ports.now()
     kickUntil = lastKickAt + KICK_MS
-    isKickPending = true
+    kickAtPending = lastKickAt
     await poll()
   }
 
   const pollCycle = async (): Promise<void> => {
     const cwd = await ports.cwd()
     const now = await ports.now()
-    const isKick = isKickPending
-    isKickPending = false
+    const kickAt = kickAtPending
+    kickAtPending = null
     // A rate limit (this session's or another's) holds every gh call off, kicks included, until its window ends.
     backoff = await ports.backoff.read()
     if (backoff !== null && isInWindow(backoff, now)) {
@@ -373,7 +373,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
       return schedule(now)
     }
     // Each call accepts a cached answer as young as this session's own cadence.
-    const fresh: Freshness = { maxAgeMs: cadenceMs(scheduleInputs(now)), isKick }
+    const fresh: Freshness = { maxAgeMs: cadenceMs(scheduleInputs(now)), kickAt }
     hitLimit = false
     let isListed = false
     if (cwd !== lastCwd) final = new Set()

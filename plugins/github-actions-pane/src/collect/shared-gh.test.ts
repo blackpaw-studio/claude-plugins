@@ -15,8 +15,8 @@ const INIT = { cwd: '/r', timeoutMs: 10_000 }
 const KEY = cacheKey(HOST, ARGV)
 const ENTRY = `${DIR}/${KEY}.json`
 const LOCK = `${DIR}/${KEY}.lock`
-const POLL = { maxAgeMs: 10_000, isKick: false }
-const KICK = { maxAgeMs: 10_000, isKick: true }
+const POLL = { maxAgeMs: 10_000, kickAt: null }
+const kickedAt = (kickAt: number) => ({ maxAgeMs: 10_000, kickAt })
 const anything = () => true
 const DAY = 24 * 60 * 60 * 1000
 
@@ -86,14 +86,18 @@ describe('createSharedGh', () => {
     expect(calls.length).toBe(1)
   })
 
-  test('a kick bypasses freshness once the entry is 3s old, not before', async () => {
+  test('a kick takes an entry written at or after it, never one from before the push', async () => {
     const { fs, gh, calls, clock } = setup()
     fs.put(ENTRY, encodeEntry({ host: HOST, argv: ARGV, at: T0, stdout: '[old]' }))
     await clock.advance(2_000)
-    expect(stdoutOf(await gh(ARGV, INIT, KICK, anything))).toBe('[old]')
-    expect(calls.length).toBe(0)
-    await clock.advance(1_000)
-    expect(stdoutOf(await gh(ARGV, INIT, KICK, anything))).toBe('[1]')
+    // The entry is 2s old: young, but written before this kick.
+    expect(stdoutOf(await gh(ARGV, INIT, kickedAt(clock.now()), anything))).toBe('[1]')
+    expect(calls.length).toBe(1)
+    // Another session's kick for the same push finds that fetch enough.
+    expect(stdoutOf(await gh(ARGV, INIT, kickedAt(clock.now()), anything))).toBe('[1]')
+    expect(calls.length).toBe(1)
+    // A kick that came before the entry was written is satisfied by it.
+    expect(stdoutOf(await gh(ARGV, INIT, kickedAt(T0 + 1_000), anything))).toBe('[1]')
     expect(calls.length).toBe(1)
   })
 

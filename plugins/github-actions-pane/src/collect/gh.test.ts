@@ -20,7 +20,7 @@ import { directGh, type GhPort } from './shared-gh'
 const at = (iso: string) => Date.parse(iso)
 const GH_INIT = { cwd: '/repo', timeoutMs: 10_000, env: { GH_PROMPT_DISABLED: '1' } }
 const REPO = 'acme/widgets'
-const FRESH = { maxAgeMs: 10_000, isKick: false }
+const FRESH = { maxAgeMs: 10_000, kickAt: null }
 /** The collectors on a plain runner: no cache, as before. */
 const listRuns = (run: Run, cwd: string, repo: string, filter: Parameters<typeof listRunsVia>[3]) => listRunsVia(directGh(run), cwd, repo, filter, FRESH)
 const listDurations = (run: Run, cwd: string, repo: string, workflowId: number) => listDurationsVia(directGh(run), cwd, repo, workflowId, FRESH)
@@ -303,7 +303,7 @@ describe('classifyFailure', () => {
 })
 
 describe('through a cache port', () => {
-  const KICK = { maxAgeMs: 10_000, isKick: true }
+  const KICK = { maxAgeMs: 10_000, kickAt: 123_456 }
   type Asked = { argv: string[]; fresh: unknown; accepts: (stdout: string) => boolean }
   const port = (answer: Awaited<ReturnType<GhPort>>) => {
     const asked: Asked[] = []

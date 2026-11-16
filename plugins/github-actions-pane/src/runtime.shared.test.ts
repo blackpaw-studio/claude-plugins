@@ -104,7 +104,7 @@ describe('the freshness a poll asks for', () => {
     runsAre(world, [])
     await runtime.start()
     expect(fresh.length).toBeGreaterThan(0)
-    for (const asked of fresh) expect(asked).toEqual({ maxAgeMs: DEFAULT_SETTINGS.hiddenIdlePollMs, isKick: false })
+    for (const asked of fresh) expect(asked).toEqual({ maxAgeMs: DEFAULT_SETTINGS.hiddenIdlePollMs, kickAt: null })
   })
 
   test('the active cadence while a run executes', async () => {
@@ -115,7 +115,7 @@ describe('the freshness a poll asks for', () => {
     fresh.length = 0
     await world.advance(10 * SECOND)
     expect(fresh.length).toBeGreaterThan(0)
-    for (const asked of fresh) expect(asked).toEqual({ maxAgeMs: DEFAULT_SETTINGS.activePollMs, isKick: false })
+    for (const asked of fresh) expect(asked).toEqual({ maxAgeMs: DEFAULT_SETTINGS.activePollMs, kickAt: null })
   })
 
   test('a kick says so for its own poll only, at the active cadence', async () => {
@@ -123,13 +123,14 @@ describe('the freshness a poll asks for', () => {
     runsAre(world, [])
     await runtime.start()
     fresh.length = 0
+    const kickedAt = world.now()
     await runtime.kick()
     expect(fresh.length).toBeGreaterThan(0)
-    for (const asked of fresh) expect(asked).toEqual({ maxAgeMs: DEFAULT_SETTINGS.activePollMs, isKick: true })
+    for (const asked of fresh) expect(asked).toEqual({ maxAgeMs: DEFAULT_SETTINGS.activePollMs, kickAt: kickedAt })
     fresh.length = 0
     await world.advance(10 * SECOND)
     expect(fresh.length).toBeGreaterThan(0)
-    for (const asked of fresh) expect(asked).toMatchObject({ isKick: false })
+    for (const asked of fresh) expect(asked).toMatchObject({ kickAt: null })
   })
 })
 

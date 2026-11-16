@@ -149,8 +149,9 @@ These are the plugin's options. Set them when you enable it, or in `settings.jso
   lock for that call and fetches; the rest use the stale answer, or wait up to
   two seconds for the fresh one, and fetch for themselves after that. A lock
   from a crashed session (its process gone, or older than 30 seconds) is
-  ignored. A push kick skips the cache unless the answer is under 3 seconds old,
-  so sessions kicked by the same push make one request. The rate-limit window
+  ignored. A push kick takes only an answer fetched after the kick, so
+  sessions kicked by the same push make one request between them, and none
+  reads an answer from before the push. The rate-limit window
   above is shared too: when one session meets a limit, none polls until it
   ends. Entries over a day old are pruned. Deleting the directory is always
   safe, and a missing or unreadable one only means a live fetch. `gh repo view`

@@ -54,14 +54,21 @@ describe('decodeEntry', () => {
 })
 
 describe('isFresh', () => {
-  const fresh = { maxAgeMs: 10_000, isKick: false }
+  const fresh = { maxAgeMs: 10_000, kickAt: null }
   test('younger than the interval less a second of slack', () => {
     expect(isFresh(entry, NOW + 8_999, fresh)).toBe(true)
     expect(isFresh(entry, NOW + 9_000, fresh)).toBe(false)
   })
-  test('a kick accepts only an entry under 3s old', () => {
-    expect(isFresh(entry, NOW + 2_999, { ...fresh, isKick: true })).toBe(true)
-    expect(isFresh(entry, NOW + 3_000, { ...fresh, isKick: true })).toBe(false)
+  test('a kick accepts only an entry written at or after it', () => {
+    expect(isFresh(entry, NOW + 100, { ...fresh, kickAt: NOW })).toBe(true)
+    expect(isFresh(entry, NOW + 100, { ...fresh, kickAt: NOW + 1 })).toBe(false)
+  })
+  test('an entry written before the kick is stale however young, and one after it stays fresh however old the interval says', () => {
+    expect(isFresh(entry, NOW + 600, { ...fresh, kickAt: NOW + 500 })).toBe(false)
+    expect(isFresh(entry, NOW + 20_000, { maxAgeMs: 10_000, kickAt: NOW })).toBe(true)
+  })
+  test('a kick still refuses an entry dated in the future', () => {
+    expect(isFresh(entry, NOW - 1, { ...fresh, kickAt: NOW - 5 })).toBe(false)
   })
   test('an entry dated in the future is stale', () => {
     expect(isFresh(entry, NOW - 1, fresh)).toBe(false)

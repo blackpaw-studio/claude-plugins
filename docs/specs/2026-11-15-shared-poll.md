@@ -20,8 +20,9 @@ Cost should scale with the number of repos, not the number of sessions.
   fetches and writes the entry atomically (tmp file plus rename). A loser returns the stale entry if
   one exists, and otherwise waits briefly (bounded, about 2s, with an injected clock) for the
   winner's write before fetching itself.
-- **Kicks** (push, `gh workflow run`) bypass freshness unless the entry is under 3s old. That
-  absorbs the kicks fired by several sessions for the same push.
+- **Kicks** (push, `gh workflow run`) pass the time they were fired (`kickAt`) and accept only an entry
+  written at or after it, so no entry from before the push is used. The first fetch after the push
+  satisfies the kicks fired by the other sessions for it.
 - **Shared rate-limit state.** The quota is per user, so the backoff from 0.3.2 (window, attempts,
   reason) moves into one machine-wide file that every session reads before any gh call and writes when
   it hits a limit. A session never polls during a window that another session found.

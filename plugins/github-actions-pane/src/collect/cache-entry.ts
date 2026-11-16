@@ -5,14 +5,15 @@
 export const FORMAT_VERSION = 1
 /** A timer fires a hair early: an entry this close to expiry counts as expired, so a poll never reads its own last write. */
 export const FRESH_SLACK_MS = 1000
-/** A kick wants news: it accepts only an entry this young (absorbs the kicks several sessions fire for one push). */
-export const KICK_FRESH_MS = 3000
 /** A lock older than this is a crashed holder's (gh's own timeout is 10s). */
 export const LOCK_STALE_MS = 30_000
 const DIR_NAME = 'github-actions-pane'
 
-/** How much staleness a call tolerates: the caller's cadence, and whether it is a kick. */
-export type Freshness = { maxAgeMs: number; isKick: boolean }
+/**
+ * How much staleness a call tolerates: the caller's cadence, or, for a kick,
+ * the moment it was fired (`kickAt`; null for an ordinary poll).
+ */
+export type Freshness = { maxAgeMs: number; kickAt: number | null }
 
 export type CacheEntry = { host: string; argv: readonly string[]; at: number; stdout: string }
 export type Lock = { pid: number | null; at: number; token: string }
@@ -60,10 +61,15 @@ export const decodeEntry = (text: string, host: string, argv: readonly string[])
   return { host, argv: storedArgv, at, stdout }
 }
 
+/**
+ * A kick wants news from after the push it was fired for, so it accepts only
+ * an entry written at or after `kickAt`: the first fetch after a push serves
+ * every session kicked by it, and no entry from before the push does.
+ */
 export const isFresh = (entry: CacheEntry, now: number, fresh: Freshness): boolean => {
   const age = now - entry.at
   if (age < 0) return false
-  return fresh.isKick ? age < KICK_FRESH_MS : age < fresh.maxAgeMs - FRESH_SLACK_MS
+  return fresh.kickAt === null ? age < fresh.maxAgeMs - FRESH_SLACK_MS : entry.at >= fresh.kickAt
 }
 
 export const encodeLock = (lock: Lock): string => JSON.stringify({ v: FORMAT_VERSION, pid: lock.pid, at: lock.at, token: lock.token })
