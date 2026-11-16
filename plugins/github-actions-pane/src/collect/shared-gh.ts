@@ -32,9 +32,6 @@ export type SharedGhDeps = {
   now: () => Promise<number>
   /** Resolves after `ms` on the injected clock. */
   sleep: (ms: number) => Promise<void>
-  isAlive: (pid: number) => Promise<boolean>
-  /** This process's id, or null when it cannot be known (a lock then ages out by time alone). */
-  pid: () => Promise<number | null>
   host: () => Promise<string>
   /** The cache directory; null when there is no usable place (calls then run uncached). */
   dir: () => Promise<string | null>
@@ -126,18 +123,18 @@ export const createSharedGh = (deps: SharedGhDeps): GhPort => {
         undefined,
       )
 
-    /** Takes the lock, replacing a dead holder's once. */
+    /** Takes the lock, replacing a stale holder's once. */
     const lock = async (): Promise<{ result: 'won'; token: string } | { result: 'held' | 'error' }> => {
       for (let tries = 0; tries < 2; tries += 1) {
         const now = await deps.now()
         lockCount += 1
-        const token = `${(await deps.pid()) ?? 'x'}.${now}.${lockCount}`
-        const result = await attempt('lock', async () => deps.fs.createExclusive(lockPath, encodeLock({ pid: await deps.pid(), at: now, token })), 'error' as const)
+        const token = `${now}.${lockCount}`
+        const result = await attempt('lock', async () => deps.fs.createExclusive(lockPath, encodeLock({ at: now, token })), 'error' as const)
         if (result === 'won') return { result, token }
         if (result === 'error') return { result }
         const holder = await attempt('lock read', () => deps.fs.read(lockPath), null)
         if (holder === null) continue
-        if (!(await isLockStale(decodeLock(holder), now, deps.isAlive))) return { result }
+        if (!isLockStale(decodeLock(holder), now)) return { result }
         await attempt('lock steal', () => deps.fs.remove(lockPath), undefined)
       }
       return { result: 'held' }

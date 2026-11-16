@@ -21,7 +21,7 @@ const anything = () => true
 const DAY = 24 * 60 * 60 * 1000
 
 /** A run whose first call (or each, with `hangs`) waits for the test to release it. */
-const setup = (answers: (call: number) => RunResult | Error | 'hang' = () => ok('[1]'), isAlive: (pid: number) => boolean = () => true) => {
+const setup = (answers: (call: number) => RunResult | Error | 'hang' = () => ok('[1]')) => {
   const clock = fakeClock(T0)
   const fs = fakeCacheFs(clock.now)
   const backoff = memoryBackoff()
@@ -40,8 +40,6 @@ const setup = (answers: (call: number) => RunResult | Error | 'hang' = () => ok(
     backoff,
     now: async () => clock.now(),
     sleep: ms => new Promise<void>(resolve => void clock.after(ms, resolve)),
-    isAlive: async pid => isAlive(pid),
-    pid: async () => 4242,
     host: async () => HOST,
     dir: async () => DIR,
     log: () => undefined,
@@ -149,17 +147,28 @@ describe('createSharedGh', () => {
     expect(hung.length).toBe(1)
   })
 
-  test('a lock whose holder is dead is stolen', async () => {
-    const { fs, gh, calls } = setup(() => ok('[1]'), pid => pid !== 999)
-    fs.put(LOCK, encodeLock({ pid: 999, at: T0, token: 'gone' }))
-    expect(stdoutOf(await gh(ARGV, INIT, POLL, anything))).toBe('[1]')
-    expect(calls.length).toBe(1)
-    expect(fs.has(LOCK)).toBe(false)
+  test('a young lock is never stolen, whoever it names', async () => {
+    const { fs, gh, calls, clock } = setup()
+    fs.put(ENTRY, encodeEntry({ host: HOST, argv: ARGV, at: T0 - 60_000, stdout: '[old]' }))
+    fs.put(LOCK, JSON.stringify({ v: 1, pid: 999, at: T0, token: 'theirs' }))
+    await clock.advance(29_000)
+    expect(stdoutOf(await gh(ARGV, INIT, POLL, anything))).toBe('[old]')
+    expect(calls).toEqual([])
+    expect(fs.has(LOCK)).toBe(true)
+  })
+
+  test('the lock is written without a pid, complete from the start', async () => {
+    const { fs, gh, hung } = setup(() => 'hang')
+    const winner = gh(ARGV, INIT, POLL, anything)
+    await flush()
+    expect(JSON.parse((await fs.read(LOCK)) ?? '{}')).toMatchObject({ v: 1, pid: null, at: T0 })
+    hung[0]?.(ok('[1]'))
+    await winner
   })
 
   test('a lock older than 30s is stolen', async () => {
     const { fs, gh, calls, clock } = setup()
-    fs.put(LOCK, encodeLock({ pid: 777, at: T0, token: 'old' }))
+    fs.put(LOCK, encodeLock({ at: T0, token: 'old' }))
     await clock.advance(31_000)
     expect(stdoutOf(await gh(ARGV, INIT, POLL, anything))).toBe('[1]')
     expect(calls.length).toBe(1)
@@ -184,7 +193,7 @@ describe('createSharedGh', () => {
     const { fs, gh, hung } = setup(() => 'hang')
     const winner = gh(ARGV, INIT, POLL, anything)
     await flush()
-    fs.put(LOCK, encodeLock({ pid: 1, at: T0, token: 'thief' }))
+    fs.put(LOCK, encodeLock({ at: T0, token: 'thief' }))
     hung[0]?.(ok('[1]'))
     await winner
     expect(fs.has(LOCK)).toBe(true)

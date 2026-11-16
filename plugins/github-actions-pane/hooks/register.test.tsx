@@ -41,8 +41,6 @@ type Answer = (stdout: string, exitCode?: number, stderr?: string) => { value: {
 const shAnswer = (argv: readonly string[], stdin: string | undefined, files: Map<string, string>, answer: Answer) => {
   const script = argv[2] ?? ''
   const path = argv[4] ?? ''
-  if (script === 'echo $PPID') return answer('4242\n')
-  if (script.startsWith('kill -0')) return answer('')
   if (script.startsWith('umask 077; mkdir')) return answer('')
   if (script.includes('ln "$t"')) {
     if (files.has(path)) return answer('', 1)

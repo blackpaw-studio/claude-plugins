@@ -16,7 +16,7 @@ Cost should scale with the number of repos, not the number of sessions.
   job and history reads use the same value). A cached response younger than `maxAgeMs` is returned
   without a network call.
 - **Single fetcher per key.** On a stale entry, try to take a per-key lock (atomic O_EXCL lockfile
-  holding the pid and a time; a lock counts as stale after 30s or when its pid is dead). The winner
+  holding a time and a token; a lock counts as stale after 30s: the engine gives a mod no reliable pid, and gh's own timeout is 10s). The winner
   fetches and writes the entry atomically (tmp file plus rename). A loser returns the stale entry if
   one exists, and otherwise waits briefly (bounded, about 2s, with an injected clock) for the
   winner's write before fetching itself.
@@ -31,7 +31,7 @@ Cost should scale with the number of repos, not the number of sessions.
 - **Storage:** `$XDG_CACHE_HOME/github-actions-pane/` (default `~/.cache/...`), directory mode 0700, files
   0600. Entries are validated on read; a corrupt or unparsable entry counts as a miss. Entries older
   than 1 day are pruned opportunistically.
-- **Dependency injection:** fs, clock, pid-liveness and the gh runner are all ports, so tests run
+- **Dependency injection:** fs, clock and the gh runner are all ports, so tests run
   several runtimes against one fake fs.
 
 ## Out of scope
@@ -42,6 +42,6 @@ Changing cadence values, the UI, or GraphQL/`gh pr view` (not this plugin's).
   interval. A test covers this with a shared fake fs and clock.
 - A runtime with a shorter cadence drives the fetches, and the others reuse its result.
 - A rate limit hit by one runtime suspends every runtime until the window ends.
-- A crashed lock holder (dead pid or a lock older than 30s) doesn't block fetching.
+- A crashed lock holder (a lock older than 30s) doesn't block fetching.
 - A corrupt cache file falls back to a live fetch.
 - The suite stays fast (no real sleeps or network). Version 0.4.0, and the README explains the shared cache.

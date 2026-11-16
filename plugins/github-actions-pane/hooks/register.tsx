@@ -38,20 +38,6 @@ const DEFAULT_GH_HOST = 'github.com'
 /** The machine-wide cache over `$`: gh behind it, and the rate-limit window beside it. */
 type SharedCache = { gh: GhPort; backoff: BackoffStore }
 
-/** Whether `pid` is a running process of this user (`kill -0`; nothing is signalled). */
-async function isProcessAlive($: EngineInterface, pid: number): Promise<boolean> {
-  if (!Number.isInteger(pid) || pid <= 0) return false
-  const ran = await $.process.run(['sh', '-c', 'kill -0 "$1" 2>/dev/null', 'sh', String(pid)], { timeoutMs: 5000 })
-  return ran.exitCode === 0
-}
-
-/** The pid lock files carry: `sh`'s parent, which is a process of this session; null when it can't be read. */
-async function ownPid($: EngineInterface): Promise<number | null> {
-  const ran = await $.process.run(['sh', '-c', 'echo $PPID'], { timeoutMs: 5000 }).catch(() => null)
-  const text = ran?.exitCode === 0 ? ran.stdout.trim() : ''
-  return /^[1-9][0-9]*$/.test(text) ? Number(text) : null
-}
-
 /** Built once per module load. The env names are spelled literally so validate lists them. */
 function createCache($: EngineInterface): SharedCache {
   const run: Ports['run'] = (argv, init) => $.process.run(argv, init)
@@ -59,7 +45,6 @@ function createCache($: EngineInterface): SharedCache {
   const now = () => $.clock.now()
   const dir = once(async () => cacheDir({ xdg: await $.env.get('XDG_CACHE_HOME'), home: await $.env.get('HOME') }))
   const host = once(async () => (await $.env.get('GH_HOST')) || DEFAULT_GH_HOST)
-  const pid = once(() => ownPid($))
   const log = (text: string) => $.ui.log(text, { to: 'debug' })
   const backoff = fileBackoff(fs, dir, now, log)
   const gh = createSharedGh({
@@ -68,8 +53,6 @@ function createCache($: EngineInterface): SharedCache {
     backoff,
     now,
     sleep: ms => new Promise<void>(resolve => void $.clock.after(ms, resolve)),
-    isAlive: candidate => isProcessAlive($, candidate),
-    pid,
     host,
     dir,
     log,
@@ -77,7 +60,7 @@ function createCache($: EngineInterface): SharedCache {
   return { gh, backoff }
 }
 
-/** The first call's answer, kept: the environment and our own pid don't change under a running module. */
+/** The first call's answer, kept: the environment doesn't change under a running module. */
 function once<T>(make: () => Promise<T>): () => Promise<T> {
   let made: Promise<T> | null = null
   return () => (made ??= make())

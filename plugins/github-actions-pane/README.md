@@ -148,8 +148,7 @@ These are the plugin's options. Set them when you enable it, or in `settings.jso
   them. When several sessions find an answer stale together, the first takes a
   lock for that call and fetches; the rest use the stale answer, or wait up to
   two seconds for the fresh one, and fetch for themselves after that. A lock
-  from a crashed session (its process gone, or older than 30 seconds) is
-  ignored. A push kick takes only an answer fetched after the kick, so
+  from a crashed session (older than 30 seconds) is ignored. A push kick takes only an answer fetched after the kick, so
   sessions kicked by the same push make one request between them, and none
   reads an answer from before the push. The rate-limit window
   above is shared too: when one session meets a limit, none polls until it

@@ -16,8 +16,6 @@ const HOST = 'github.com'
 const ARGV = ['gh', 'run', 'list', '--repo', 'acme/widgets']
 const NOW = 1_000_000
 const entry = { host: HOST, argv: ARGV, at: NOW, stdout: '[]' }
-const alive = async () => true
-const dead = async () => false
 
 describe('cacheKey', () => {
   test('is stable, and changes with the host or any argument', () => {
@@ -76,23 +74,23 @@ describe('isFresh', () => {
 })
 
 describe('locks', () => {
-  const lock = { pid: 4242, at: NOW, token: 'abc' }
-  test('round-trips; junk is null', () => {
+  const lock = { at: NOW, token: 'abc' }
+  test('round-trips, written without a pid; junk is null', () => {
     expect(decodeLock(encodeLock(lock))).toEqual(lock)
-    expect(decodeLock(encodeLock({ ...lock, pid: null }))).toEqual({ ...lock, pid: null })
+    expect(JSON.parse(encodeLock(lock))).toEqual({ v: 1, pid: null, at: NOW, token: 'abc' })
     expect(decodeLock('garbage')).toBe(null)
-    expect(decodeLock(JSON.stringify({ v: 1, pid: 'x', at: NOW, token: 't' }))).toBe(null)
-    expect(decodeLock(JSON.stringify({ v: 1, pid: 1, at: NOW }))).toBe(null)
+    expect(decodeLock(JSON.stringify({ v: 1, pid: null, at: 'now', token: 't' }))).toBe(null)
+    expect(decodeLock(JSON.stringify({ v: 1, pid: null, at: NOW }))).toBe(null)
   })
-  test('stale past 30s, with a dead pid, or when unparsable', async () => {
-    expect(await isLockStale(lock, NOW + 30_000, alive)).toBe(false)
-    expect(await isLockStale(lock, NOW + 30_001, alive)).toBe(true)
-    expect(await isLockStale(lock, NOW + 1, dead)).toBe(true)
-    expect(await isLockStale(null, NOW, alive)).toBe(true)
+  test('stale only by age (past 30s) or when unparsable', () => {
+    expect(isLockStale(lock, NOW + 30_000)).toBe(false)
+    expect(isLockStale(lock, NOW + 30_001)).toBe(true)
+    expect(isLockStale(null, NOW)).toBe(true)
   })
-  test('a lock with no pid is held until the 30s rule', async () => {
-    expect(await isLockStale({ ...lock, pid: null }, NOW + 29_000, dead)).toBe(false)
-    expect(await isLockStale({ ...lock, pid: null }, NOW + 30_001, dead)).toBe(true)
+  test('a lock that names a pid is no fresher or staler for it', () => {
+    const named = decodeLock(JSON.stringify({ v: 1, pid: 999, at: NOW, token: 't' }))
+    expect(named).toEqual({ at: NOW, token: 't' })
+    expect(isLockStale(named, NOW + 29_000)).toBe(false)
   })
 })
 

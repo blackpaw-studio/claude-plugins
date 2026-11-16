@@ -159,8 +159,6 @@ const machine = (sessions: readonly { isPaneOpen?: boolean }[], settings: Settin
       backoff,
       now: async () => clock.now(),
       sleep: ms => new Promise<void>(resolve => void clock.after(ms, resolve)),
-      isAlive: async () => true,
-      pid: async () => 1000 + index,
       host: async () => 'github.com',
       dir: async () => CACHE_DIR,
       log: () => undefined,

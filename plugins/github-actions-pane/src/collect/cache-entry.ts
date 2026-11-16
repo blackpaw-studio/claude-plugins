@@ -16,7 +16,7 @@ const DIR_NAME = 'github-actions-pane'
 export type Freshness = { maxAgeMs: number; kickAt: number | null }
 
 export type CacheEntry = { host: string; argv: readonly string[]; at: number; stdout: string }
-export type Lock = { pid: number | null; at: number; token: string }
+export type Lock = { at: number; token: string }
 export type SharedBackoff = { until: number; attempts: number; limit: 'primary' | 'secondary' }
 
 type Fields = Record<string, unknown>
@@ -72,22 +72,18 @@ export const isFresh = (entry: CacheEntry, now: number, fresh: Freshness): boole
   return fresh.kickAt === null ? age < fresh.maxAgeMs - FRESH_SLACK_MS : entry.at >= fresh.kickAt
 }
 
-export const encodeLock = (lock: Lock): string => JSON.stringify({ v: FORMAT_VERSION, pid: lock.pid, at: lock.at, token: lock.token })
+/** The file keeps a `pid` slot, always null: a process id can't be told reliably from inside the engine's sandbox, so a lock goes stale by age alone. */
+export const encodeLock = (lock: Lock): string => JSON.stringify({ v: FORMAT_VERSION, pid: null, at: lock.at, token: lock.token })
 
 export const decodeLock = (text: string): Lock | null => {
   const fields = parse(text)
   if (fields === null) return null
-  const { pid, at, token } = fields
-  const isPidOk = pid === null || (typeof pid === 'number' && Number.isInteger(pid) && pid > 0)
-  if (!isPidOk || !isFiniteNumber(at) || typeof token !== 'string') return null
-  return { pid: pid as number | null, at, token }
+  const { at, token } = fields
+  return isFiniteNumber(at) && typeof token === 'string' ? { at, token } : null
 }
 
-/** Held by nobody who can still be fetching: too old, its process gone, or unreadable (null). */
-export const isLockStale = async (lock: Lock | null, now: number, isAlive: (pid: number) => Promise<boolean>): Promise<boolean> => {
-  if (lock === null || now - lock.at > LOCK_STALE_MS) return true
-  return lock.pid !== null && !(await isAlive(lock.pid))
-}
+/** Held by nobody who can still be fetching: older than gh's timeout allows, or unreadable (null). */
+export const isLockStale = (lock: Lock | null, now: number): boolean => lock === null || now - lock.at > LOCK_STALE_MS
 
 const trimSlashes = (path: string): string => path.replace(/\/+$/, '')
 const isAbsolute = (path: string | undefined): path is string => path !== undefined && path.startsWith('/')
