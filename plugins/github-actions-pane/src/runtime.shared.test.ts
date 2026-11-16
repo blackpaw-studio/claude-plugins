@@ -2,12 +2,14 @@
 // store every session reads, and the freshness each gh call is made with.
 import { describe, expect, test } from 'claude-code/testing'
 import type { ActionsRun } from '../types'
-import { BACKOFF_CEILING_MS, type BackoffStore, memoryBackoff } from './collect/backoff-store'
-import { directGh, type GhPort } from './collect/shared-gh'
+import { BACKOFF_CEILING_MS, type BackoffStore, fileBackoff, memoryBackoff } from './collect/backoff-store'
+import type { Run } from './collect/run'
+import { createSharedGh, directGh, type GhPort } from './collect/shared-gh'
 import { createRuntime } from './runtime'
 import { DEFAULT_SETTINGS, type Settings } from './settings'
 import { dataOf, ghRun, MINUTE, runOf, SECOND, T0 } from './testing/builders'
-import { fakeWorld, type FakeWorld } from './testing/ports'
+import { fakeCacheFs } from './testing/cache-fs'
+import { fakeClock, fakeWorld, type FakeWorld, flush } from './testing/ports'
 import { fail, ok } from './testing/runner'
 
 const LIST = 'gh run list'
@@ -128,5 +130,128 @@ describe('the freshness a poll asks for', () => {
     await world.advance(10 * SECOND)
     expect(fresh.length).toBeGreaterThan(0)
     for (const asked of fresh) expect(asked).toMatchObject({ isKick: false })
+  })
+})
+
+/**
+ * Sessions on one machine: one clock, one cache dir, one rate-limit file, one
+ * gh (answered from the first world's table), each session with its own
+ * SharedGh and the number of gh calls it actually made.
+ */
+const CACHE_DIR = '/cache/github-actions-pane'
+const BRANCH_LIST = 'gh run list --repo acme/widgets --limit 20 --json'
+
+const machine = (sessions: readonly { isPaneOpen?: boolean }[], settings: Settings = DEFAULT_SETTINGS) => {
+  const clock = fakeClock(T0)
+  const fs = fakeCacheFs(clock.now)
+  const backoff = fileBackoff(fs, async () => CACHE_DIR, async () => clock.now())
+  const gh = fakeWorld(T0, {}, clock)
+  const fetches = sessions.map(() => 0)
+  const worlds = sessions.map((session, index) => {
+    const run: Run = (argv, init) => {
+      if (argv[0] === 'gh') fetches[index] = (fetches[index] ?? 0) + 1
+      return gh.ports.run(argv, init)
+    }
+    const shared = createSharedGh({
+      run,
+      fs,
+      backoff,
+      now: async () => clock.now(),
+      sleep: ms => new Promise<void>(resolve => void clock.after(ms, resolve)),
+      isAlive: async () => true,
+      pid: async () => 1000 + index,
+      host: async () => 'github.com',
+      dir: async () => CACHE_DIR,
+      log: () => undefined,
+    })
+    const world = fakeWorld(T0, { run: gh.ports.run, gh: shared, backoff }, clock)
+    // Held open by hand: an auto pane with nothing running would close itself.
+    if (session.isPaneOpen === true) {
+      world.setPane({ isOpen: true, isPlaced: true })
+      void world.ports.manual.set(true)
+    }
+    return { world, runtime: createRuntime(world.ports, settings) }
+  })
+  /** Starts every session at once; a session that loses the lock waits on the clock, so the clock must move. */
+  const startAll = async (): Promise<void> => {
+    const started = worlds.map(one => one.runtime.start())
+    await flush()
+    await clock.advance(SECOND)
+    await Promise.all(started)
+  }
+  /** The branch lists asked of GitHub, across every session. */
+  const lists = () => gh.asked.filter(argv => argv.startsWith(BRANCH_LIST) && argv.includes('--branch ')).length
+  return { clock, fs, backoff, gh, worlds, fetches, lists, startAll }
+}
+
+describe('sessions sharing one machine', () => {
+  test('three sessions on one repo make one list per interval, not three', async () => {
+    const { clock, lists, startAll } = machine([{}, {}, {}])
+    await startAll()
+    expect(lists()).toBe(1)
+    await clock.advance(5 * DEFAULT_SETTINGS.hiddenIdlePollMs)
+    expect(lists()).toBe(6)
+  })
+
+  test('the session polling fastest makes every fetch; a hidden one makes none', async () => {
+    const { clock, worlds, fetches } = machine([{ isPaneOpen: true }, {}])
+    await worlds[0]?.runtime.start()
+    await worlds[1]?.runtime.start()
+    await clock.advance(10 * MINUTE)
+    expect(fetches[1]).toBe(0)
+    // Every 60s from the start through the tenth minute.
+    expect(fetches[0]).toBe(11 * 2)
+  })
+
+  test('a kicked session drives while an idle one with its pane open reuses', async () => {
+    const { clock, worlds, fetches } = machine([{}, { isPaneOpen: true }])
+    await worlds[0]?.runtime.start()
+    await worlds[1]?.runtime.start()
+    await clock.advance(SECOND)
+    await worlds[0]?.runtime.kick()
+    await clock.advance(100 * SECOND)
+    expect(fetches[1]).toBe(0)
+    expect(fetches[0]).toBeGreaterThan(8 * 2)
+  })
+
+  test('a limit met by one session suspends every session until the window ends, then both resume', async () => {
+    const { clock, worlds, gh, lists, fs, startAll } = machine([{ isPaneOpen: true }, { isPaneOpen: true }])
+    await startAll()
+    expect(lists()).toBe(1)
+    gh.answers.set(LIST, fail(SECONDARY))
+    // Their next polls, a minute on: the first is refused, the second is held off by it.
+    await clock.advance(MINUTE + SECOND)
+    expect(lists()).toBe(2)
+    const until = worlds[0]?.world.data()?.rateLimitedUntil ?? 0
+    expect(until).toBeGreaterThan(clock.now())
+    expect(worlds[1]?.world.data()).toMatchObject({ isRateLimited: true, rateLimitedUntil: until })
+    await clock.advance(until - clock.now() - SECOND)
+    expect(lists()).toBe(2)
+    gh.answers.set(LIST, ok('[]'))
+    await clock.advance(10 * SECOND + MINUTE)
+    expect(lists()).toBeGreaterThan(2)
+    for (const one of worlds) expect(one.world.data()).toMatchObject({ isRateLimited: false, rateLimitedUntil: null })
+    expect(fs.has(`${CACHE_DIR}/rate-limit.json`)).toBe(false)
+  })
+
+  test('two kicks within a second make one fetch', async () => {
+    const { clock, worlds, lists, startAll } = machine([{}, {}])
+    await startAll()
+    await clock.advance(5 * SECOND)
+    const before = lists()
+    await Promise.all(worlds.map(one => one.runtime.kick()))
+    await flush()
+    expect(lists() - before).toBe(1)
+  })
+
+  test('a corrupt entry dropped in mid-run costs one live fetch, then all is as before', async () => {
+    const { clock, fs, lists, startAll } = machine([{}, {}])
+    await startAll()
+    expect(lists()).toBe(1)
+    for (const path of fs.paths().filter(one => one.endsWith('.json'))) fs.put(path, '{"v":1,"host":')
+    await clock.advance(DEFAULT_SETTINGS.hiddenIdlePollMs + SECOND)
+    expect(lists()).toBe(2)
+    await clock.advance(DEFAULT_SETTINGS.hiddenIdlePollMs)
+    expect(lists()).toBe(3)
   })
 })
