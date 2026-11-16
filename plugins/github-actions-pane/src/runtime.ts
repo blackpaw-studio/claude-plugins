@@ -183,8 +183,11 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
 
   /** Whether the pane was open when the poll timer was set: its cadence depends on it. */
   let scheduledOpen = false
+  /** How many times a poll timer has been set: a poll that sets none threw before it could. */
+  let scheduledCount = 0
 
   const schedule = (now: number): void => {
+    scheduledCount += 1
     scheduledOpen = isPaneOpen()
     pollTimer?.cancel()
     pollTimer = null
@@ -358,7 +361,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     await poll()
   }
 
-  const pollOnce = async (): Promise<void> => {
+  const pollCycle = async (): Promise<void> => {
     const cwd = await ports.cwd()
     const now = await ports.now()
     const isKick = isKickPending
@@ -398,6 +401,16 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     await step(snapshot => ({ kind: 'poll', view: viewOf(snapshot), autoOpen: settings.autoOpen }), settled)
     schedule(settled)
     syncRemoteWatch()
+  }
+
+  /** A poll that throws anywhere still leaves the next one scheduled: a session that stopped polling would never start again. */
+  const pollOnce = async (): Promise<void> => {
+    const before = scheduledCount
+    try {
+      await pollCycle()
+    } finally {
+      if (scheduledCount === before) schedule(await ports.now())
+    }
   }
 
   /** One poll at a time; a poll asked for meanwhile runs once, right after. */

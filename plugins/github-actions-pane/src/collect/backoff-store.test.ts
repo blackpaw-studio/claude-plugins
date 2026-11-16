@@ -10,7 +10,8 @@ const window = { until: NOW + 60_000, attempts: 1, limit: 'secondary' as const }
 
 const setup = (dir: string | null = DIR) => {
   const fs = fakeCacheFs(() => NOW)
-  return { fs, store: fileBackoff(fs, async () => dir, async () => NOW) }
+  const logged: string[] = []
+  return { fs, logged, store: fileBackoff(fs, async () => dir, async () => NOW, text => void logged.push(text)) }
 }
 
 describe('isInWindow', () => {
@@ -66,5 +67,41 @@ describe('fileBackoff', () => {
     await store.write(window)
     expect(fs.paths()).toEqual([])
     expect(await store.read()).toEqual(window)
+  })
+
+  test('a failed write is logged, not thrown, and the window is still honoured from memory', async () => {
+    const { fs, store, logged } = setup()
+    fs.failNextWrite()
+    await store.write(window)
+    expect(logged.length).toBe(1)
+    expect(fs.has(PATH)).toBe(false)
+    expect(await store.read()).toEqual(window)
+  })
+
+  test('read answers the later of the file window and this process own', async () => {
+    const { fs, store } = setup()
+    fs.failNextWrite()
+    await store.write(window)
+    fs.put(PATH, encodeBackoff({ ...window, until: window.until + 1000, attempts: 3 }, NOW))
+    expect((await store.read())?.until).toBe(window.until + 1000)
+    fs.put(PATH, encodeBackoff({ ...window, until: window.until - 1000 }, NOW))
+    expect((await store.read())?.until).toBe(window.until)
+  })
+
+  test('a failed remove is logged, not thrown, and the process drops its own window', async () => {
+    const { fs, store, logged } = setup()
+    await store.write(window)
+    fs.failNextRemove()
+    await store.clearIf(window.until)
+    expect(logged.length).toBe(1)
+    expect(fs.has(PATH)).toBe(true)
+    fs.put(PATH, '{nope')
+    expect(await store.read()).toBe(null)
+  })
+
+  test('an unreadable dir reads as no window from the file, not a throw', async () => {
+    const fs = fakeCacheFs(() => NOW)
+    const store = fileBackoff({ ...fs, read: async () => Promise.reject(new Error('EIO')) }, async () => DIR, async () => NOW)
+    expect(await store.read()).toBe(null)
   })
 })

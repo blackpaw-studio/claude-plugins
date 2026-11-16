@@ -255,3 +255,71 @@ describe('sessions sharing one machine', () => {
     expect(lists()).toBe(3)
   })
 })
+
+/** One session whose rate-limit file lives on a cache fs that can be made to fail. */
+const onFailingFs = (backoffOf?: (fs: ReturnType<typeof fakeCacheFs>, clock: ReturnType<typeof fakeClock>) => BackoffStore) => {
+  const clock = fakeClock(T0)
+  const fs = fakeCacheFs(clock.now)
+  const backoff = backoffOf?.(fs, clock) ?? fileBackoff(fs, async () => CACHE_DIR, async () => clock.now())
+  const world = fakeWorld(T0, { backoff }, clock)
+  const runtime = createRuntime(world.ports, AUTO_OPEN)
+  const lists = () => world.asked.filter(argv => argv.startsWith('gh run list') && argv.includes('--branch ')).length
+  runsAre(world, [RUNNING])
+  world.answers.set('gh run view 482 --repo', ok('{"jobs":[]}'))
+  return { clock, fs, backoff, world, runtime, lists }
+}
+
+describe('a rate-limit file that cannot be written', () => {
+  test('a failed write does not stop polling: the session resumes after its window', async () => {
+    const { clock, fs, world, runtime, lists } = onFailingFs()
+    await runtime.start()
+    fs.failNextWrite()
+    world.answers.set(LIST, fail(SECONDARY))
+    await clock.advance(10 * SECOND)
+    const hit = lists()
+    world.answers.set(LIST, ok(JSON.stringify([ghRun(RUNNING)])))
+    await clock.advance(61 * SECOND)
+    expect(lists()).toBeGreaterThan(hit)
+    expect(world.data()).toMatchObject({ isRateLimited: false, rateLimitedUntil: null })
+  })
+
+  test('the session still honours its own window: a kick inside it makes no gh call', async () => {
+    const { clock, fs, world, runtime, lists } = onFailingFs()
+    await runtime.start()
+    fs.failNextWrite()
+    world.answers.set(LIST, fail(SECONDARY))
+    await clock.advance(10 * SECOND)
+    const hit = lists()
+    await runtime.kick()
+    expect(lists()).toBe(hit)
+    expect(world.data()?.isRateLimited).toBe(true)
+  })
+
+  test('a failed remove at the end of a window does not stop polling', async () => {
+    const { clock, fs, world, runtime, lists } = onFailingFs()
+    await runtime.start()
+    world.answers.set(LIST, fail(SECONDARY))
+    await clock.advance(10 * SECOND)
+    world.answers.set(LIST, ok(JSON.stringify([ghRun(RUNNING)])))
+    fs.failNextRemove()
+    await clock.advance(60 * SECOND)
+    const resumed = lists()
+    await clock.advance(10 * SECOND)
+    expect(lists()).toBeGreaterThan(resumed)
+    expect(world.data()).toMatchObject({ isRateLimited: false, rateLimitedUntil: null })
+  })
+
+  test('whatever a poll throws, the next one is still scheduled', async () => {
+    const { clock, world, runtime, lists } = onFailingFs(() => ({
+      ...memoryBackoff(),
+      write: async () => Promise.reject(new Error('store is broken')),
+    }))
+    await runtime.start()
+    world.answers.set(LIST, fail(SECONDARY))
+    await clock.advance(10 * SECOND)
+    world.answers.set(LIST, ok(JSON.stringify([ghRun(RUNNING)])))
+    const hit = lists()
+    await clock.advance(120 * SECOND)
+    expect(lists()).toBeGreaterThan(hit)
+  })
+})

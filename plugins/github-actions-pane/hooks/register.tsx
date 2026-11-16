@@ -60,7 +60,8 @@ function createCache($: EngineInterface): SharedCache {
   const dir = once(async () => cacheDir({ xdg: await $.env.get('XDG_CACHE_HOME'), home: await $.env.get('HOME') }))
   const host = once(async () => (await $.env.get('GH_HOST')) || DEFAULT_GH_HOST)
   const pid = once(() => ownPid($))
-  const backoff = fileBackoff(fs, dir, now)
+  const log = (text: string) => $.ui.log(text, { to: 'debug' })
+  const backoff = fileBackoff(fs, dir, now, log)
   const gh = createSharedGh({
     run,
     fs,
@@ -71,7 +72,7 @@ function createCache($: EngineInterface): SharedCache {
     pid,
     host,
     dir,
-    log: text => $.ui.log(text, { to: 'debug' }),
+    log,
   })
   return { gh, backoff }
 }
