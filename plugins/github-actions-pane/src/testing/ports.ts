@@ -58,10 +58,54 @@ export const baseAnswers = (): Map<string, RunResult | Error> =>
     ['gh run list --repo acme/widgets --workflow', ok('[]')],
   ])
 
-export const fakeWorld = (start: number, overrides: Partial<Ports> = {}): FakeWorld => {
+export type FakeClock = {
+  now: () => number
+  after: (ms: number, fn: () => void) => Timer
+  every: (ms: number, fn: () => void) => Timer
+  /** Moves the clock, firing timers due on the way, in order, letting each settle. */
+  advance: (ms: number) => Promise<void>
+  /** Timers waiting: their delays from now. */
+  waiting: () => number[]
+}
+
+/** A clock and timers that move only when the test advances them; worlds sharing one share a timeline. */
+export const fakeClock = (start: number): FakeClock => {
   let now = start
-  let cwd = '/r'
   let timers: Pending[] = []
+
+  const schedule = (ms: number, fn: () => void, everyMs: number | null): Timer => {
+    const timer: Pending = { due: now + ms, fn, everyMs, isCancelled: false }
+    timers = [...timers, timer]
+    return { cancel: () => void (timer.isCancelled = true) }
+  }
+
+  const advance = async (ms: number): Promise<void> => {
+    const target = now + ms
+    for (;;) {
+      const due = timers.filter(timer => !timer.isCancelled && timer.due <= target).sort((a, b) => a.due - b.due)[0]
+      if (due === undefined) break
+      now = due.due
+      // A repeating timer keeps its record (so a later cancel still reaches it).
+      if (due.everyMs === null) timers = timers.filter(timer => timer !== due)
+      else due.due += due.everyMs
+      due.fn()
+      await flush()
+    }
+    now = target
+    await flush()
+  }
+
+  return {
+    now: () => now,
+    after: (ms, fn) => schedule(ms, fn, null),
+    every: (ms, fn) => schedule(ms, fn, ms),
+    advance,
+    waiting: () => timers.filter(timer => !timer.isCancelled).map(timer => timer.due - now).sort((a, b) => a - b),
+  }
+}
+
+export const fakeWorld = (start: number, overrides: Partial<Ports> = {}, clock: FakeClock = fakeClock(start)): FakeWorld => {
+  let cwd = '/r'
   let data: ActionsData | null = null
   let scope: ActionsScope | null = null
   let isManual = false
@@ -75,12 +119,6 @@ export const fakeWorld = (start: number, overrides: Partial<Ports> = {}): FakeWo
   const statuses: (string | undefined)[] = []
   const answers = baseAnswers()
 
-  const schedule = (ms: number, fn: () => void, everyMs: number | null): Timer => {
-    const timer: Pending = { due: now + ms, fn, everyMs, isCancelled: false }
-    timers = [...timers, timer]
-    return { cancel: () => void (timer.isCancelled = true) }
-  }
-
   const run = async (argv: readonly string[], _init?: RunInit): Promise<RunResult> => {
     const key = argv.join(' ')
     asked.push(key)
@@ -93,9 +131,9 @@ export const fakeWorld = (start: number, overrides: Partial<Ports> = {}): FakeWo
   const ports: Ports = {
     run,
     cwd: async () => cwd,
-    now: async () => now,
-    after: (ms, fn) => schedule(ms, fn, null),
-    every: (ms, fn) => schedule(ms, fn, ms),
+    now: async () => clock.now(),
+    after: clock.after,
+    every: clock.every,
     data: { get: async () => data, set: async value => void (data = value) },
     clock: { set: async value => void (drawnNow = value) },
     manual: { get: async () => isManual, set: async value => void (isManual = value) },
@@ -117,22 +155,6 @@ export const fakeWorld = (start: number, overrides: Partial<Ports> = {}): FakeWo
     ...overrides,
   }
 
-  const advance = async (ms: number): Promise<void> => {
-    const target = now + ms
-    for (;;) {
-      const due = timers.filter(timer => !timer.isCancelled && timer.due <= target).sort((a, b) => a.due - b.due)[0]
-      if (due === undefined) break
-      now = due.due
-      // A repeating timer keeps its record (so a later cancel still reaches it).
-      if (due.everyMs === null) timers = timers.filter(timer => timer !== due)
-      else due.due += due.everyMs
-      due.fn()
-      await flush()
-    }
-    now = target
-    await flush()
-  }
-
   return {
     ports,
     asked,
@@ -143,9 +165,9 @@ export const fakeWorld = (start: number, overrides: Partial<Ports> = {}): FakeWo
     data: () => data,
     manual: () => isManual,
     drawnNow: () => drawnNow,
-    now: () => now,
-    advance,
-    waiting: () => timers.filter(timer => !timer.isCancelled).map(timer => timer.due - now).sort((a, b) => a - b),
+    now: clock.now,
+    advance: clock.advance,
+    waiting: clock.waiting,
     setCwd: next => void (cwd = next),
     setPane: next => void (pane = next),
     setPlaced: next => void (isNextPlaced = next),
