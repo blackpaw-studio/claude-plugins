@@ -2,11 +2,29 @@ import { describe, expect, test } from 'claude-code/testing'
 import { JOBS_IN_PROGRESS, JOBS_LINT_FAILED, JOBS_NONE, RUN_HISTORY, RUN_LIST } from '../testing/gh-fixtures'
 import { ghRun, MINUTE, runOf, T0 } from '../testing/builders'
 import { fail, ok, runner } from '../testing/runner'
-import { classifyFailure, listDurations, listRuns, parseDurations, parseJobs, parseRuns, rateLimitReset, repoName, viewJobs, RUN_FIELDS } from './gh'
+import {
+  classifyFailure,
+  listDurations as listDurationsVia,
+  listRuns as listRunsVia,
+  parseDurations,
+  parseJobs,
+  parseRuns,
+  rateLimitReset,
+  repoName,
+  viewJobs as viewJobsVia,
+  RUN_FIELDS,
+} from './gh'
+import type { Run } from './run'
+import { directGh, type GhPort } from './shared-gh'
 
 const at = (iso: string) => Date.parse(iso)
 const GH_INIT = { cwd: '/repo', timeoutMs: 10_000, env: { GH_PROMPT_DISABLED: '1' } }
 const REPO = 'acme/widgets'
+const FRESH = { maxAgeMs: 10_000, isKick: false }
+/** The collectors on a plain runner: no cache, as before. */
+const listRuns = (run: Run, cwd: string, repo: string, filter: Parameters<typeof listRunsVia>[3]) => listRunsVia(directGh(run), cwd, repo, filter, FRESH)
+const listDurations = (run: Run, cwd: string, repo: string, workflowId: number) => listDurationsVia(directGh(run), cwd, repo, workflowId, FRESH)
+const viewJobs = (run: Run, cwd: string, repo: string, id: number) => viewJobsVia(directGh(run), cwd, repo, id, FRESH)
 const LIST = `gh run list --repo ${REPO} --limit 20 --json ${RUN_FIELDS}`
 
 describe('parseRuns', () => {
@@ -281,5 +299,38 @@ describe('classifyFailure', () => {
       kind: 'transient',
       reason: 'error connecting to api.github.com',
     })
+  })
+})
+
+describe('through a cache port', () => {
+  const KICK = { maxAgeMs: 10_000, isKick: true }
+  type Asked = { argv: string[]; fresh: unknown; accepts: (stdout: string) => boolean }
+  const port = (answer: Awaited<ReturnType<GhPort>>) => {
+    const asked: Asked[] = []
+    const gh: GhPort = async (argv, _init, fresh, accept) => {
+      asked.push({ argv: [...argv], fresh, accepts: accept })
+      return answer
+    }
+    return { gh, asked }
+  }
+
+  test('a shared rate-limit window reads as rate-limited, with no retry-after', async () => {
+    const { gh, asked } = port({ kind: 'suspended', limit: 'secondary', until: 123 })
+    expect(await listRunsVia(gh, '/repo', REPO, { kind: 'repo' }, FRESH)).toEqual({ kind: 'rate-limited', limit: 'secondary', retryAfterMs: null })
+    expect(await listDurationsVia(gh, '/repo', REPO, 1, FRESH)).toEqual({ kind: 'rate-limited', limit: 'secondary', retryAfterMs: null })
+    expect(await viewJobsVia(gh, '/repo', REPO, 1, FRESH)).toEqual({ kind: 'rate-limited', limit: 'secondary', retryAfterMs: null })
+    expect(asked.length).toBe(3)
+  })
+
+  test('each call states its freshness and stores only output that parses', async () => {
+    const { gh, asked } = port({ kind: 'ran', result: ok('[]') })
+    await listRunsVia(gh, '/repo', REPO, { kind: 'repo' }, KICK)
+    expect(asked[0]?.argv.slice(0, 3)).toEqual(['gh', 'run', 'list'])
+    expect(asked[0]?.fresh).toEqual(KICK)
+    expect(asked[0]?.accepts('[]')).toBe(true)
+    expect(asked[0]?.accepts('{"message":"Not Found"}')).toBe(false)
+    await viewJobsVia(gh, '/repo', REPO, 7, FRESH)
+    expect(asked[1]?.accepts('{"jobs":[]}')).toBe(true)
+    expect(asked[1]?.accepts('[]')).toBe(false)
   })
 })

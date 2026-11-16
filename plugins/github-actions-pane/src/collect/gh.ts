@@ -3,6 +3,7 @@
 // every field, since gh's output is external input.
 import type { ActionsJob, ActionsRun, ActionsStep } from '../../types'
 import { type Ran, type Run, type RunInit, tryRun } from './run'
+import { directGh, type Freshness, type GhPort } from './shared-gh'
 
 const GH_TIMEOUT_MS = 10_000
 const GH_ENV = { GH_PROMPT_DISABLED: '1' }
@@ -183,10 +184,19 @@ export const parseDurations = (stdout: string): number[] | null => {
 const filterArgs = (filter: LeafFilter): string[] =>
   filter.kind === 'branch' ? ['--branch', filter.branch] : filter.kind === 'commit' ? ['--commit', filter.sha] : []
 
-/** Runs gh in `cwd` and parses its stdout; any failure classified. */
-const gh = async <T>(run: Run, cwd: string, args: readonly string[], parse: (stdout: string) => T | null, what: string): Promise<GhResult<T>> => {
+/** Not cached (see `repoName`): the freshness the port is told is moot. */
+const UNCACHED: Freshness = { maxAgeMs: 0, isKick: true }
+
+/**
+ * Runs gh in `cwd` through the port and parses its stdout; any failure
+ * classified. Only output that parses is worth caching, so `parse` is the
+ * port's `accept`. A shared rate-limit window (another session's) reads as
+ * a limit with no Retry-After: the window itself is in the shared store.
+ */
+const gh = async <T>(port: GhPort, cwd: string, args: readonly string[], parse: (stdout: string) => T | null, what: string, fresh: Freshness): Promise<GhResult<T>> => {
   const init: RunInit = { cwd, timeoutMs: GH_TIMEOUT_MS, env: GH_ENV }
-  const ran = await tryRun(run, ['gh', ...args], init)
+  const ran = await port(['gh', ...args], init, fresh, stdout => parse(stdout) !== null)
+  if (ran.kind === 'suspended') return { kind: 'rate-limited', limit: ran.limit, retryAfterMs: null }
   if (ran.kind === 'failed' || ran.result.exitCode !== 0) return classifyFailure(ran)
   const value = parse(ran.result.stdout)
   return value === null ? { kind: 'transient', reason: `gh returned output that is not ${what}` } : { kind: 'ok', value }
@@ -195,17 +205,17 @@ const gh = async <T>(run: Run, cwd: string, args: readonly string[], parse: (std
 /** The statuses asked for apart when the newest page is full, so a long run can't fall off it. */
 const ACTIVE_STATUSES = ['in_progress', 'queued'] as const
 
-const listPage = (run: Run, cwd: string, repo: string, filter: LeafFilter, extra: readonly string[] = []): Promise<GhResult<ActionsRun[]>> =>
-  gh(run, cwd, ['run', 'list', '--repo', repo, '--limit', String(LIST_LIMIT), '--json', RUN_FIELDS, ...filterArgs(filter), ...extra], parseRuns, 'a run list')
+const listPage = (port: GhPort, cwd: string, repo: string, filter: LeafFilter, fresh: Freshness, extra: readonly string[] = []): Promise<GhResult<ActionsRun[]>> =>
+  gh(port, cwd, ['run', 'list', '--repo', repo, '--limit', String(LIST_LIMIT), '--json', RUN_FIELDS, ...filterArgs(filter), ...extra], parseRuns, 'a run list', fresh)
 
 /**
  * The newest runs in the filter, plus, when that page is full, the active runs
  * older than it (one more call per active status). Any failed call fails the list.
  */
-const listLeaf = async (run: Run, cwd: string, repo: string, filter: LeafFilter): Promise<GhResult<ActionsRun[]>> => {
-  const newest = await listPage(run, cwd, repo, filter)
+const listLeaf = async (port: GhPort, cwd: string, repo: string, filter: LeafFilter, fresh: Freshness): Promise<GhResult<ActionsRun[]>> => {
+  const newest = await listPage(port, cwd, repo, filter, fresh)
   if (newest.kind !== 'ok' || newest.value.length < LIST_LIMIT) return newest
-  const pages = await Promise.all(ACTIVE_STATUSES.map(status => listPage(run, cwd, repo, filter, ['--status', status])))
+  const pages = await Promise.all(ACTIVE_STATUSES.map(status => listPage(port, cwd, repo, filter, fresh, ['--status', status])))
   const failed = pages.find(page => page.kind !== 'ok')
   if (failed !== undefined) return failed
   const onPage = new Set(newest.value.map(one => one.id))
@@ -215,9 +225,9 @@ const listLeaf = async (run: Run, cwd: string, repo: string, filter: LeafFilter)
 }
 
 /** The runs of `repo` (`owner/name`: gh would otherwise pick a fork's upstream) in every part of the filter, merged without repeats (a failed part fails the list), newest first. */
-export const listRuns = async (run: Run, cwd: string, repo: string, filter: ListFilter): Promise<GhResult<ActionsRun[]>> => {
-  if (filter.kind !== 'any') return listLeaf(run, cwd, repo, filter)
-  const lists = await Promise.all(filter.of.map(leaf => listLeaf(run, cwd, repo, leaf)))
+export const listRuns = async (port: GhPort, cwd: string, repo: string, filter: ListFilter, fresh: Freshness): Promise<GhResult<ActionsRun[]>> => {
+  if (filter.kind !== 'any') return listLeaf(port, cwd, repo, filter, fresh)
+  const lists = await Promise.all(filter.of.map(leaf => listLeaf(port, cwd, repo, leaf, fresh)))
   const failed = lists.find(list => list.kind !== 'ok')
   if (failed !== undefined) return failed
   const all = lists.flatMap(list => (list.kind === 'ok' ? list.value : []))
@@ -226,20 +236,23 @@ export const listRuns = async (run: Run, cwd: string, repo: string, filter: List
 }
 
 /** The last successful runs of a workflow (any branch or event) as durations in ms, newest first. */
-export const listDurations = (run: Run, cwd: string, repo: string, workflowId: number): Promise<GhResult<number[]>> =>
-  gh(run, cwd, ['run', 'list', '--repo', repo, '--workflow', String(workflowId), '--status', 'success', '--limit', String(HISTORY_LIMIT), '--json', HISTORY_FIELDS], parseDurations, 'a run list')
+export const listDurations = (port: GhPort, cwd: string, repo: string, workflowId: number, fresh: Freshness): Promise<GhResult<number[]>> =>
+  gh(port, cwd, ['run', 'list', '--repo', repo, '--workflow', String(workflowId), '--status', 'success', '--limit', String(HISTORY_LIMIT), '--json', HISTORY_FIELDS], parseDurations, 'a run list', fresh)
 
-export const viewJobs = (run: Run, cwd: string, repo: string, id: number): Promise<GhResult<ActionsJob[]>> =>
-  gh(run, cwd, ['run', 'view', String(id), '--repo', repo, '--json', 'jobs'], parseJobs, 'a job list')
+export const viewJobs = (port: GhPort, cwd: string, repo: string, id: number, fresh: Freshness): Promise<GhResult<ActionsJob[]>> =>
+  gh(port, cwd, ['run', 'view', String(id), '--repo', repo, '--json', 'jobs'], parseJobs, 'a job list', fresh)
 
 const parseRepo = (stdout: string): string | null => {
   const parsed = parseJson(stdout)
   return isFields(parsed) ? stringOf(parsed, 'nameWithOwner') : null
 }
 
-/** `owner/repo` for the cwd's remote: also the check that gh is installed, logged in and pointed at GitHub. */
+/**
+ * `owner/repo` for the cwd's remote: also the check that gh is installed, logged in and pointed at GitHub.
+ * Never cached: its argv names no repo, so one cache key would serve every cwd.
+ */
 export const repoName = (run: Run, cwd: string): Promise<GhResult<string>> =>
-  gh(run, cwd, ['repo', 'view', '--json', 'nameWithOwner'], parseRepo, 'a repository')
+  gh(directGh(run), cwd, ['repo', 'view', '--json', 'nameWithOwner'], parseRepo, 'a repository', UNCACHED)
 
 /**
  * When the core REST quota next resets, in epoch ms; null when it cannot be

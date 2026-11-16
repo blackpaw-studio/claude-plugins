@@ -9,6 +9,7 @@ import { type GhFailure, type GhResult, listDurations, listRuns, rateLimitReset,
 import { readRef, trackingRefOf } from './collect/remote-ref'
 import { repoFromRemotes } from './collect/repo'
 import type { Run } from './collect/run'
+import { directGh } from './collect/shared-gh'
 import { isActiveStatus } from './format'
 import { CLOSED, decide, type Effect, type Lifecycle, type LifecycleEvent, statusText } from './lifecycle'
 import { EMPTY_DATA, restoredData, runsToDetail, withHistory, withJobs, withRuns, workflowsToRead } from './model'
@@ -18,6 +19,8 @@ import type { Settings } from './settings'
 import { buildSnapshot, type Snapshot } from './snapshot'
 
 export const TICK_MS = 1000
+// Step-5 bridge: replaced by the poll's real freshness in step 6.
+const BRIDGE_FRESH = { maxAgeMs: 0, isKick: true }
 /** How often the local remote-tracking ref is read: a push from any terminal moves it. Local git only. */
 export const REMOTE_WATCH_MS = 5000
 /** A ref that moves this soon after a kick is the push that was kicked. */
@@ -312,7 +315,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     const active = new Set(data.runs.filter(run => isActiveStatus(run.status)).map(run => run.id))
     final = new Set([...final].filter(id => !active.has(id)))
     const wanted = runsToDetail(data, (await snapshotAt(now)).shownIds, final)
-    const answers = await Promise.all(wanted.map(async id => [id, await viewJobs(ports.run, cwd, repo, id)] as const))
+    const answers = await Promise.all(wanted.map(async id => [id, await viewJobs(directGh(ports.run), cwd, repo, id, BRIDGE_FRESH)] as const))
     const read = new Map<number, ActionsJob[]>()
     for (const [id, answer] of answers) {
       if (answer.kind !== 'ok') {
@@ -328,7 +331,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
   /** Past durations of the active runs' workflows, for the ETA: not while rate limited; a failed read is retried next poll. */
   const readHistory = async (cwd: string, repo: string): Promise<void> => {
     if (data.isRateLimited) return
-    const answers = await Promise.all(workflowsToRead(data).map(async id => [id, await listDurations(ports.run, cwd, repo, id)] as const))
+    const answers = await Promise.all(workflowsToRead(data).map(async id => [id, await listDurations(directGh(ports.run), cwd, repo, id, BRIDGE_FRESH)] as const))
     const read = new Map<number, number[]>()
     for (const [id, answer] of answers) {
       if (answer.kind === 'ok') read.set(id, answer.value)
@@ -356,7 +359,7 @@ export const createRuntime = (ports: Ports, settings: Settings) => {
     const context = await readContext(cwd)
     if (context !== null) {
       const filter = listFilter(await scopeNow(), context)
-      const listed: GhResult<ActionsData['runs']> = filter === null ? { kind: 'ok', value: [] } : await listRuns(ports.run, cwd, context.repo, filter)
+      const listed: GhResult<ActionsData['runs']> = filter === null ? { kind: 'ok', value: [] } : await listRuns(directGh(ports.run), cwd, context.repo, filter, BRIDGE_FRESH)
       // Another repository: nothing of the last one carries over, whatever the list says.
       const isNewRepo = data.context !== null && data.context.repo !== context.repo
       if (isNewRepo) final = new Set()
